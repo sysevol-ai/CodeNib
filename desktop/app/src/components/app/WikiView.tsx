@@ -441,6 +441,8 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
   const pageRef = useRef<HTMLDivElement>(null);
   const noteRefs = useRef<Record<string, HTMLElement | null>>({});
   const [layout, setLayout] = useState<Layout | null>(null);
+  // Stable, so the page's Markdown keeps its links (and open citations).
+  const onPage = useCallback((next: string) => go({ kind: "page", repo, page: next }), [go, repo]);
 
   useEffect(() => {
     const path = repoPath(d, `/wiki/${encodeURIComponent(pageId)}`);
@@ -555,7 +557,6 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
           : "built from the index on this Mac"
       }`;
   let section = "";
-  const onPage = (next: string) => go({ kind: "page", repo, page: next });
 
   const composerFor = (index: number, text: string, sectionTitle: string) =>
     composing?.block === index ? (

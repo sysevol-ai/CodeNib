@@ -126,7 +126,9 @@ export function Markdown({
   repo?: string;
   evidence?: Page["evidence"];
 }) {
-  const components: Components = {
+  // One map for the life of these props: a new map each render would make
+  // react-markdown remount every link, closing a citation's open code.
+  const components: Components = useMemo(() => ({
     h1: ({ children }) => <h2>{children}</h2>,
     a: ({ href, children }) => {
       const target = href ?? "";
@@ -197,7 +199,7 @@ export function Markdown({
         <table>{children}</table>
       </div>
     ),
-  };
+  }), [onPage, repo, evidence]);
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
       {text}

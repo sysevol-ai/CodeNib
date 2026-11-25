@@ -27,13 +27,17 @@ function installSanitizedSvg(container: HTMLElement, svg: string): boolean {
   parsed.querySelectorAll("style").forEach((node) => {
     if (/(?:javascript:|vbscript:|data:|expression\s*\(|@import)/i.test(node.textContent || "")) node.remove();
   });
-  const installed = document.importNode(root, true);
-  // Keep a wide flow at its natural size and let the card scroll, so its
-  // labels stay readable instead of shrinking to fit.
+  const installed = document.importNode(root, true) as unknown as SVGSVGElement;
+  // As Notion does: at its natural size when it fits, scaled down to the
+  // card's width when it does not, and centred. A floor keeps labels legible;
+  // past it the card scrolls instead of shrinking further.
   const naturalWidth = Number.parseFloat((installed.getAttribute("viewBox") || "").split(/\s+/)[2] || "");
   if (Number.isFinite(naturalWidth) && naturalWidth > 0) {
-    installed.setAttribute("width", String(Math.ceil(naturalWidth)));
-    installed.style.maxWidth = "none";
+    installed.removeAttribute("height");
+    installed.setAttribute("width", "100%");
+    installed.style.maxWidth = `${Math.ceil(naturalWidth)}px`;
+    installed.style.minWidth = `${Math.min(Math.ceil(naturalWidth), Math.ceil(naturalWidth * 0.62))}px`;
+    installed.style.height = "auto";
   }
   container.replaceChildren(installed);
   return true;
@@ -43,7 +47,10 @@ function token(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
+/** Notion-like: the page's sans-serif type, soft neutral boxes with rounded
+ *  corners, quiet grey lines, labels that wrap instead of crossing arrows. */
 function config(dark: boolean) {
+  const sheet = token("--sheet", dark ? "#121315" : "#fbfcfd");
   return {
     startOnLoad: false,
     theme: "base" as const,
@@ -51,29 +58,60 @@ function config(dark: boolean) {
     securityLevel: "strict" as const,
     // HTML labels sit in <foreignObject>, which the sanitizer removes.
     htmlLabels: false,
-    flowchart: { htmlLabels: false, wrappingWidth: 360 },
+    flowchart: {
+      htmlLabels: false,
+      useMaxWidth: true,
+      // Wide enough for a qualified name such as
+      // SessionRedirectMixin.resolve_redirects() on one line.
+      wrappingWidth: 330,
+      nodeSpacing: 36,
+      rankSpacing: 56,
+      padding: 14,
+      curve: "basis" as const,
+    },
+    sequence: { useMaxWidth: true, mirrorActors: false },
     themeVariables: {
-      fontFamily: '"Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
-      fontSize: "13px",
-      primaryColor: token("--nib-soft", dark ? "#1b2433" : "#eef3fd"),
-      primaryBorderColor: token("--nib-line", dark ? "#8ab4f8" : "#1d4fd8"),
-      primaryTextColor: token("--ink", dark ? "#e8eaed" : "#16191e"),
-      secondaryColor: token("--well", dark ? "#17181b" : "#eef1f5"),
-      tertiaryColor: token("--sheet", dark ? "#121315" : "#fbfcfd"),
-      lineColor: token("--ink-2", dark ? "#bdc1c6" : "#39414b"),
-      textColor: token("--ink-2", dark ? "#bdc1c6" : "#39414b"),
-      edgeLabelBackground: token("--sheet", dark ? "#121315" : "#fbfcfd"),
-      background: token("--sheet", dark ? "#121315" : "#fbfcfd"),
-      clusterBkg: token("--well", dark ? "#17181b" : "#eef1f5"),
-      clusterBorder: token("--line", dark ? "#25262a" : "#c6cdd6"),
-      noteBkgColor: token("--well", dark ? "#17181b" : "#eef1f5"),
-      actorBkg: token("--nib-soft", dark ? "#1b2433" : "#eef3fd"),
-      actorBorder: token("--nib-line", dark ? "#8ab4f8" : "#1d4fd8"),
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Geist", "Segoe UI", sans-serif',
+      fontSize: "14px",
+      primaryColor: dark ? "#2a2c30" : "#f4f5f7",
+      primaryBorderColor: dark ? "#3a3d43" : "#dcdfe4",
+      primaryTextColor: dark ? "#e8eaed" : "#22262c",
+      secondaryColor: dark ? "#23252a" : "#eef1f5",
+      tertiaryColor: sheet,
+      lineColor: dark ? "#7c828c" : "#9aa1ab",
+      textColor: dark ? "#c4c8ce" : "#4a515b",
+      edgeLabelBackground: sheet,
+      background: sheet,
+      clusterBkg: dark ? "#1c1e22" : "#f8f9fa",
+      clusterBorder: dark ? "#3a3d43" : "#dcdfe4",
+      noteBkgColor: dark ? "#2d2a1e" : "#fbf3db",
+      noteBorderColor: dark ? "#5c5530" : "#ecd9a0",
+      actorBkg: dark ? "#2a2c30" : "#f4f5f7",
+      actorBorder: dark ? "#3a3d43" : "#dcdfe4",
     },
   };
 }
 
-export default function Mermaid({ chart }: { chart: string }) {
+const SIDEWAYS = /^(\s*(?:flowchart|graph)\s+)(LR|RL)\b/;
+
+/** Node labels without the file path in front of a symbol: the flow is
+ *  about calls, and "src/requests/auth.py:" breaks the name across lines. */
+export function tidyLabels(chart: string): string {
+  return chart.replace(/(^|[\["(\s|>])(?:[\w.-]+\/)*[\w-]+\.(?:py|pyi|go|rs|ts|tsx|js|jsx|mjs|java|kt|rb|php|cs|cpp|cc|cxx|hpp|h|c):(?=[A-Za-z_])/g, "$1");
+}
+
+/** The same flow drawn top to bottom. */
+export function topDown(chart: string): string {
+  return chart.replace(SIDEWAYS, "$1TD");
+}
+
+export default function Mermaid({ chart: source }: { chart: string }) {
+  // A sideways flow wider than the text column is drawn again top to bottom,
+  // where it fits without scrolling or shrinking its labels.
+  const [turned, setTurned] = useState(false);
+  useEffect(() => setTurned(false), [source]);
+  const tidy = tidyLabels(source);
+  const chart = turned ? topDown(tidy) : tidy;
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
 
@@ -95,7 +133,15 @@ export default function Mermaid({ chart }: { chart: string }) {
       }
       try {
         const { svg } = await mermaid.render(`m${Math.random().toString(36).slice(2)}`, chart);
-        if (!cancelled && ref.current) setFailed(!installSanitizedSvg(ref.current, svg));
+        if (!cancelled && ref.current) {
+          const ok = installSanitizedSvg(ref.current, svg);
+          setFailed(!ok);
+          const natural = Number.parseFloat(
+            (ref.current.querySelector("svg")?.getAttribute("viewBox") || "").split(/\s+/)[2] || "",
+          );
+          const room = ref.current.clientWidth - 40;
+          if (ok && !turned && SIDEWAYS.test(source) && natural > room * 1.1) setTurned(true);
+        }
       } catch {
         if (!cancelled) setFailed(true);
       }
@@ -108,7 +154,8 @@ export default function Mermaid({ chart }: { chart: string }) {
       cancelled = true;
       observer.disconnect();
     };
-  }, [chart]);
+  }, [chart, source, turned]);
+
 
   if (failed) {
     return (

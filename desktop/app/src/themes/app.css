@@ -660,12 +660,37 @@ mark.anchor.is-focus {
 
 /* ---------- diagrams ---------- */
 .mermaid-diagram {
-  margin: 4px 0;
-  padding: 16px;
+  margin: 6px 0;
+  padding: 24px 20px;
   overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 1px solid var(--line-soft, var(--line));
+  border-radius: 12px;
   background: var(--sheet);
+}
+
+/* Centred with margins, not flex: a centred flex row clips its left side
+   when the diagram is wider than the card. */
+.mermaid-diagram svg {
+  display: block;
+  margin: 0 auto;
+}
+
+/* Rounded boxes, as Notion draws them. */
+.mermaid-diagram svg .node rect,
+.mermaid-diagram svg rect.basic,
+.mermaid-diagram svg rect.label-container {
+  rx: 8px;
+  ry: 8px;
+}
+
+/* An edge label sits on the card's colour, so the line stops at its text. */
+.mermaid-diagram svg .edgeLabel rect,
+.mermaid-diagram svg .edgeLabel .background,
+.mermaid-diagram svg .labelBkg {
+  fill: var(--sheet) !important;
+  opacity: 1 !important;
+  rx: 4px;
+  ry: 4px;
 }
 
 .mermaid-diagram.is-loading {
