@@ -21,6 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 import codenib._contained_source as contained_source_module
+import codenib._system_links as system_links_module
 import codenib._windows_fs_authority as windows_fs_module
 import codenib.source_fingerprint as source_fingerprint_module
 from codenib.artifacts.runtime import SourceBindingCleanupOwner
@@ -6239,3 +6240,154 @@ def test_expected_root_child_close_revokes_without_inherited_lock(
         os.waitpid(child, 0)
         expected.verify()
         expected.close()
+
+
+class _FakeTree:
+    """A POSIX tree of (mode, uid) entries and link targets, macOS-shaped."""
+
+    def __init__(self, entries: dict[str, tuple[int, int]], links: dict[str, str]):
+        self.entries = entries
+        self.links = links
+
+    def lstat(self, path: str) -> os.stat_result:
+        if path not in self.entries:
+            raise FileNotFoundError(errno.ENOENT, "missing", path)
+        mode, uid = self.entries[path]
+        return os.stat_result((mode, 0, 0, 1, uid, 0, 0, 0, 0, 0))
+
+    def readlink(self, path: str) -> str:
+        return self.links[path]
+
+
+_ROOT_DIR = (stat.S_IFDIR | 0o755, 0)
+_ROOT_LINK = (stat.S_IFLNK | 0o755, 0)
+_USER_DIR = (stat.S_IFDIR | 0o755, 501)
+_USER_LINK = (stat.S_IFLNK | 0o755, 501)
+
+
+def _mac_tree(**extra: tuple[int, int]) -> _FakeTree:
+    entries = {
+        "/": _ROOT_DIR,
+        "/var": _ROOT_LINK,
+        "/tmp": _ROOT_LINK,
+        "/private": _ROOT_DIR,
+        "/private/var": _ROOT_DIR,
+        "/private/var/folders": _ROOT_DIR,
+        "/private/var/folders/9d": _USER_DIR,
+        "/private/var/folders/9d/repo": _USER_DIR,
+        "/private/tmp": (stat.S_IFDIR | 0o1777, 0),
+        "/Users": _ROOT_DIR,
+        "/Users/me": _USER_DIR,
+        "/Users/me/code": _USER_LINK,
+        "/Users/me/src": _USER_DIR,
+        "/Users/me/src/repo": _USER_DIR,
+    }
+    entries.update(extra)
+    return _FakeTree(
+        entries,
+        {
+            "/var": "private/var",
+            "/tmp": "private/tmp",
+            "/Users/me/code": "src",
+            "/private/tmp/sys": "/private/var/folders",
+        },
+    )
+
+
+def _follow(tree: _FakeTree, path: str) -> Path:
+    return system_links_module.follow_system_links(
+        Path(path), lstat=tree.lstat, readlink=tree.readlink
+    )
+
+
+def test_repository_path_follows_the_macos_system_links() -> None:
+    tree = _mac_tree()
+
+    # $TMPDIR on macOS: /var is a root-owned link in the root-owned "/".
+    assert _follow(tree, "/var/folders/9d/repo") == Path("/private/var/folders/9d/repo")
+    # Components that do not exist yet stay as written after the real prefix.
+    assert _follow(tree, "/tmp/new/repo") == Path("/private/tmp/new/repo")
+    # Paths without links are unchanged.
+    assert _follow(tree, "/Users/me/src/repo") == Path("/Users/me/src/repo")
+
+
+def test_repository_path_keeps_links_others_could_replace() -> None:
+    tree = _mac_tree(
+        **{
+            "/private/tmp/sys": _ROOT_LINK,
+            "/private/var/folders/9d/repo/link": _ROOT_LINK,
+        }
+    )
+
+    # A user's own link stays in the path, so pinning still refuses it.
+    assert _follow(tree, "/Users/me/code/repo") == Path("/Users/me/code/repo")
+    # A root-owned link inside a world-writable directory is not trusted.
+    assert _follow(tree, "/tmp/sys/9d") == Path("/private/tmp/sys/9d")
+    # Nor is one inside a directory its user can write.
+    assert _follow(tree, "/var/folders/9d/repo/link/x") == Path(
+        "/private/var/folders/9d/repo/link/x"
+    )
+
+
+def test_repository_path_follows_only_links_directly_under_root() -> None:
+    # Linux's /proc/self is root-owned, but its target depends on the reader;
+    # anchored writer paths such as /proc/self/fd/7 must stay as written.
+    tree = _FakeTree(
+        {
+            "/": _ROOT_DIR,
+            "/proc": (stat.S_IFDIR | 0o555, 0),
+            "/proc/self": _ROOT_LINK,
+        },
+        {"/proc/self": "4242"},
+    )
+
+    assert _follow(tree, "/proc/self/fd/7") == Path("/proc/self/fd/7")
+
+
+def test_repository_path_stops_following_a_system_link_loop() -> None:
+    tree = _FakeTree(
+        {"/": _ROOT_DIR, "/a": _ROOT_LINK, "/b": _ROOT_LINK},
+        {"/a": "b", "/b": "a"},
+    )
+
+    followed = _follow(tree, "/a/repo")
+
+    assert followed.parts[-1] == "repo"
+    assert followed.parts[1] in {"a", "b"}
+
+
+def test_lexical_repository_path_is_unchanged_without_system_links(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (tmp_path / "user-link").symlink_to(repo)
+
+    assert source_fingerprint_module.lexical_repository_path(repo) == Path(
+        os.path.realpath(repo)
+    )
+    # A link the user owns is not followed.
+    assert source_fingerprint_module.lexical_repository_path(
+        tmp_path / "user-link"
+    ) == Path(os.path.abspath(tmp_path / "user-link"))
+
+
+def test_publication_paths_follow_the_same_system_links(monkeypatch) -> None:
+    import codenib._atomic_directory as atomic_directory
+
+    tree = _mac_tree()
+    monkeypatch.setattr(
+        atomic_directory,
+        "follow_system_links",
+        lambda path: system_links_module.follow_system_links(
+            path, lstat=tree.lstat, readlink=tree.readlink
+        ),
+    )
+
+    # `codenib artifact pack --output $TMPDIR/...` publishes under /private.
+    assert atomic_directory.lexical_directory_path(
+        Path("/var/folders/9d/repo/out")
+    ) == Path("/private/var/folders/9d/repo/out")
+    assert atomic_directory.lexical_directory_path(Path("/Users/me/code/out")) == Path(
+        "/Users/me/code/out"
+    )
