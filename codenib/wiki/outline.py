@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List
 
 from ..log_utils import get_logger
 from ..types import is_symbol_node
+from ..utils import is_test_file
 from .builder import Symbol, WikiBuilder
 from .evidence import promotional_phrases
 
@@ -178,13 +179,8 @@ def _read_readme(
     return ""
 
 
-def _readme_entry_files(
-    source_paths: Iterable[str],
-    readme: str,
-    *,
-    limit: int = 12,
-) -> List[str]:
-    """Resolve source paths explicitly named by a repository README."""
+def _readme_path_resolver(source_paths: Iterable[str]):
+    """Return a function mapping a README path to one known source file."""
 
     known = {
         path
@@ -196,27 +192,231 @@ def _readme_entry_files(
     for file in known:
         by_basename[Path(file).name].append(file)
 
-    resolved = []
-    for match in _README_PATH_RE.finditer(readme):
-        candidate = match.group(0).replace("\\", "/").lstrip("./")
-        file = candidate if candidate in known else ""
-        if not file:
-            suffix_matches = [
-                known_file
-                for known_file in known
-                if known_file.endswith("/" + candidate)
-            ]
-            if len(suffix_matches) == 1:
-                file = suffix_matches[0]
-        if not file and "/" not in candidate:
+    def resolve(candidate: str) -> str:
+        candidate = candidate.replace("\\", "/").lstrip("./")
+        if candidate in known:
+            return candidate
+        suffix_matches = [
+            known_file for known_file in known if known_file.endswith("/" + candidate)
+        ]
+        if len(suffix_matches) == 1:
+            return suffix_matches[0]
+        if "/" not in candidate:
             basename_matches = by_basename.get(candidate, [])
             if len(basename_matches) == 1:
-                file = basename_matches[0]
+                return basename_matches[0]
+        return ""
+
+    return resolve
+
+
+def _readme_entry_files(
+    source_paths: Iterable[str],
+    readme: str,
+    *,
+    limit: int = 12,
+) -> List[str]:
+    """Resolve source paths explicitly named by a repository README."""
+
+    resolve = _readme_path_resolver(source_paths)
+    resolved = []
+    for match in _README_PATH_RE.finditer(readme):
+        file = resolve(match.group(0))
         if file and file not in resolved:
             resolved.append(file)
             if len(resolved) >= limit:
                 break
     return resolved
+
+
+# How a README says to run a file: ``python src/run.py``, ``python -m pkg.cli``.
+_README_RUN_RE = re.compile(
+    r"\b(?:python3?|uv\s+run|poetry\s+run|pipenv\s+run|node)\s+"
+    r"(?:-m\s+(?P<module>[A-Za-z_][\w.]*)|(?P<path>(?:\.{0,2}/)?[\w.@+/-]+\.(?:py|m?js)))"
+)
+# Where it links to code: ``[agents.py](src/pkg/agents.py)``, or a GitHub blob URL.
+_README_LINK_RE = re.compile(
+    r"\]\(\s*<?(?P<link>[^)\s>#?]+)" r"|(?P<url>https?://github\.com/[^\s)#?'\">]+)"
+)
+_GITHUB_BLOB_RE = re.compile(r"^https?://github\.com/[^/]+/[^/]+/blob/[^/]+/")
+# Enough to reach the usage section of a long README.
+README_DOOR_CHARS = 60_000
+
+
+def readme_doors(
+    source_paths: Iterable[str], readme: str
+) -> tuple[List[str], List[str]]:
+    """Source files a README tells a reader to run, and those it links to.
+
+    These are the doors the project itself points at. A path that only appears
+    in passing (a license note, a table of headers) is neither, and files under
+    examples, scripts, benchmarks or tests are not doors into the project.
+    """
+
+    resolve = _readme_path_resolver(source_paths)
+
+    def keep(file: str, found: List[str]) -> None:
+        if file and file not in found and not _is_supporting_file(file):
+            if not is_test_file(file):
+                found.append(file)
+
+    run: List[str] = []
+    for match in _README_RUN_RE.finditer(readme):
+        module = match.group("module")
+        candidates = (
+            [
+                module.replace(".", "/") + ".py",
+                module.replace(".", "/") + "/__main__.py",
+            ]
+            if module
+            else [match.group("path")]
+        )
+        for candidate in candidates:
+            keep(resolve(candidate), run)
+    linked: List[str] = []
+    for match in _README_LINK_RE.finditer(readme):
+        target = (match.group("link") or match.group("url") or "").rstrip(".,;:")
+        blob = _GITHUB_BLOB_RE.match(target)
+        if blob:
+            target = target[blob.end() :]
+        elif "://" in target:
+            continue
+        keep(resolve(target), linked)
+    return run, [file for file in linked if file not in run]
+
+
+_README_FENCE_RE = re.compile(
+    r"^(```+|~~~+)[ \t]*(?P<lang>[^\n]*)\n(?P<body>.*?)^\1", re.MULTILINE | re.DOTALL
+)
+# Fences that hold commands, output or configuration rather than code.
+_README_NON_CODE_FENCES = frozenset(
+    {
+        "bash",
+        "bat",
+        "cfg",
+        "cmd",
+        "console",
+        "diff",
+        "dockerfile",
+        "ini",
+        "json",
+        "makefile",
+        "nu",
+        "nushell",
+        "powershell",
+        "ps1",
+        "sh",
+        "shell",
+        "shell-session",
+        "text",
+        "toml",
+        "txt",
+        "yaml",
+        "yml",
+        "zsh",
+    }
+)
+# ``requests.get(``, ``r.GET(``, ``TcpListener::bind(``, ``fmt::print(``.
+_README_CALL_RE = re.compile(
+    r"(?<![\w.:])(?:(?P<owner>[A-Za-z_]\w*)\s*(?:\.|::))?(?P<name>[A-Za-z_]\w*)\s*\("
+)
+_README_DEFINES_RE = re.compile(r"\b(?:def|fn|func|function|class|struct|impl)\s+$")
+# Calls that say nothing about the project: the language's own built-ins.
+_README_CALL_NOISE = frozenset(
+    {
+        "Err",
+        "None",
+        "Ok",
+        "Some",
+        "assert",
+        "await",
+        "dict",
+        "echo",
+        "elif",
+        "float",
+        "for",
+        "func",
+        "if",
+        "import",
+        "int",
+        "isinstance",
+        "len",
+        "let",
+        "list",
+        "main",
+        "print",
+        "println",
+        "range",
+        "require",
+        "return",
+        "set",
+        "str",
+        "super",
+        "switch",
+        "tuple",
+        "type",
+        "while",
+    }
+)
+
+
+def readme_code_words(readme: str) -> set[str]:
+    """Identifiers in a README's code examples (``CodeAgent``, ``get``)."""
+
+    words: set[str] = set()
+    for fence in _README_FENCE_RE.finditer(readme):
+        words.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", fence.group("body")))
+    return words
+
+
+def readme_commands(readme: str, programs: Iterable[str]) -> set[str]:
+    """The subcommands a README runs its programs with.
+
+    ``ruff check .`` and ``uvx ruff format`` give ``check`` and ``format``; a
+    flag (``bat --style``) is not a subcommand.
+    """
+
+    names = {re.escape(name) for name in programs if name}
+    if not names:
+        return set()
+    command = re.compile(
+        r"(?:^|[\s/$>])(?:" + "|".join(sorted(names)) + r")\s+([a-z][a-z0-9_-]+)\b",
+        re.MULTILINE,
+    )
+    found: set[str] = set()
+    for fence in _README_FENCE_RE.finditer(readme):
+        found.update(match.group(1) for match in command.finditer(fence.group("body")))
+    return found
+
+
+def readme_calls(readme: str, *, limit: int = 40) -> List[tuple[str, str]]:
+    """The calls a README's code examples make: ``(owner, name)`` pairs.
+
+    The owner is what the call is made on (a module, type or variable) and is
+    "" for a bare call. A definition (``def run(``) is not a call, and nor is a
+    built-in such as ``print(``, unless the project's own module owns it
+    (``fmt::print(``).
+    """
+
+    found: List[tuple[str, str]] = []
+    for fence in _README_FENCE_RE.finditer(readme):
+        language = re.split(r"[\s,{]", fence.group("lang").strip().lower() or " ")[0]
+        if language in _README_NON_CODE_FENCES:
+            continue
+        body = fence.group("body")
+        for match in _README_CALL_RE.finditer(body):
+            owner, name = match.group("owner") or "", match.group("name")
+            if _README_DEFINES_RE.search(
+                body[max(0, match.start() - 12) : match.start()]
+            ):
+                continue
+            if not owner and name in _README_CALL_NOISE:
+                continue
+            if (owner, name) not in found:
+                found.append((owner, name))
+                if len(found) >= limit:
+                    return found
+    return found
 
 
 def _top_symbols(symbols: List[Symbol], limit: int = 70) -> List[Symbol]:

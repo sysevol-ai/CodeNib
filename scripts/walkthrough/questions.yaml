@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Curated walkthrough questions, by repository id.
+#
+# Each question names:
+#   id          the walk's id on the page
+#   question    the question the walk answers
+#   start       the function the user's own code calls, as the index names it
+#   entry_call  what the user writes, shown before the first step
+#   tab         the walk's tab label
+#   answer      the function whose code answers the question
+#   via         optional: functions the walk must pass on the way, in order
+#
+# The path is the cheapest chain of recorded calls from start through each
+# via function to answer; no model chooses it.
+
+huggingface__smolagents:
+  - id: run
+    question: "What happens when I call agent.run(task)?"
+    start: MultiStepAgent.run()
+    entry_call: agent.run(task)
+    tab: Running a task
+    answer: evaluate_python_code()
+  - id: tool
+    question: "How does a ToolCallingAgent call the tool the model picked?"
+    start: MultiStepAgent.run()
+    entry_call: agent.run(task)
+    tab: Calling a tool
+    answer: ToolCallingAgent.execute_tool_call()
+
+gin-gonic__gin:
+  - id: route
+    question: "How does r.GET register a route?"
+    start: RouterGroup.GET()
+    entry_call: 'r.GET("/ping", h)'
+    tab: Registering a route
+    answer: node.addRoute()
+  - id: serve
+    question: "How does gin find the handler for an incoming request?"
+    start: Engine.ServeHTTP()
+    entry_call: GET /ping
+    tab: Serving a request
+    answer: node.getValue()
+
+pydata__xarray:
+  - id: sel
+    question: "How does x.sel(time=...) pick values by label?"
+    start: DataArray.sel()
+    entry_call: x.sel(time=t)
+    tab: Selecting by label
+    answer: PandasIndex.sel()
+  - id: mean
+    question: "How does x.mean('time') reduce over a dimension?"
+    start: DataArrayAggregations.mean()
+    entry_call: 'x.mean("time")'
+    tab: Reducing a dimension
+    answer: NamedArray.reduce()
+
+scikit-learn__scikit-learn:
+  - id: bestc
+    question: "How does LogisticRegressionCV pick its best C?"
+    start: LogisticRegressionCV.fit()
+    entry_call: clf.fit(X, y)
+    tab: Choosing C
+    via:
+      - _log_reg_scoring_path()
+    answer: _logistic_regression_path()
+  - id: pipe
+    question: "How does Pipeline.fit run each step?"
+    start: Pipeline.fit()
+    entry_call: pipe.fit(X, y)
+    tab: Fitting a pipeline
+    answer: TransformerMixin.fit_transform()

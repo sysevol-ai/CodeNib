@@ -1497,3 +1497,72 @@ jobs:
       - name: Exercise installed CodeGraph product path
         working-directory: ${{ runner.temp }}
         run: python "$GITHUB_WORKSPACE/scripts/smoke_release_graph.py"
+
+  macos-smoke:
+    # PyPI carries Linux wheels only, so a Mac installs the source
+    # distribution. Prove that install runs the Wiki, saves notes and builds
+    # the Dependency Map on Apple silicon before a release reaches PyPI.
+    name: macOS source install, Wiki, notes and graph
+    if: inputs.full || github.event_name == 'pull_request'
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout smoke harness
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+
+      - name: Download distributions
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Install the source distribution
+        run: |
+          SDIST="$(ls dist/*.tar.gz)"
+          SERVICE_VENV="$RUNNER_TEMP/codenib-macos-services-${{ github.run_id }}-${{ github.run_attempt }}"
+          GRAPH_VENV="$RUNNER_TEMP/codenib-macos-graph-${{ github.run_id }}-${{ github.run_attempt }}"
+          python -m venv "$SERVICE_VENV"
+          "$SERVICE_VENV/bin/python" -m pip install --upgrade pip
+          "$SERVICE_VENV/bin/python" -m pip install "${SDIST}[mcp]"
+          python -m venv "$GRAPH_VENV"
+          "$GRAPH_VENV/bin/python" -m pip install --upgrade pip
+          "$GRAPH_VENV/bin/python" -m pip install "${SDIST}[graph,mcp]"
+          echo "SERVICE_VENV=$SERVICE_VENV" >> "$GITHUB_ENV"
+          echo "GRAPH_VENV=$GRAPH_VENV" >> "$GITHUB_ENV"
+
+      - name: Exercise the installed CLI
+        working-directory: ${{ runner.temp }}
+        run: |
+          export PATH="$SERVICE_VENV/bin:$PATH"
+          codenib --version
+          codenib doctor --require core
+          python "$GITHUB_WORKSPACE/scripts/smoke_release_install.py"
+
+      - name: Exercise the Wiki, notes and MCP services
+        working-directory: ${{ runner.temp }}
+        run: |
+          export PATH="$SERVICE_VENV/bin:$PATH"
+          python "$GITHUB_WORKSPACE/scripts/smoke_release_services.py"
+
+      - name: Provision the Python graph providers
+        run: |
+          SCIP_ROOT="$RUNNER_TEMP/codenib-macos-scip-${{ github.run_id }}-${{ github.run_attempt }}"
+          npm install --prefix "$SCIP_ROOT" "@sourcegraph/scip-python@0.6.6" "basedpyright@1.39.8"
+          echo "SCIP_BIN=$SCIP_ROOT/node_modules/.bin" >> "$GITHUB_ENV"
+
+      - name: Exercise the graph and Dependency Map
+        working-directory: ${{ runner.temp }}
+        run: |
+          export PATH="$GRAPH_VENV/bin:$SCIP_BIN:$PATH"
+          python "$GITHUB_WORKSPACE/scripts/smoke_release_graph.py"

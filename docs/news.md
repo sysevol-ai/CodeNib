@@ -11,6 +11,18 @@ the complete version history, see
 [GitHub Releases](https://github.com/sysevol-ai/CodeNib/releases) and the
 [changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md).
 
+## 2026-11-23 — Ask your agent from the Wiki
+
+CodeNib 0.2.7 makes a local Wiki the place where you work with your coding
+agent. Select words on a page to ask about them, request a change or leave a
+note; your own Claude Code does the work, and its answers and diffs come back
+next to the words you selected. A change runs in a separate worktree until
+you apply it. The change guard covers Go, Rust, JavaScript and TypeScript and
+writes pull-request comments, Wiki pages show the issues and pull requests on
+their code, and an MCP server keeps answering from its graph after an edit.
+
+[Read the 0.2.7 release notes](releases/0.2.7.md)
+
 ## 2026-11-14 — Wikis as maps, published from one Action, thread context
 
 CodeNib 0.2.6 opens Wikis as a map of their pages, leads with the main

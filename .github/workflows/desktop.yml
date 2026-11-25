@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Desktop app
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "codenib/**"
+      - "web/**"
+      - "pyproject.toml"
+      - "setup.py"
+      - ".github/workflows/desktop.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    # Builds CodeNib.app for Apple silicon and a disk image to try it from.
+    # The app is signed ad hoc, not with a Developer ID, so macOS asks once
+    # before it first opens.
+    name: Build the macOS app
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            desktop/app/package-lock.json
+            web/package-lock.json
+
+      - name: Test the app's Rust code
+        working-directory: desktop/src-tauri
+        run: cargo test --locked
+
+      - name: Build the Wiki frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Bundle Python and this CodeNib into the app
+        run: desktop/scripts/bundle-python.sh
+
+      - name: Build the app and disk image
+        working-directory: desktop
+        run: |
+          npm ci
+          npm --prefix app ci
+          npm run build
+
+      - name: Check the bundle
+        run: |
+          APP="desktop/src-tauri/target/release/bundle/macos/CodeNib.app"
+          ls "$APP/Contents/MacOS" | grep -q .
+          test -f "$APP/Contents/Resources/icon.icns"
+          /usr/libexec/PlistBuddy \
+            -c "Print :NSAppTransportSecurity:NSAllowsLocalNetworking" \
+            "$APP/Contents/Info.plist" | grep -qx true
+          test -x "$APP/Contents/Resources/python/bin/python3.12"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          du -sh "$APP"
+          ls -la desktop/src-tauri/target/release/bundle/dmg/
+
+      - name: Run the app's own CodeNib on a repository
+        run: desktop/scripts/smoke-bundle.sh desktop/src-tauri/target/release/bundle/macos/CodeNib.app
+
+      - name: Upload the disk image
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: CodeNib-macos-apple-silicon
+          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 30

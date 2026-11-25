@@ -53,6 +53,11 @@ web/*.tsbuildinfo
 !web/package.json
 !web/tsconfig.json
 !web/package-lock.json
+!desktop/package.json
+!desktop/package-lock.json
+!desktop/src-tauri/tauri.conf.json
+!desktop/src-tauri/capabilities/*.json
+!desktop/app/*.json
 # Keep committed experiment-run evidence (relocated out of results/).
 !docs/experiments/agent_compile_runs/**/*.json
 !docs/experiments/jev_retrieval_cases.json

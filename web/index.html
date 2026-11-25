@@ -2,7 +2,7 @@
 <html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!--
       Vite emits relative asset references so the static exporter can remount
       the bundle below a Pages base path. Live API deployments serve routes
@@ -16,6 +16,16 @@
       content="Understand a repo. Follow the code. Explore a real example without an account, then open or generate a source-linked repository Wiki."
     />
     <link rel="icon" href="/codenib-icon.svg" />
+    <!-- Installable app: the manifest names it and its icons; sw.js only
+         answers when the device is offline. theme.js keeps theme-color on the
+         chosen theme. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#121315" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="CodeNib" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>CodeNib Wiki · Source-linked repository docs</title>
     <meta property="og:title" content="CodeNib Wiki · Understand a repo. Follow the code." />
     <meta property="og:description" content="Explore a real question, follow indexed calls to their source, and keep reading the complete Wiki." />

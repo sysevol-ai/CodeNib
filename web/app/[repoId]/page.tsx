@@ -23,6 +23,8 @@ import MainPath from "@/components/MainPath";
 import ReadNext from "@/components/ReadNext";
 import WikiToc from "@/components/WikiToc";
 import WikiGraphPane from "@/components/WikiGraphPane";
+import Walkthrough, { WalkthroughList } from "@/components/Walkthrough";
+import type { WalkthroughSet } from "@/lib/walkthrough";
 import { buildWikiGraph } from "@/lib/wikiGraph";
 import { childPages } from "@/lib/wikiNav";
 import { displaySymbol } from "@/lib/symbols";
@@ -32,7 +34,14 @@ import { ghFileUrl } from "@/lib/github";
 import AskBar from "@/components/AskBar";
 import RelatedVisuals from "@/components/RelatedVisuals";
 import { generatedByHref } from "@/lib/experience";
-import { AppLink, wikiPageFromLocation, wikiPageLocation, wikiRoute } from "@/lib/router";
+import {
+  AppLink,
+  walkFromLocation,
+  walkLocation,
+  wikiPageFromLocation,
+  wikiPageLocation,
+  wikiRoute,
+} from "@/lib/router";
 import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
 import { trialBase } from "@/lib/openrouterTrial";
 import {
@@ -54,6 +63,7 @@ import {
   fetchWikiVisualEvidence,
   fetchWikiPage,
   fetchWikiTree,
+  fetchWalkthroughs,
   isSourceCheckedWikiPage,
   repoRelative,
   shouldWithholdWikiPage,
@@ -70,7 +80,10 @@ import {
   type WikiPageRef,
 } from "@/lib/api";
 
+import { AnnotationLayer, NotesButton, useAnnotations } from "@/components/Annotations";
+import { revertPage } from "@/lib/annotations";
 const CodePanel = lazy(() => import("@/components/CodePanel"));
+const PageEditor = lazy(() => import("@/components/PageEditor"));
 const Codemap = lazy(() => import("@/components/Codemap"));
 const LEADING_VISUAL_WAIT_MS = 5000;
 
@@ -473,13 +486,21 @@ export default function WikiPageView({
 
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);
+  const [repoDocs, setRepoDocs] = useState<{ id: string; title: string; path: string }[]>([]);
   const [activeId, setActiveId] = useState<string>(initialPageId);
+  // A walkthrough replaces the map and the reader; the page list stays.
+  // Undefined while loading; null when the repository has none.
+  const [walkthroughs, setWalkthroughs] = useState<WalkthroughSet | null | undefined>(undefined);
+  const [walkAt, setWalkAt] = useState(() =>
+    typeof window === "undefined" ? null : walkFromLocation(window.location.search),
+  );
   // Picking a page only replaces the address. A navigation the Wiki did not
   // make, such as the CodeNib mark or the browser's Back button, names the
   // page to show in the address it leaves.
   useEffect(() => {
     function follow() {
       setActiveId(wikiPageFromLocation(window.location.pathname, window.location.search));
+      setWalkAt(walkFromLocation(window.location.search));
     }
     window.addEventListener("popstate", follow);
     return () => window.removeEventListener("popstate", follow);
@@ -519,6 +540,28 @@ export default function WikiPageView({
   const [visualEvidence, setVisualEvidence] = useState<WikiVisualEvidence | null>(null);
   const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Annotations exist only on a local Wiki that `codenib wiki` started; the
+  // backend reports them as a capability and every call carries its session.
+  const annotationsOn = !staticRuntime && !!repo?.capabilities?.annotations;
+  const [notesOpen, setNotesOpen] = useState(false);
+  const notes = useAnnotations(repoId, activeId, annotationsOn);
+  // Lines of code that carry an open annotation, marked in the source panel.
+  const notedLines = useMemo(() => {
+    const lines = new Map<string, Set<number>>();
+    for (const note of notes.annotations) {
+      const { path, start_line: from, end_line: to } = note.on;
+      if (!path || !from || note.author !== "human" || note.status === "resolved") continue;
+      const set = lines.get(path) ?? new Set<number>();
+      for (let line = from; line <= (to ?? from) && line < from + 500; line += 1) set.add(line);
+      lines.set(path, set);
+    }
+    return lines;
+  }, [notes.annotations]);
+  // People write the Wiki: edit a page in place; a saved edit reloads it.
+  const [editing, setEditing] = useState(false);
+  const [pageVersion, setPageVersion] = useState(0);
+  const shownPage = useRef({ repoId, activeId });
+  useEffect(() => setEditing(false), [repoId, activeId]);
   // Publish the reading surface once its leading visual has resolved, including
   // an unavailable/error result. Rendering prose first lets a later map or
   // boundary card insert itself above the reader's current paragraph.
@@ -562,9 +605,16 @@ export default function WikiPageView({
       });
     setTocLoading(true);
     setError(null);
+    setWalkthroughs(undefined);
+    fetchWalkthroughs(repoId).then((set) => {
+      if (!cancelled) setWalkthroughs(set);
+    });
     fetchWikiTree(repoId)
       .then((t) => {
-        if (!cancelled) setPages(t.pages);
+        if (!cancelled) {
+          setPages(t.pages);
+          setRepoDocs(t.docs ?? []);
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -579,10 +629,17 @@ export default function WikiPageView({
 
   useEffect(() => {
     let cancelled = false;
-    setPage(null);
+    // A reload of the same page (after an edit) keeps it on screen until the
+    // new text arrives; moving to another page clears it.
+    const reload =
+      shownPage.current.repoId === repoId && shownPage.current.activeId === activeId && pageVersion > 0;
+    shownPage.current = { repoId, activeId };
+    if (!reload) {
+      setPage(null);
+      setSourceCitation(null);
+    }
     setPageError(null);
-    setSourceCitation(null);
-    fetchWikiPage(repoId, activeId)
+    fetchWikiPage(repoId, activeId, { refresh: pageVersion > 0 })
       .then((p) => !cancelled && setPage(p))
       .catch(
         (e) =>
@@ -591,7 +648,7 @@ export default function WikiPageView({
     return () => {
       cancelled = true;
     };
-  }, [repoId, activeId]);
+  }, [repoId, activeId, pageVersion]);
 
   useEffect(() => {
     setPageLoadSeconds(0);
@@ -778,10 +835,18 @@ export default function WikiPageView({
 
   function pick(id: string) {
     setActiveId(id);
+    setWalkAt(null);
     setTocOpen(false);
     const url = wikiPageLocation(window.location.pathname, id, staticRuntime);
     window.history.replaceState(null, "", url);
     window.scrollTo({ top: 0 });
+  }
+
+  function openWalk(id: string, step = 0, scroll = true) {
+    setWalkAt({ id, step });
+    setTocOpen(false);
+    window.history.replaceState(null, "", walkLocation(window.location.pathname, id, step));
+    if (scroll) window.scrollTo({ top: 0 });
   }
 
   // The document carries a `<base href>`, so a bare `#id` link resolves
@@ -828,8 +893,11 @@ export default function WikiPageView({
     return () => document.removeEventListener("keydown", onKey);
   }, [sourceCitation]);
 
+  // An address naming a walkthrough this repository does not have shows the page.
+  const walk = walkAt ? walkthroughs?.walks.find((item) => item.id === walkAt.id) ?? null : null;
+  const walking = !!walkAt && (walkthroughs === undefined || !!walk);
   // Decided before the page list loads, so the reader never jumps on first paint.
-  const workspace = wideEnough && !mapHidden;
+  const workspace = wideEnough && !mapHidden && !walking;
   const wikiGraph = useMemo(
     () => buildWikiGraph(pages, areaMap),
     [pages, areaMap],
@@ -1065,14 +1133,39 @@ export default function WikiPageView({
                 <span>Dependency Map</span>
               </button>
             )}
-            {page && <span className="crumb-sep">/</span>}
-            {page && <span className="crumb-page">{page.title}</span>}
+            {annotationsOn && (
+              <NotesButton model={notes} open={notesOpen} onClick={() => setNotesOpen((o) => !o)} />
+            )}
+            {annotationsOn && notes.local && !notes.needsSession && page && !walking && (
+              <button
+                type="button"
+                className="cn-launch cn-edit-launch"
+                aria-pressed={editing}
+                onClick={() => setEditing((on) => !on)}
+                title="Edit this page's Markdown"
+              >
+                {editing ? "Editing" : "Edit page"}
+              </button>
+            )}
+            {walking ? (
+              <>
+                <span className="crumb-sep">/</span>
+                <span className="crumb-page">{walk ? `Walkthrough: ${walk.tab}` : "Walkthrough"}</span>
+              </>
+            ) : (
+              page && (
+                <>
+                  <span className="crumb-sep">/</span>
+                  <span className="crumb-page">{page.title}</span>
+                </>
+              )
+            )}
           </nav>
         }
       />
 
       <div
-        className={`wiki-grid${activeId === "overview" ? " is-overview" : ""}${workspace ? " is-workspace" : ""}`}
+        className={`wiki-grid${activeId === "overview" && !walking ? " is-overview" : ""}${workspace ? " is-workspace" : ""}${walking ? " is-walk" : ""}${annotationsOn && notesOpen && !walking ? " has-notes" : ""}`}
         style={
           workspace && readerWidth
             ? ({ "--reader-w": `${readerWidth}px` } as CSSProperties)
@@ -1129,9 +1222,13 @@ export default function WikiPageView({
               )}
               <WikiToc
                 pages={pages}
-                activeId={activeId}
+                activeId={walking ? "" : activeId}
                 onPick={pick}
                 colors={workspace ? wikiGraph.colors : undefined}
+                walks={walkthroughs?.walks.map((item) => ({ id: item.id, label: item.tab }))}
+                docs={repoDocs}
+                activeWalk={walking ? walkAt?.id : undefined}
+                onWalk={(id) => openWalk(id)}
               />
             </>
           )}
@@ -1159,7 +1256,51 @@ export default function WikiPageView({
           />
         )}
 
+        {walking ? (
+          <main className="wiki-main wiki-walk-main" aria-busy={!walk}>
+            {walk && walkthroughs ? (
+              <Walkthrough
+                set={walkthroughs}
+                walk={walk}
+                step={walkAt?.step ?? 0}
+                onGo={(id, step) => openWalk(id, step, id !== walk.id)}
+                onPage={pick}
+                colors={wikiGraph.colors}
+              />
+            ) : (
+              <div className="walk-loading muted" role="status">
+                Loading the walkthrough…
+              </div>
+            )}
+          </main>
+        ) : (
         <main className="wiki-main" aria-busy={!page && !pageError}>
+          {annotationsOn && page && !withheldByQualityGuard && (
+            <AnnotationLayer
+              repoId={repoId}
+              pageId={activeId}
+              pageTitle={page.title}
+              contentRef={contentRef}
+              renderKey={`${page.id}:${page.markdown.length}`}
+              model={notes}
+              open={notesOpen}
+              onOpenChange={setNotesOpen}
+              onPageChanged={() => setPageVersion((v) => v + 1)}
+              onCodeAnnotated={() => setSourceCitation(null)}
+              onOpenCode={(ref) =>
+                setSourceCitation({
+                  file: ref.path,
+                  start_line: ref.start_line ?? 1,
+                  end_line: ref.end_line ?? ref.start_line ?? 1,
+                  node_name: "",
+                  type: "reference",
+                  score: null,
+                  content: null,
+                })
+              }
+              onPage={pick}
+            />
+          )}
           {showPoster && areaMap && (
             <RepoPoster
               repoId={repoId}
@@ -1174,7 +1315,19 @@ export default function WikiPageView({
             />
           )}
           <div className="wiki-content" ref={contentRef}>
-              {page && !withheldByQualityGuard && (
+              {editing && page && (
+                <Suspense fallback={<div className="muted">Opening the editor…</div>}>
+                  <PageEditor
+                    repoId={repoId}
+                    pageId={activeId}
+                    onDone={(saved) => {
+                      setEditing(false);
+                      if (saved) setPageVersion((v) => v + 1);
+                    }}
+                  />
+                </Suspense>
+              )}
+              {page && !withheldByQualityGuard && !editing && (
                 <div className="wiki-story">
                   {wikiMarkdown.lead && !showPoster && (
                     <Markdown
@@ -1233,6 +1386,13 @@ export default function WikiPageView({
                       journey={lifted.journey}
                       onPick={pick}
                       renderText={renderStageText}
+                    />
+                  )}
+                  {activeId === "overview" && walkthroughs && (
+                    <WalkthroughList
+                      set={walkthroughs}
+                      colors={wikiGraph.colors}
+                      onOpen={(id) => openWalk(id)}
                     />
                   )}
                   {figureSlots.length > 0 && (
@@ -1310,7 +1470,9 @@ export default function WikiPageView({
                     className="provenance-state"
                     title={page.generation?.model ? `Model: ${page.generation.model}` : undefined}
                   >
-                    {generationMode === "offline"
+                    {generationMode === "document"
+                      ? `From the repository: ${page.generation?.path ?? page.title}`
+                      : generationMode === "offline"
                       ? "Built from the index"
                       : withheldByQualityGuard
                         ? page.grounding?.valid === false
@@ -1322,6 +1484,26 @@ export default function WikiPageView({
                             ? "Built from the index"
                             : "Written by a model, not yet checked against source"}
                   </span>
+                  {page.edited && (
+                    <span className="cn-edited">
+                      <span>
+                        Edited by you
+                        {page.edited.stale ? "; the generated page has changed since" : ""}
+                      </span>
+                      {annotationsOn && notes.local && (
+                        <button
+                          type="button"
+                          className="cn-link"
+                          onClick={async () => {
+                            await revertPage(repoId, activeId);
+                            setPageVersion((v) => v + 1);
+                          }}
+                        >
+                          Show the generated page
+                        </button>
+                      )}
+                    </span>
+                  )}
                   {page.grounding && (
                     // The reader gets counts they can check; the pipeline's
                     // routes, review score, and visual audit stay in the
@@ -1507,7 +1689,9 @@ export default function WikiPageView({
               )}
           </div>
         </main>
+        )}
 
+        {!walking && (
         <aside className="wiki-onthispage" data-rail="right">
           <div className="rail-title">On this page</div>
           {headings.length > 0 ? (
@@ -1528,6 +1712,7 @@ export default function WikiPageView({
             <div className="muted small">—</div>
           )}
         </aside>
+        )}
       </div>
 
       {graphOpen && (
@@ -1622,6 +1807,7 @@ export default function WikiPageView({
                   citations={[sourceCitation]}
                   repo={repo?.repo}
                   commit={repo?.base_commit}
+                  notedLines={notedLines}
                 />
               </Suspense>
             </div>
@@ -1629,7 +1815,8 @@ export default function WikiPageView({
         </div>
       )}
 
-      {repo && canAsk && (
+      {/* A walkthrough's narration sits where the Ask bar floats; the header keeps Ask. */}
+      {repo && canAsk && !walking && (
         <AskBar
           repoId={repoId} repo={repo.repo} collapsible browserTrial={browserTrial}
           compact={showPoster}

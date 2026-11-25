@@ -1,4 +1,5 @@
 ---
+name: impact
 description: List the tests that the current, uncommitted change can reach, with the call path to each, before finishing a change in a Python repository. Use when asked which tests to run, what a change might break, or to check a change before committing.
 ---
 

@@ -1197,3 +1197,69 @@ def test_deterministic_svg_refuses_to_persist_malformed_markup(tmp_path, monkeyp
             output_dir=tmp_path,
         )
     assert not (tmp_path / "broken.svg").exists()
+
+
+def test_materialize_media_slots_reads_all_evidence_in_one_session(tmp_path):
+    # A checked repository re-verifies its whole tree around every read made
+    # outside a session; the evidence for all slots shares one session, and
+    # the generator, which may call a model, runs only after it closes.
+    events = []
+
+    class Session:
+        def __enter__(self):
+            events.append("open")
+
+        def __exit__(self, *_exc):
+            events.append("close")
+            return False
+
+    class Generator:
+        def supports(self, _slot):
+            return True
+
+        def generate(self, slot, **_kwargs):
+            events.append(f"generate {slot['id']}")
+            assert slot["evidence_pack"]["page"]["title"] == "Overview"
+            return {"slot_id": slot["id"], "provider": "capture"}
+
+    def evidence_builder(slot):
+        events.append(f"evidence {slot['id']}")
+        return build_media_evidence_pack(
+            slot,
+            page_id="overview",
+            page_title="Overview",
+            page_markdown="Runtime flow.",
+            citations=[],
+            relations=[],
+        )
+
+    page = {
+        "id": "overview",
+        "title": "Overview",
+        "media_slots": [
+            {"id": "first", "kind": "image", "prompt": "Draw the runtime."},
+            {"id": "second", "kind": "image", "prompt": "Draw the store."},
+        ],
+    }
+
+    materialized = materialize_media_slots(
+        page,
+        generator=Generator(),
+        output_dir=tmp_path,
+        evidence_builder=evidence_builder,
+        evidence_session=Session,
+    )
+
+    assert events == [
+        "open",
+        "evidence first",
+        "evidence second",
+        "close",
+        "generate first",
+        "generate second",
+    ]
+    assert [slot["asset"]["slot_id"] for slot in materialized["media_slots"]] == [
+        "first",
+        "second",
+    ]
+    assert "evidence_pack" not in json.dumps(materialized["media_slots"])

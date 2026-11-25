@@ -54,14 +54,13 @@ SPDX-License-Identifier: Apache-2.0
   index recorded between areas. The page cites a file and line range for each claim.
 </sub></p>
 
-New in **0.2.6**: Wikis open as a map of their pages and lead with the main path
-through the code, one GitHub Action publishes yours to GitHub Pages, plugins
-connect Claude Code, Grok Build and DeepSeek Harness, graph builds get faster,
-and first C/C++ and JavaScript/TypeScript builds leave the checkout alone. Two
-previews serve coding agents: `codenib guard` lists the tests a change can
-reach, and [`codenib threads`](#hand-your-agent-the-whole-thread) hands your
-agent a GitHub issue or pull request in one read.
-[Read the release notes](https://docs.codenib.ai/releases/0.2.6/).
+New in **0.2.7**: a local Wiki is where you work with your coding agent. Select
+words on a page to ask about them, request a change or leave a note; your own
+Claude Code does the work, and its answers and diffs come back next to the
+words you selected. `codenib guard` now covers Go, Rust, JavaScript and
+TypeScript, and Wiki pages show the issues and pull requests on the code they
+explain.
+[Read the release notes](https://docs.codenib.ai/releases/0.2.7/).
 
 ## A Wiki you can follow down to the source
 

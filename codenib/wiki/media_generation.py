@@ -18,10 +18,11 @@ import tempfile
 import threading
 import urllib.request
 import weakref
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from itertools import islice
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, ContextManager, Mapping
 from urllib.parse import urlsplit
 from xml.etree import ElementTree
 
@@ -575,8 +576,16 @@ def materialize_media_slots(
     output_dir: str | Path,
     asset_base_path: str = "assets/wiki-media",
     evidence_builder: MediaEvidenceBuilder | None = None,
+    evidence_session: Callable[[], ContextManager[Any]] | None = None,
 ) -> dict[str, Any]:
-    """Generate assets for supported slots and attach them to a page payload."""
+    """Generate assets for supported slots and attach them to a page payload.
+
+    ``evidence_session`` opens one source read session around every evidence
+    pack. A checked repository verifies its whole tree on each side of a
+    session instead of on each side of every snippet read, so a page with
+    several media slots pays for two tree checks, not two per snippet. The
+    generator runs after the session closes: it may call a model.
+    """
 
     raw_slots = page.get("media_slots") or ()
     if isinstance(raw_slots, (str, bytes, bytearray)):
@@ -595,67 +604,81 @@ def materialize_media_slots(
         and str((slot.get("asset") or {}).get("provider") or "") == "repository"
         for slot in slots_to_materialize
     )
-    slots = []
+    prepared: list[tuple[dict[str, Any], Mapping[str, Any] | None]] = []
     rejected_contracts = []
-    for slot in slots_to_materialize:
-        if not isinstance(slot, Mapping):
-            continue
-        try:
-            updated = _normalized_slot(
-                slot,
-                allowed_evidence=allowed_evidence,
-            )
-        except (TypeError, ValueError) as exc:
-            if "render_contract" not in slot:
-                raise
-            report = render_contract_report(
-                slot.get("render_contract"),
-                allowed_evidence=allowed_evidence,
-            )
-            report.update(
-                {
-                    "slot_id": str(slot.get("id") or ""),
-                    "materialized": False,
-                    "rejected": True,
-                }
-            )
-            if not report["errors"]:
-                report["errors"] = [str(exc)]
-            rejected_contracts.append(report)
-            continue
-        # The evidence pack is generation input only; the public slot never
-        # carries it.
-        generation_slot = dict(updated)
-        updated.pop("evidence_pack", None)
-        if "asset" not in updated:
-            supports = getattr(generator, "supports", None)
-            supported = (
-                bool(supports(updated))
-                if callable(supports)
-                else str(updated.get("kind") or "") in _GENERATABLE_IMAGE_KINDS
-            )
-            if has_repository_lead and str(updated.get("placement") or "") == "lead":
-                supported = False
-            if supported:
-                if (
-                    evidence_builder is not None
-                    and "evidence_pack" not in generation_slot
-                ):
-                    evidence_pack = evidence_builder(dict(updated))
-                    if evidence_pack is not None:
-                        if not isinstance(evidence_pack, Mapping):
-                            raise ValueError(
-                                "wiki media evidence builder must return a mapping or None"
-                            )
-                        generation_slot = _normalized_slot(
-                            {**updated, "evidence_pack": evidence_pack},
-                            allowed_evidence=allowed_evidence,
-                        )
-                updated["asset"] = generator.generate(
-                    generation_slot,
-                    output_dir=output_dir,
-                    asset_base_path=asset_base_path,
+    with (
+        evidence_session()
+        if evidence_session is not None and evidence_builder is not None
+        else nullcontext()
+    ):
+        for slot in slots_to_materialize:
+            if not isinstance(slot, Mapping):
+                continue
+            try:
+                updated = _normalized_slot(
+                    slot,
+                    allowed_evidence=allowed_evidence,
                 )
+            except (TypeError, ValueError) as exc:
+                if "render_contract" not in slot:
+                    raise
+                report = render_contract_report(
+                    slot.get("render_contract"),
+                    allowed_evidence=allowed_evidence,
+                )
+                report.update(
+                    {
+                        "slot_id": str(slot.get("id") or ""),
+                        "materialized": False,
+                        "rejected": True,
+                    }
+                )
+                if not report["errors"]:
+                    report["errors"] = [str(exc)]
+                rejected_contracts.append(report)
+                continue
+            # The evidence pack is generation input only; the public slot never
+            # carries it.
+            generation_slot = dict(updated)
+            updated.pop("evidence_pack", None)
+            if "asset" not in updated:
+                supports = getattr(generator, "supports", None)
+                supported = (
+                    bool(supports(updated))
+                    if callable(supports)
+                    else str(updated.get("kind") or "") in _GENERATABLE_IMAGE_KINDS
+                )
+                if (
+                    has_repository_lead
+                    and str(updated.get("placement") or "") == "lead"
+                ):
+                    supported = False
+                if supported:
+                    if (
+                        evidence_builder is not None
+                        and "evidence_pack" not in generation_slot
+                    ):
+                        evidence_pack = evidence_builder(dict(updated))
+                        if evidence_pack is not None:
+                            if not isinstance(evidence_pack, Mapping):
+                                raise ValueError(
+                                    "wiki media evidence builder must return a mapping or None"
+                                )
+                            generation_slot = _normalized_slot(
+                                {**updated, "evidence_pack": evidence_pack},
+                                allowed_evidence=allowed_evidence,
+                            )
+                    prepared.append((updated, generation_slot))
+                    continue
+            prepared.append((updated, None))
+    slots = []
+    for updated, generation_slot in prepared:
+        if generation_slot is not None:
+            updated["asset"] = generator.generate(
+                generation_slot,
+                output_dir=output_dir,
+                asset_base_path=asset_base_path,
+            )
         slots.append(updated)
     result = {**dict(page), "media_slots": slots}
     visual_quality = page_visual_contract_report(result)

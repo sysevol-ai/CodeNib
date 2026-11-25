@@ -14,3 +14,10 @@
   different orders. Screenshots taken after loading do not cover this behavior.
   From `web/`, run `npm run build` and `node reading_layout_verify.mjs`.
   Keep that regression provider-free with intercepted fixture responses.
+- A walkthrough (`?walk=<id>`) replaces the map and the reader while the page
+  list stays. Until its data answers it holds a loading state rather than
+  painting the Overview, and an unknown or missing walkthrough falls back to
+  the page. Side by side, the narration keeps one height for the whole walk,
+  measured from its tallest step, so no step clips or moves the controls.
+  After changing the view, run `npm run build` and `node walkthrough_verify.mjs`
+  (provider-free fixtures, four widths).

@@ -23,6 +23,9 @@ from codenib.wiki.outline import (
     _required_top_level_pages,
     _validate_outline,
     generate_outline,
+    readme_calls,
+    readme_commands,
+    readme_doors,
 )
 
 
@@ -818,3 +821,73 @@ def test_outline_rejects_generic_concepts_with_unrelated_real_files(tmp_path):
         "indexing",
         "graph",
     ]
+
+
+def test_readme_doors_are_what_it_says_to_run_and_what_it_links_to():
+    paths = [
+        "src/run.py",
+        "src/method/base_method.py",
+        "src/pkg/agents.py",
+        "src/pkg/cli/__main__.py",
+        "examples/demo.py",
+        "tests/test_run.py",
+        "xarray/plot/utils.py",
+    ]
+    readme = (
+        "Run `python src/run.py --config x.yaml` or `python -m pkg.cli`.\n"
+        "Methods implement [the interface](src/method/base_method.py); the loop "
+        "is in [agents.py](https://github.com/o/r/blob/main/src/pkg/agents.py).\n"
+        "Docs: [site](https://example.com/run.py) and "
+        "https://github.com/o/r/blob/main/src/run.py.\n"
+        "Try `python examples/demo.py`. See [tests](tests/test_run.py).\n"
+        "Portions of xarray/plot/utils.py are under another license.\n"
+    )
+
+    run, linked = readme_doors(paths, readme)
+
+    assert run == ["src/run.py", "src/pkg/cli/__main__.py"]
+    # A path named in passing is no door, and neither are examples or tests.
+    assert linked == ["src/method/base_method.py", "src/pkg/agents.py"]
+
+
+def test_readme_calls_are_the_calls_its_code_examples_make():
+    readme = """
+Install it:
+
+```shell
+pip install pkg  # in(the shell)
+```
+
+```python
+>>> import pkg
+>>> r = pkg.get("https://example.com", timeout=3)
+>>> print(r.json())
+>>> def helper(x):
+...     return len(x)
+```
+
+```rust
+let listener = TcpListener::bind("127.0.0.1:8080").await?;
+tokio::spawn(async move {});
+```
+"""
+
+    assert readme_calls(readme) == [
+        ("pkg", "get"),
+        ("r", "json"),
+        ("TcpListener", "bind"),
+        ("tokio", "spawn"),
+    ]
+
+
+def test_readme_commands_are_the_subcommands_it_runs():
+    readme = """
+```shell
+uvx ruff check   # Lint all files
+ruff format path/to/code/
+bat --style=numbers file.txt
+```
+"""
+
+    assert readme_commands(readme, {"ruff", "bat"}) == {"check", "format"}
+    assert readme_commands(readme, set()) == set()

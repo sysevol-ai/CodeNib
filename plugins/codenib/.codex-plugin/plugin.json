@@ -1,6 +1,6 @@
 {
   "name": "codenib",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "Source-linked answers about your repository: ranked search, compiler-indexed calls and references, and a Wiki whose every claim links to the exact lines.",
   "author": {
     "name": "CodeNib Contributors",
@@ -35,6 +35,7 @@
     "longDescription": "Source-linked answers about your repository: ranked search, compiler-indexed calls and references, and a Wiki whose every claim links to the exact lines.",
     "developerName": "CodeNib Contributors",
     "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read"],
     "websiteURL": "https://codenib.ai",
     "defaultPrompt": [
       "Use CodeNib to explain how this repository handles a request, citing files and lines",

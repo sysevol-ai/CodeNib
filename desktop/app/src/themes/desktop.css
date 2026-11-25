@@ -1,0 +1,527 @@
+/* The real window: everything the prototype drew as a picture of a window is
+   now the window itself. Same tokens, same scale (13 / 16 / 22 / 34). */
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--sheet);
+}
+
+.app-window {
+  height: 100vh;
+  display: flex;
+  background: var(--sheet);
+}
+
+.app-window .window-body {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.window-main {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* The native traffic lights sit over the sidebar's top corner. */
+.titlebar-room {
+  height: 22px;
+  flex: none;
+}
+
+.sb-repo-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sb-note {
+  list-style: none;
+  padding: 4px 8px 6px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-ink);
+  overflow-wrap: anywhere;
+}
+
+.sb-note.is-failed {
+  color: var(--danger);
+}
+
+.sb-note-line {
+  display: block;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.sb-link svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* ---------- first run and opening ---------- */
+.welcome,
+.opening,
+.empty-state {
+  max-width: 640px;
+  padding: 88px 32px 48px 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.welcome h1,
+.opening h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 40px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.opening h1 .status-spin {
+  width: 24px;
+  height: 24px;
+}
+
+.welcome .lead,
+.opening .lead {
+  margin: 0;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--ink-2);
+}
+
+.welcome [data-slot="button"] kbd,
+.welcome [data-slot="kbd"] {
+  margin-left: 8px;
+}
+
+.opening-lines {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 12px 16px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--well);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--ink-2);
+}
+
+.opening-lines li {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.opening-lines li:last-child {
+  color: var(--ink);
+}
+
+.empty-state h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 30px;
+}
+
+.empty-state p {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.empty-wait {
+  color: var(--muted-ink);
+}
+
+/* ---------- the page's own Markdown ---------- */
+.article h3,
+.article h4 {
+  margin: 8px 0 0;
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 650;
+}
+
+.article ul,
+.article ol {
+  margin: 0;
+  padding-left: 22px;
+  font-size: 16px;
+  line-height: 28px;
+  color: var(--ink);
+}
+
+.article li + li {
+  margin-top: 2px;
+}
+
+.article blockquote {
+  margin: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+  color: var(--ink-2);
+}
+
+.article strong {
+  font-weight: 600;
+}
+
+.md-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.md-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.md-img-alt {
+  color: var(--muted-ink);
+}
+
+.md-table {
+  overflow-x: auto;
+}
+
+.md-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.md-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line-strong, var(--line));
+  padding: 6px 12px 6px 0;
+}
+
+.md-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 12px 8px 0;
+  vertical-align: top;
+}
+
+.md-code {
+  overflow-x: auto;
+}
+
+.md-code .code-lines {
+  margin: 0;
+}
+
+.note-md p {
+  margin: 0 0 6px;
+}
+
+.note-md p:last-child {
+  margin-bottom: 0;
+}
+
+.note-md pre {
+  white-space: pre-wrap;
+}
+
+.note-working {
+  color: var(--muted-ink);
+}
+
+.note-failed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.notes-empty {
+  margin: 0;
+  padding-top: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--muted-ink);
+}
+
+.sources {
+  margin-top: 48px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.sources h2 {
+  margin: 0 0 8px;
+  font-size: 13px !important;
+  line-height: 20px !important;
+  font-weight: 600;
+  color: var(--muted-ink);
+}
+
+.sources ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sources li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.sources-name {
+  font-family: var(--font-mono);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.src-pop-wait {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--muted-ink);
+}
+
+/* ---------- add a repository ---------- */
+.add-dialog {
+  max-width: 520px;
+}
+
+.add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.add-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.add-folder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 6px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--well);
+}
+
+.add-folder .mono {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.add-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.add-option strong {
+  display: block;
+  font-weight: 600;
+}
+
+.add-sub {
+  display: block;
+  color: var(--muted-ink);
+}
+
+/* Tailwind's reset drops list markers; a Wiki page needs them. */
+.article ul {
+  list-style: disc;
+}
+
+.article ol {
+  list-style: decimal;
+}
+
+.article li::marker {
+  color: var(--muted-ink);
+}
+
+.article h3 code,
+.article h4 code {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Long code lines scroll inside their card instead of being cut off. */
+.code-lines code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+}
+
+.code-row {
+  grid-template-columns: 52px auto;
+}
+
+.md-code .code-row {
+  display: block;
+  padding-left: 16px;
+}
+
+/* ---------- review on its own page ---------- */
+.review-page {
+  max-width: 880px;
+  padding: 44px 48px 96px 72px;
+}
+
+.review-summary {
+  margin-top: 8px;
+}
+
+.review-all {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ---------- map on any repository: boxes in a grid, calls drawn under them */
+.map-grid {
+  position: relative;
+  display: grid;
+  gap: 56px 48px;
+  padding: 16px 0 8px;
+  max-width: 1040px;
+}
+
+.map-grid .map-area {
+  position: relative;
+  z-index: 1;
+  min-height: 72px;
+  min-width: 0;
+}
+
+.map-grid .map-area-title code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pg-section {
+  margin-top: 40px;
+  max-width: 1040px;
+}
+
+/* ---------- routed area map ---------- */
+.area-map {
+  position: relative;
+  margin-top: 8px;
+}
+
+.area-head {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.area-head-title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.area-head-meta {
+  color: var(--muted-ink);
+  white-space: nowrap;
+}
+
+.area-map .map-links {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.map-route {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
+  transition: opacity 140ms ease;
+}
+
+.map-route.is-dim {
+  opacity: 0.12;
+}
+
+.area-map .map-area {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+}
+
+.map-area-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.area-map .map-area-title {
+  min-width: 0;
+  max-width: 100%;
+}
