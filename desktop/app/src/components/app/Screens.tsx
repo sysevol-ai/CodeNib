@@ -1,4 +1,4 @@
-import { LoaderCircle, RotateCw } from "lucide-react";
+import { FolderOpen, Github, LoaderCircle, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import type { RepoView } from "@/lib/backend";
@@ -7,19 +7,28 @@ import { NibMark } from "./NibMark";
 
 /** No repository yet: one thing to do. */
 export function Welcome() {
-  const { chooseFolder, repos } = useStore();
+  const { chooseFolder, openFromGitHub, repos, github } = useStore();
   return (
     <div className="welcome">
       <NibMark size={28} />
       <h1>{repos.length ? "Open a repository" : "Add a repository"}</h1>
       <p className="lead">
-        Read its Wiki, ask about it and change it with your own Claude Code. Notes and tasks stay in the repository,
-        on this Mac.
+        Read its Wiki, ask about it and change it with your own Claude Code or Codex. Notes and tasks stay in the
+        repository, on this Mac.
       </p>
-      <Button onClick={() => void chooseFolder()}>
-        Choose a folder…
-        <Kbd>⌘O</Kbd>
-      </Button>
+      <div className="welcome-actions">
+        <Button onClick={() => openFromGitHub()}>
+          <Github />
+          Open from GitHub…
+          <Kbd>⇧⌘O</Kbd>
+        </Button>
+        <Button variant="outline" onClick={() => void chooseFolder()}>
+          <FolderOpen />
+          Choose a folder…
+          <Kbd>⌘O</Kbd>
+        </Button>
+      </div>
+      {github?.signed_in && <p className="add-sub">Signed in to GitHub as {github.login}.</p>}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { AccountsDialog } from "@/components/app/AccountsDialog";
 import { AddRepoDialog } from "@/components/app/AddRepoDialog";
 import { AppSidebar } from "@/components/app/AppSidebar";
 import { CommandPalette } from "@/components/app/CommandPalette";
@@ -87,7 +88,7 @@ function ReviewScreen({ repo, task }: { repo: string; task: string }) {
 }
 
 function Shell() {
-  const { view, setPalette, palette, chooseFolder } = useStore();
+  const { view, setPalette, palette, chooseFolder, openFromGitHub, setAccountsOpen } = useStore();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -96,14 +97,20 @@ function Shell() {
       if (key === "k") {
         e.preventDefault();
         setPalette({ open: !palette.open });
+      } else if (key === "o" && e.shiftKey) {
+        e.preventDefault();
+        openFromGitHub();
       } else if (key === "o") {
         e.preventDefault();
         void chooseFolder();
+      } else if (key === ",") {
+        e.preventDefault();
+        setAccountsOpen(true);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [palette.open, setPalette, chooseFolder]);
+  }, [palette.open, setPalette, chooseFolder, openFromGitHub, setAccountsOpen]);
 
   return (
     <div className="app-window">
@@ -142,6 +149,7 @@ export default function App() {
         <Shell />
         <CommandPalette />
         <AddRepoDialog />
+        <AccountsDialog />
         <Toaster position="bottom-right" />
       </TooltipProvider>
     </StoreProvider>

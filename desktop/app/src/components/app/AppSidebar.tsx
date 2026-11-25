@@ -1,4 +1,4 @@
-import { ChevronRight, ChevronsUpDown, FileText, FolderGit2, Inbox, MoreHorizontal, Plus, RotateCw, Search } from "lucide-react";
+import { ChevronRight, ChevronsUpDown, FileText, Github, Inbox, MoreHorizontal, Plus, RotateCw, Search, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/sidebar";
 import { backend, message, type RepoView } from "@/lib/backend";
 import { useAreas } from "@/lib/useAreas";
-import { flattenPages, taskNeed, taskTitle, type Task } from "@/lib/model";
+import { agentName, flattenPages, taskNeed, taskTitle, type Task } from "@/lib/model";
 import { useStore } from "@/lib/store";
 import { NibMark } from "./NibMark";
 import { StatusMark } from "./StatusMark";
@@ -178,15 +178,23 @@ function RepoTree({ repo }: { repo: RepoView }) {
 }
 
 export function AppSidebar() {
-  const { repos, data, view, go, chooseFolder, setPalette, setup } = useStore();
+  const { repos, data, view, go, chooseFolder, openFromGitHub, setPalette, setup, agents, github, taskAgent, setAccountsOpen } =
+    useStore();
   const needs = repos.reduce((sum, repo) => {
     const d = data[repo.path];
     const annotations = d?.notes?.annotations ?? [];
     return sum + (d?.notes?.tasks ?? []).filter((t) => taskNeed(t, annotations) === "needs").length;
   }, 0);
-  const agents = repos.flatMap((r) => data[r.path]?.notes?.agents ?? []);
-  const claude = agents.find((a) => a.id === "claude-code");
   const running = repos.filter((r) => r.status === "ready").length;
+  const agent = agents?.find((a) => a.id === taskAgent);
+  const agentLine = !agents
+    ? "Checking your agents…"
+    : agent?.installed && agent.signed_in
+      ? `${agentName(taskAgent)} signed in`
+      : agents.some((a) => a.installed && a.signed_in)
+        ? `${agentName(taskAgent)} not ready`
+        : "No agent signed in";
+  const ready = !!(agent?.installed && agent.signed_in);
 
   return (
     <Sidebar collapsible="none" className="app-sidebar">
@@ -201,7 +209,9 @@ export function AppSidebar() {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuItem onSelect={() => void chooseFolder()}>Add a repository…</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => openFromGitHub()}>Open from GitHub…</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void chooseFolder()}>Add a folder…</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setAccountsOpen(true)}>Accounts…</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled>{setup?.version ?? "CodeNib"}</DropdownMenuItem>
           </DropdownMenuContent>
@@ -240,9 +250,15 @@ export function AppSidebar() {
               <RepoTree key={repo.path} repo={repo} />
             ))}
             <SidebarMenuItem>
+              <SidebarMenuButton onClick={() => openFromGitHub()} className="sb-quiet">
+                <Github />
+                <span>Open from GitHub</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
               <SidebarMenuButton onClick={() => void chooseFolder()} className="sb-quiet">
                 <Plus />
-                <span>Add a repository</span>
+                <span>Add a folder</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -250,23 +266,26 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="sb-foot">
-        <div className="sb-service">
-          <FolderGit2 className="sb-service-icon" />
+        <button
+          type="button"
+          className="sb-service"
+          onClick={() => setAccountsOpen(true)}
+          aria-label="Accounts"
+          title="Accounts (⌘,)"
+        >
+          <UserRound className="sb-service-icon" />
           <div>
             <div className="sb-service-line">
               {repos.length === 0 ? "No repositories yet" : `${running} of ${repos.length} open`}
             </div>
             <div className="sb-service-sub">
-              {claude
-                ? claude.available
-                  ? "Claude Code found on this Mac"
-                  : "Claude Code not found"
-                : setup?.bundled
-                  ? "CodeNib built into this app"
-                  : (setup?.version ?? "")}
+              <span className="sb-dot" data-ok={ready ? "yes" : "no"} />
+              {agentLine}
+              {github?.signed_in ? ` · GitHub ${github.login}` : ""}
             </div>
+            {!setup?.codenib && setup !== null && <div className="sb-service-sub is-failed">CodeNib not found</div>}
           </div>
-        </div>
+        </button>
       </SidebarFooter>
     </Sidebar>
   );
