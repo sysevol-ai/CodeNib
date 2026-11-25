@@ -1,0 +1,8 @@
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/resources/python/*
+!src-tauri/resources/python/.gitkeep
+app/node_modules/
+app/dist/
+app/*.tsbuildinfo
