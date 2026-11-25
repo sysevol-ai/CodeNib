@@ -677,6 +677,7 @@ function StepCode({ repo, node }: { repo: string; node: GraphNode }) {
           start={source.value.start_line}
           from={Math.max(node.line, source.value.start_line)}
           to={Math.min(end, source.value.end_line)}
+          file={node.file}
         />
       ) : (
         <p className="src-pop-wait">{source.error || "Reading the code…"}</p>

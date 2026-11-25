@@ -40,7 +40,7 @@ export interface Page {
   title: string;
   markdown: string;
   citations?: Citation[];
-  generation?: { mode?: string; model?: string | null };
+  generation?: { mode?: string; model?: string | null; renderer?: string | null };
 }
 
 export type AnnotationKind = "question" | "change" | "note" | "answer" | "summary";

@@ -156,7 +156,22 @@ def _page_order(tree: list) -> list[str]:
     return ordered + [page for page in dict.fromkeys(ids) if page != "overview"]
 
 
-def prewarm_pages(api_base: str, repo_id: str, *, workers: int = 2) -> tuple:
+def prewarm_workers() -> int:
+    """How many pages a local agent writes at once (``CODENIB_PREWARM_WORKERS``).
+
+    Each page is several model calls in a row, so one page at a time left a
+    Wiki of 17 pages half written for over ten minutes. Four keeps a coding
+    agent's plan within its usual concurrency; 1 to 8 may be set.
+    """
+
+    try:
+        value = int(os.environ.get("CODENIB_PREWARM_WORKERS", "") or 4)
+    except ValueError:
+        value = 4
+    return max(1, min(value, 8))
+
+
+def prewarm_pages(api_base: str, repo_id: str, *, workers: int | None = None) -> tuple:
     """Ask the API for every page so each is written before it is opened.
 
     Returns ``(written, total)``. A page that fails is left for the reader to
@@ -181,7 +196,7 @@ def prewarm_pages(api_base: str, repo_id: str, *, workers: int = 2) -> tuple:
     if not pages:
         return (0, 0)
     written = 1 if get(f"{base}/{pages[0]}?materialize_media=false", 900) else 0
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with ThreadPoolExecutor(max_workers=workers or prewarm_workers()) as pool:
         results = pool.map(
             lambda page: get(
                 f"{base}/{urllib.parse.quote(page, safe='')}?materialize_media=false",

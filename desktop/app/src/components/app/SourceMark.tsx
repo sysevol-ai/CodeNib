@@ -63,6 +63,7 @@ export function SourceMark({
             from={Math.max(start, source.start_line)}
             to={Math.min(shownEnd, source.end_line)}
             className="src-pop-code"
+            file={file}
           />
         ) : (
           <p className="src-pop-wait">{error || "Reading the code…"}</p>

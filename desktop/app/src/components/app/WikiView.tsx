@@ -382,6 +382,17 @@ function anchorBlock(root: HTMLElement, on: Anchor): HTMLElement | null {
   return blocks[0] ?? null;
 }
 
+/** Keep a diagram only when it came from the validated fact plan, as the
+ *  Wiki's site does: its edges were checked against the page's evidence. A
+ *  mechanical fan-out of every module, or free-form model Mermaid, is noise. */
+export function keepValidatedDiagrams(markdown: string, validated: boolean): string {
+  if (validated) return markdown;
+  return markdown
+    .replace(/\n#{1,6}[^\n]*\n+```mermaid[\s\S]*?```(?:\n+(?![#\n])[^\n]*)?/g, "")
+    .replace(/```mermaid[\s\S]*?```(?:\n+(?![#\n])[^\n]*)?/g, "")
+    .trimEnd();
+}
+
 /** Waiting for a page; says when an agent is writing it, and for how long. */
 function PageWait({ repo, pageId }: { repo: string; pageId: string }) {
   const { data, repos } = useStore();
@@ -455,7 +466,8 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
   const blocks = useMemo(() => {
     // A row of badge images says nothing without its pictures.
     const badges = /^(\s*\[?!\[[^\]]*\]\([^)]*\)\]?(\([^)]*\))?\s*)+$/;
-    const all = splitBlocks(page?.markdown ?? "").filter((b) => !badges.test(b.text));
+    const markdown = keepValidatedDiagrams(page?.markdown ?? "", page?.generation?.renderer === "fact_plan");
+    const all = splitBlocks(markdown).filter((b) => !badges.test(b.text));
     return all[0]?.heading === 1 ? all.slice(1) : all;
   }, [page]);
   const threads = useMemo(

@@ -1,8 +1,11 @@
-import { Children, isValidElement, type ReactNode } from "react";
+import { Children, isValidElement, lazy, Suspense, useMemo, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { backend } from "@/lib/backend";
-import { CodeLine } from "./CodeLines";
+import { highlightLines } from "@/lib/highlight";
+
+// Mermaid is large; it loads the first time a page draws a diagram.
+const Mermaid = lazy(() => import("./Mermaid"));
 
 /** One top-level block of a page: a heading, a paragraph, a list, a table or
  *  a code block. Each one gets its own handle for Ask, Change and Note. */
@@ -67,24 +70,28 @@ function textOf(node: ReactNode): string {
   return "";
 }
 
-/** A fenced code block, set in ink alone like every code card in the app. */
-function CodeBlock({ code }: { code: string }) {
-  const lines = code.replace(/\n$/, "").split("\n");
+/** A fenced code block, coloured for the language its fence names. */
+function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+  const lines = useMemo(() => highlightLines(code.replace(/\n$/, ""), lang), [code, lang]);
   return (
     <div className="code-card md-code">
-      <pre className="code-lines">
+      <pre className="code-lines hljs">
         <code>
           {lines.map((line, i) => (
             <span key={i} className="code-row">
-              <span className="code-t">
-                <CodeLine text={line} />
-              </span>
+              <span className="code-t" dangerouslySetInnerHTML={{ __html: line }} />
             </span>
           ))}
         </code>
       </pre>
     </div>
   );
+}
+
+/** The language a fenced block names: ```python gives "python". */
+function fenceLanguage(node: ReactNode): string {
+  if (!isValidElement<{ className?: string }>(node)) return "";
+  return /language-([\w#+.-]+)/.exec(node.props.className ?? "")?.[1]?.toLowerCase() ?? "";
 }
 
 export function Markdown({
@@ -134,7 +141,16 @@ export function Markdown({
     img: ({ alt }) => (alt ? <span className="md-img-alt">{alt}</span> : null),
     pre: ({ children }) => {
       const code = Children.toArray(children).find(isValidElement);
-      return <CodeBlock code={textOf(code ?? children)} />;
+      const lang = fenceLanguage(code);
+      const text = textOf(code ?? children);
+      if (lang === "mermaid") {
+        return (
+          <Suspense fallback={<div className="mermaid-diagram is-loading">Drawing the diagram…</div>}>
+            <Mermaid chart={text.replace(/\n$/, "")} />
+          </Suspense>
+        );
+      }
+      return <CodeBlock code={text} lang={lang} />;
     },
     table: ({ children }) => (
       <div className="md-table">

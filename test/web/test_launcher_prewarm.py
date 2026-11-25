@@ -66,3 +66,16 @@ def test_prewarm_requests_every_page_and_counts_failures() -> None:
         "/api/repos/demo/wiki/a?materialize_media=false",
         "/api/repos/demo/wiki/b?materialize_media=false",
     ]
+
+
+def test_prewarm_writes_four_pages_at_once_by_default(monkeypatch) -> None:
+    from codenib.web.launcher import prewarm_workers
+
+    monkeypatch.delenv("CODENIB_PREWARM_WORKERS", raising=False)
+    assert prewarm_workers() == 4
+    monkeypatch.setenv("CODENIB_PREWARM_WORKERS", "6")
+    assert prewarm_workers() == 6
+    monkeypatch.setenv("CODENIB_PREWARM_WORKERS", "99")
+    assert prewarm_workers() == 8
+    monkeypatch.setenv("CODENIB_PREWARM_WORKERS", "x")
+    assert prewarm_workers() == 4

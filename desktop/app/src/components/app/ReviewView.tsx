@@ -198,7 +198,7 @@ export function ReviewView({ repo, taskId }: { repo: string; taskId: string }) {
                         {l.sign === " " ? "" : l.sign}
                       </span>
                       <span className="diff-t">
-                        <CodeLine text={l.text} />
+                        <CodeLine text={l.text} lang={hunk.path} />
                       </span>
                     </span>
                   ))}

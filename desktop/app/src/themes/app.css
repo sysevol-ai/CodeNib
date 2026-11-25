@@ -588,13 +588,88 @@ mark.anchor.is-focus {
   user-select: none;
 }
 
-.tok-kw {
-  color: var(--ink);
-  font-weight: 600;
+/* Syntax colour: restrained, from the Paper & Ink palette. Keywords and
+   names carry the weight; strings, numbers and comments step back. */
+.hljs {
+  --hl-kw: #8a2be2;
+  --hl-fn: #1d4fd8;
+  --hl-str: #0f7b4a;
+  --hl-num: #b45309;
+  --hl-com: #7b8592;
+  --hl-type: #a3123b;
+  --hl-attr: #0e6e8a;
 }
 
-.tok-str,
-.tok-com {
+.dark .hljs {
+  --hl-kw: #c79bff;
+  --hl-fn: #8ab4f8;
+  --hl-str: #7fd3a3;
+  --hl-num: #f5b971;
+  --hl-com: #868c95;
+  --hl-type: #ff8fa8;
+  --hl-attr: #7fd0e6;
+}
+
+.hljs .hljs-keyword,
+.hljs .hljs-literal,
+.hljs .hljs-built_in,
+.hljs .hljs-meta .hljs-keyword {
+  color: var(--hl-kw);
+}
+
+.hljs .hljs-title,
+.hljs .hljs-title.function_,
+.hljs .hljs-section {
+  color: var(--hl-fn);
+}
+
+.hljs .hljs-title.class_,
+.hljs .hljs-type {
+  color: var(--hl-type);
+}
+
+.hljs .hljs-string,
+.hljs .hljs-regexp,
+.hljs .hljs-char {
+  color: var(--hl-str);
+}
+
+.hljs .hljs-number,
+.hljs .hljs-symbol {
+  color: var(--hl-num);
+}
+
+.hljs .hljs-comment,
+.hljs .hljs-quote,
+.hljs .hljs-doctag {
+  color: var(--hl-com);
+  font-style: italic;
+}
+
+.hljs .hljs-attr,
+.hljs .hljs-attribute,
+.hljs .hljs-params,
+.hljs .hljs-variable,
+.hljs .hljs-property {
+  color: var(--hl-attr);
+}
+
+.hljs .hljs-meta {
+  color: var(--hl-com);
+}
+
+/* ---------- diagrams ---------- */
+.mermaid-diagram {
+  margin: 4px 0;
+  padding: 16px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sheet);
+}
+
+.mermaid-diagram.is-loading {
+  font-size: 13px;
   color: var(--muted-ink);
 }
 
