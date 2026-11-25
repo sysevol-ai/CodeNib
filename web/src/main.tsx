@@ -12,6 +12,7 @@ import {
   restoreStaticRoute,
 } from "@/lib/runtime";
 import { startExperienceEvents } from "@/lib/experience";
+import { registerServiceWorker } from "@/lib/pwa";
 
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
 const WikiPageView = lazy(() => import("@/app/[repoId]/page"));
@@ -118,6 +119,7 @@ function App() {
 restoreStaticRoute();
 moveLegacyWikiRoute();
 startExperienceEvents();
+registerServiceWorker();
 
 const root = document.getElementById("root");
 if (!root) {

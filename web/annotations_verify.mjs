@@ -37,11 +37,17 @@ function server() {
   return { state, async handle(route, url, request) {
     const path = `/api/repos/${repo.id}`;
     const method = request.method();
-    if (!url.pathname.startsWith(`${path}/annotations`) && !url.pathname.startsWith(`${path}/tasks`)) return false;
+    if (!url.pathname.startsWith(`${path}/annotations`) && !url.pathname.startsWith(`${path}/tasks`)
+        && !url.pathname.startsWith(`${path}/pages/`)) return false;
     const key = request.headers()["x-codenib-session"] ?? null;
     state.keys.push(key);
     if (key !== KEY) {
       await route.fulfill({ status: 403, json: { detail: "Open the Wiki from the link `codenib wiki` printed" } });
+      return true;
+    }
+    if (url.pathname === `${path}/pages/runtime/markdown` && method === "GET") {
+      await route.fulfill({ json: { markdown: "# Agent Runtime\n\nThe runtime starts a loop.\n",
+        base: "b1", kind: "page", path: ".codenib/wiki/runtime.md", edited: false } });
       return true;
     }
     if (url.pathname === `${path}/annotations` && method === "GET") {
@@ -122,7 +128,11 @@ try {
   for (const [engineName, engine] of [["chromium", chromium], ["webkit", webkit]]) {
     browser = await engine.launch();
     for (const width of [1440, 1280, 1024, 390]) {
-      const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
+      // The app's service worker (pwa_verify.mjs) is off here: WebKit sends a
+      // controlled page's requests past Playwright's routes, around the fake API.
+      const context = await browser.newContext({
+        viewport: { width, height: 900 }, reducedMotion: "reduce", serviceWorkers: "block",
+      });
       context.setDefaultTimeout(10000);
       const page = await context.newPage(), errors = [], unexpected = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -192,12 +202,23 @@ try {
       assert.equal(await answer.locator("button.cite-src").count(), 1, `${label}: code reference not linked`);
       assert.match(await page.locator(".cn-usage").innerText(), /4 turns · 9\.4k tokens · \$0\.030 · 6 s/);
 
+      // Edit page opens the page's Markdown, and Esc leaves the page as it was.
+      // The box stays empty and disabled until the Markdown arrives.
+      await page.getByRole("button", { name: "Edit page" }).click();
+      await page.locator(".cn-editor-text:enabled").waitFor();
+      assert.match(await page.locator(".cn-editor-text").inputValue(), /The runtime starts a loop/);
+      assert.match(await page.locator(".cn-editor-bar").innerText(), /\.codenib\/wiki\/runtime\.md/);
+      await page.locator(".cn-editor-text").press("Escape");
+      await page.locator(".wiki-story").waitFor();
+
       // A reload keeps the key; a fresh browser without it is told where to get it.
       await page.reload({ waitUntil: "domcontentloaded" });
       await page.locator('.wiki-main[aria-busy="false"] .wiki-story').waitFor();
-      await page.locator(".cn-launch").click();
+      await page.getByRole("button", { name: /^Notes/ }).click();
       await page.locator(".cn-drawer .cn-item.is-agent").waitFor();
-      const stranger = await (await browser.newContext({ viewport: { width, height: 900 } })).newPage();
+      const stranger = await (await browser.newContext({
+        viewport: { width, height: 900 }, serviceWorkers: "block",
+      })).newPage();
       await stranger.context().route("**/api/**", async (route) => {
         const url = new URL(route.request().url());
         if (await fake.handle(route, url, route.request())) return;
@@ -210,9 +231,44 @@ try {
       });
       await stranger.goto(`${base}/${repo.id}?p=runtime`, { waitUntil: "domcontentloaded" });
       await stranger.locator(".wiki-story").waitFor();
-      await stranger.locator(".cn-launch").click();
+      await stranger.getByRole("button", { name: /^Notes/ }).click();
       assert.match(await stranger.locator(".cn-drawer").innerText(), /printed in your terminal/);
       await stranger.context().close();
+
+      // The hosted Wiki never offers page edits: not while its notes load
+      // slowly, and not when they fail to load.
+      for (const notes of ["slow", "failed"]) {
+        const hosted = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: "block" });
+        await hosted.addInitScript(() => {
+          window.__editOffered = false;
+          new MutationObserver(() => {
+            if (window.document.querySelector(".cn-edit-launch")) window.__editOffered = true;
+          }).observe(window.document, { childList: true, subtree: true });
+        });
+        await hosted.route("**/api/**", async (route) => {
+          const url = new URL(route.request().url());
+          if (url.pathname === `${path}/annotations`) {
+            await delay(800);
+            if (notes === "failed") return route.fulfill({ status: 503, json: { detail: "down" } });
+            return route.fulfill({ json: { annotations: [], tasks: [], kinds: ["question", "change", "note"],
+              agents: [{ id: "claude-code", name: "Claude Code", available: true, hosted: true }], mode: "hosted" } });
+          }
+          if (url.pathname === "/api/repos") return route.fulfill({ json: [repo] });
+          if (url.pathname === `${path}/wiki`) return route.fulfill({ json: tree });
+          if (url.pathname.startsWith(`${path}/wiki/`) && !url.pathname.endsWith("/boundary")) {
+            return route.fulfill({ json: document("runtime") });
+          }
+          return route.fulfill({ status: 404, json: {} });
+        });
+        const visitor = await hosted.newPage();
+        await visitor.goto(`${base}/${repo.id}?p=runtime`, { waitUntil: "domcontentloaded" });
+        await visitor.locator(".wiki-story").waitFor();
+        await visitor.getByRole("button", { name: /^Notes/ }).waitFor();
+        await delay(1500);
+        const offered = await visitor.evaluate(() => window.__editOffered);
+        assert.equal(offered, false, `${label}: page editing offered on the hosted Wiki (${notes} notes)`);
+        await hosted.close();
+      }
 
       assert.ok(fake.state.keys.includes(KEY) && fake.state.keys.includes(null));
       assert.deepEqual(errors, []);

@@ -13,17 +13,23 @@ import Markdown from "@/components/Markdown";
 import {
   AnnotationApiError,
   anchorBlock,
+  anchorFromCodeSelection,
   anchorFromSelection,
   createAnnotation,
   decideTask,
   deleteAnnotation,
   dispatchTask,
+  fetchTaskPatch,
+  keyProvider,
+  providerKey,
+  setProviderKey,
   fetchAnnotations,
   fetchTaskDiff,
-  findAnchor,
+  foldAnswer,
   isLive,
   linkCodeRefs,
   localSession,
+  placeAnchor,
   threadsOf,
   updateAnnotation,
   usageLine,
@@ -32,8 +38,10 @@ import {
   type Annotation,
   type AnnotationAnchor,
   type CodeRef,
+  type DiffHunk,
   type HumanKind,
   type Thread,
+  type WorktreeStatus,
 } from "@/lib/annotations";
 import "./Annotations.css";
 
@@ -68,6 +76,12 @@ const PLACEHOLDER: Record<HumanKind, string> = {
   note: "A fact later tasks must respect, e.g. “this path must stay lock-free”.",
 };
 
+const ANCHOR_NOTE: Record<string, string> = {
+  moved: "Moved with the code.",
+  changed: "The code was edited since; following the closest match.",
+  detached: "This code is no longer in the file.",
+};
+
 const HIGHLIGHT = "codenib-annotation";
 const HIGHLIGHT_ACTIVE = "codenib-annotation-active";
 const DRAFT_KEY = "codenib-composer-draft";
@@ -81,6 +95,11 @@ export interface AnnotationsModel {
   annotations: Annotation[];
   tasks: AgentTask[];
   agents: AgentInfo[];
+  /** The public Wiki: annotations kept per browser, runs on the visitor's key. */
+  hosted: boolean;
+  /** The person's own checkout: pages may be edited. False until the server says so. */
+  local: boolean;
+  worktree: WorktreeStatus | null;
   refresh: () => Promise<void>;
 }
 
@@ -88,6 +107,10 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [worktree, setWorktree] = useState<WorktreeStatus | null>(null);
+  // Unknown until the server answers, so nothing local-only shows on the
+  // hosted Wiki while its state loads (or when it fails to).
+  const [mode, setMode] = useState<"local" | "hosted" | null>(null);
   const [ready, setReady] = useState(false);
   const [needsSession, setNeedsSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +125,8 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
       setAnnotations(state.annotations);
       setTasks(state.tasks);
       setAgents(state.agents);
+      setWorktree(state.worktree ?? null);
+      setMode(state.mode === "hosted" ? "hosted" : "local");
       setNeedsSession(false);
       setError(null);
     } catch (failure) {
@@ -125,13 +150,18 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
   }, [refresh, enabled]);
 
   const live = tasks.some(isLive);
+  // A running task is watched closely; a local Wiki that follows its working
+  // tree is checked now and then, to notice files changing under it.
+  const following = worktree !== null;
   useEffect(() => {
-    if (!live) return;
-    const timer = window.setInterval(() => void refresh(), 1500);
+    if (!live && !following) return;
+    const timer = window.setInterval(() => void refresh(), live || worktree?.state === "updating" ? 1500 : 5000);
     return () => window.clearInterval(timer);
-  }, [live, refresh]);
+  }, [live, following, worktree?.state, refresh]);
 
-  return { ready, needsSession, error, annotations, tasks, agents, refresh };
+  const hosted = mode === "hosted";
+  const local = mode === "local";
+  return { ready, needsSession, error, annotations, tasks, agents, hosted, local, worktree, refresh };
 }
 
 // --- Highlights ---------------------------------------------------------------
@@ -139,6 +169,8 @@ export function useAnnotations(repoId: string, pageId: string, enabled: boolean)
 interface Placed {
   thread: Thread;
   range: Range | null;
+  /** The annotated words were rewritten; this is the closest passage. */
+  moved?: boolean;
 }
 
 function supportsHighlights(): boolean {
@@ -153,16 +185,38 @@ function usePlacedThreads(
   renderKey: string,
 ): Placed[] {
   const [placed, setPlaced] = useState<Placed[]>([]);
+  // The page's text can re-render after it first appears (the Overview swaps
+  // its lead once the map loads); a range into replaced nodes collapses, so
+  // place the threads again whenever the text changes.
+  const [domVersion, setDomVersion] = useState(0);
+  useEffect(() => {
+    const element = root.current;
+    if (!element || typeof MutationObserver === "undefined") return;
+    let frame = 0;
+    const observer = new MutationObserver(() => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        setDomVersion((v) => v + 1);
+      });
+    });
+    observer.observe(element, { childList: true, subtree: true, characterData: true });
+    return () => {
+      observer.disconnect();
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [root, renderKey]);
   useLayoutEffect(() => {
     const element = root.current?.querySelector(".wiki-story") ?? root.current;
     if (!element) {
       setPlaced(threads.map((thread) => ({ thread, range: null })));
       return;
     }
-    const found = threads.map((thread) => ({
-      thread,
-      range: thread.root.on.quote ? findAnchor(element, thread.root.on) : null,
-    }));
+    const found = threads.map((thread) => {
+      const place =
+        thread.root.on.quote && !thread.root.on.path ? placeAnchor(element, thread.root.on) : null;
+      return { thread, range: place?.range ?? null, moved: place?.moved ?? false };
+    });
     found.sort((a, b) => {
       if (a.range && b.range) return a.range.compareBoundaryPoints(Range.START_TO_START, b.range);
       if (a.range) return -1;
@@ -170,7 +224,7 @@ function usePlacedThreads(
       return a.thread.root.created.localeCompare(b.thread.root.created);
     });
     setPlaced(found);
-  }, [root, threads, renderKey]);
+  }, [root, threads, renderKey, domVersion]);
 
   useEffect(() => {
     if (!supportsHighlights()) return;
@@ -247,11 +301,17 @@ function SelectionComposer({
 
   useEffect(() => {
     function pick() {
-      const element = root.current?.querySelector(".wiki-story");
       const selection = window.getSelection();
-      if (!element || !selection || selection.rangeCount === 0) return;
+      if (!selection || selection.rangeCount === 0) return;
       const range = selection.getRangeAt(0);
-      const anchor = anchorFromSelection(element, range, pageId);
+      // Code in the source panel, or the words of the page.
+      const inCode = range.startContainer.parentElement?.closest(".source-modal .hl-code");
+      const element = root.current?.querySelector(".wiki-story");
+      const anchor = inCode
+        ? anchorFromCodeSelection(range, pageId)
+        : element
+          ? anchorFromSelection(element, range, pageId)
+          : null;
       if (!anchor) return;
       const box = range.getBoundingClientRect();
       setPending({
@@ -378,7 +438,17 @@ function SelectionComposer({
               </button>
             ))}
           </div>
-          <blockquote className="cn-quote">{pending.anchor.quote}</blockquote>
+          {pending.anchor.path ? (
+            <div className="cn-code-anchor">
+              <span className="mono">
+                {pending.anchor.path}:{pending.anchor.start_line}
+                {pending.anchor.end_line !== pending.anchor.start_line ? `-${pending.anchor.end_line}` : ""}
+              </span>
+              <pre className="cn-code-quote">{pending.anchor.quote}</pre>
+            </div>
+          ) : (
+            <blockquote className="cn-quote">{pending.anchor.quote}</blockquote>
+          )}
           <textarea
             ref={textarea}
             autoFocus
@@ -439,29 +509,153 @@ function codeLabel(ref: CodeRef): string {
   return ref.start_line ? `${ref.path}:${ref.start_line}` : ref.path;
 }
 
-function DiffView({ patch }: { patch: string }) {
-  const lines = patch.split("\n");
+function lineKind(line: string): "add" | "del" | "ctx" | "meta" {
+  if (line.startsWith("+")) return "add";
+  if (line.startsWith("-")) return "del";
+  if (line.startsWith("\\")) return "meta";
+  return "ctx";
+}
+
+const HUNK_STATE: Record<DiffHunk["state"], string> = {
+  open: "",
+  accepted: "Applied",
+  rejected: "Discarded",
+};
+// On the hosted Wiki a kept hunk goes into the patch the person downloads.
+const HOSTED_HUNK_STATE: Record<DiffHunk["state"], string> = { ...HUNK_STATE, accepted: "Kept" };
+
+/** The diff hunk by hunk: apply or discard each one (a / x on a focused hunk). */
+function HunkReview({
+  hunks,
+  busy,
+  readOnly,
+  hosted = false,
+  onDecide,
+}: {
+  hunks: DiffHunk[];
+  busy: boolean;
+  /** Shown away from the request (a note on another page): states only. */
+  readOnly: boolean;
+  hosted?: boolean;
+  onDecide: (decision: "accept" | "reject", ids: string[]) => void;
+}) {
+  const states = hosted ? HOSTED_HUNK_STATE : HUNK_STATE;
+  const files: { path: string; hunks: DiffHunk[] }[] = [];
+  for (const hunk of hunks) {
+    const last = files[files.length - 1];
+    if (last && last.path === hunk.path) last.hunks.push(hunk);
+    else files.push({ path: hunk.path, hunks: [hunk] });
+  }
   return (
-    <pre className="cn-diff" aria-label="Diff">
-      {lines.map((line, index) => {
-        const kind = line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index ")
-          ? "meta"
-          : line.startsWith("@@")
-            ? "hunk"
-            : line.startsWith("+")
-              ? "add"
-              : line.startsWith("-")
-                ? "del"
-                : "ctx";
-        if (kind === "meta" && !line.startsWith("+++")) return null;
-        return (
-          <span key={index} className={`cn-diff-${kind}`}>
-            {kind === "meta" ? line.replace(/^\+\+\+ b\//, "") : line || " "}
-            {"\n"}
-          </span>
-        );
-      })}
-    </pre>
+    <div className="cn-hunks" aria-label="Diff">
+      {files.map((file) => (
+        <section key={file.path} className="cn-hunk-file">
+          <header className="cn-hunk-path mono">{file.path}</header>
+          {file.hunks.map((hunk) => (
+            <div
+              key={hunk.id}
+              className={`cn-hunk is-${hunk.state}`}
+              tabIndex={hunk.state === "open" && !readOnly ? 0 : -1}
+              aria-label={`Hunk ${hunk.header || file.path}, ${hunk.state === "open" ? "not decided" : states[hunk.state]}`}
+              onKeyDown={(event) => {
+                if (hunk.state !== "open" || busy || readOnly) return;
+                if (event.key === "a") onDecide("accept", [hunk.id]);
+                if (event.key === "x") onDecide("reject", [hunk.id]);
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="cn-hunk-head">
+                <span className="cn-hunk-range mono">
+                  {hunk.header ? hunk.header.replace(/^(@@[^@]*@@).*$/, "$1") : "whole file"}
+                </span>
+                <span className="cn-add">+{hunk.added}</span>
+                <span className="cn-del">−{hunk.deleted}</span>
+                {hunk.state === "open" ? (
+                  readOnly ? null : (
+                  <>
+                    <button type="button" className="cn-link cn-push" disabled={busy} onClick={() => onDecide("accept", [hunk.id])}>
+                      {hosted ? "Keep" : "Apply"}
+                    </button>
+                    <button type="button" className="cn-link" disabled={busy} onClick={() => onDecide("reject", [hunk.id])}>
+                      Discard
+                    </button>
+                  </>
+                  )
+                ) : (
+                  <span className="cn-status cn-push">{states[hunk.state]}</span>
+                )}
+              </div>
+              <pre className="cn-diff">
+                {hunk.lines.map((line, index) => (
+                  <span key={index} className={`cn-diff-${lineKind(line)}`}>
+                    {line || " "}
+                    {"\n"}
+                  </span>
+                ))}
+              </pre>
+            </div>
+          ))}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** Ask for the visitor's key once per tab, before the first run. */
+function KeyPrompt({
+  count,
+  agentName,
+  busy,
+  onKey,
+  onCancel,
+}: {
+  count: number;
+  agentName: string;
+  busy: boolean;
+  onKey: (key: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const provider = keyProvider(value);
+  return (
+    <form
+      className="cn-key"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (provider) onKey(value.trim());
+      }}
+    >
+      <label htmlFor="cn-provider-key">
+        Your OpenRouter or Anthropic API key, to send {count === 1 ? "this" : `these ${count}`} to {agentName}
+      </label>
+      <input
+        id="cn-provider-key"
+        type="password"
+        autoComplete="off"
+        spellCheck={false}
+        autoFocus
+        value={value}
+        placeholder="sk-or-… or sk-ant-…"
+        onChange={(event) => setValue(event.target.value)}
+      />
+      <p className="cn-meta">
+        It goes with each request, pays for that run only and is never saved on our side; this tab keeps it until
+        you close it. Get one at{" "}
+        <a href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener noreferrer">
+          openrouter.ai
+        </a>
+        , with a credit limit.
+      </p>
+      <div className="cn-composer-actions">
+        {value && !provider && <span className="cn-hint">Keys start with sk-or- or sk-ant-</span>}
+        <button type="button" className="cn-button" onClick={onCancel}>
+          Not now
+        </button>
+        <button type="submit" className="cn-button cn-primary" disabled={!provider || busy}>
+          Send
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -530,6 +724,7 @@ function ThreadCard({
   selected,
   agentName,
   repoId,
+  hosted,
   now,
   onSelect,
   onToggle,
@@ -544,6 +739,7 @@ function ThreadCard({
   selected: boolean;
   agentName: string;
   repoId: string;
+  hosted: boolean;
   now: number;
   onSelect: () => void;
   onToggle: (on: boolean) => void;
@@ -555,7 +751,7 @@ function ThreadCard({
   const { thread, range } = placed;
   const items = [thread.root, ...thread.replies];
   const [diffFor, setDiffFor] = useState<string | null>(null);
-  const [patch, setPatch] = useState<string | null>(null);
+  const [hunks, setHunks] = useState<DiffHunk[] | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const last = items[items.length - 1];
@@ -576,15 +772,36 @@ function ThreadCard({
       setBusy(false);
     }
   };
+  const download = async (taskId: string) => {
+    const { name, text } = await fetchTaskPatch(repoId, taskId);
+    const url = URL.createObjectURL(new Blob([text], { type: "text/x-diff" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  const loadHunks = async (taskId: string) =>
+    setHunks((await fetchTaskDiff(repoId, taskId)).hunks);
   const showDiff = async (taskId: string) => {
     if (diffFor === taskId) {
       setDiffFor(null);
       return;
     }
     setDiffFor(taskId);
-    setPatch(null);
-    await run(async () => setPatch((await fetchTaskDiff(repoId, taskId)).patch));
+    setHunks(null);
+    await run(() => loadHunks(taskId));
   };
+  const decideHunks = (taskId: string, decision: "accept" | "reject", ids?: string[]) =>
+    run(async () => {
+      try {
+        await act.decide(taskId, decision, ids);
+      } finally {
+        if (diffFor === taskId) await loadHunks(taskId);
+      }
+    });
 
   return (
     <article
@@ -593,7 +810,32 @@ function ThreadCard({
       onClick={onSelect}
       aria-label={`${KIND_LABEL[thread.root.kind]}: ${thread.root.text.slice(0, 60)}`}
     >
-      {thread.root.on.quote ? (
+      {thread.root.on.path ? (
+        <div className="cn-code-anchor">
+          <button
+            type="button"
+            className="cn-file mono"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenCode({
+                path: thread.root.on.path!,
+                start_line: thread.root.on.start_line,
+                end_line: thread.root.on.end_line,
+              });
+            }}
+            title="Open this code"
+          >
+            {thread.root.on.path}:{thread.root.on.start_line}
+            {thread.root.on.end_line !== thread.root.on.start_line ? `-${thread.root.on.end_line}` : ""}
+          </button>
+          {thread.root.on.quote && <pre className="cn-code-quote">{thread.root.on.quote}</pre>}
+          {thread.root.anchor_state && thread.root.anchor_state !== "current" && (
+            <p className={`cn-detached is-${thread.root.anchor_state}`}>
+              {ANCHOR_NOTE[thread.root.anchor_state]}
+            </p>
+          )}
+        </div>
+      ) : thread.root.on.quote ? (
         <button
           type="button"
           className={`cn-quote cn-quote-link${range ? "" : " is-detached"}`}
@@ -606,7 +848,12 @@ function ThreadCard({
           {thread.root.on.quote}
         </button>
       ) : null}
-      {!range && thread.root.on.quote && <p className="cn-detached">Not found on this page anymore.</p>}
+      {!range && thread.root.on.quote && !thread.root.on.path && (
+        <p className="cn-detached">Not found on this page anymore.</p>
+      )}
+      {range && placed.moved && (
+        <p className="cn-detached">These words were rewritten; shown on the closest passage.</p>
+      )}
       {items.map((item) => {
         const task = item.task ? tasks.get(item.task) : undefined;
         const mine = item.author === "human";
@@ -712,7 +959,21 @@ function ThreadCard({
                   <button type="button" className="cn-button" onClick={(e) => { e.stopPropagation(); void showDiff(task.id); }}>
                     {diffFor === task.id ? "Hide diff" : "View diff"}
                   </button>
-                  {task.status === "needs_review" && item.reply_to && (
+                  {hosted && item.reply_to && (task.status === "needs_review" || item.status === "applied") && (
+                    <button
+                      type="button"
+                      className="cn-button cn-primary"
+                      disabled={busy}
+                      title="The change without the hunks you discarded; apply it with git apply"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void run(() => download(task.id));
+                      }}
+                    >
+                      Download patch
+                    </button>
+                  )}
+                  {task.status === "needs_review" && item.reply_to && !hosted && (
                     <>
                       <button
                         type="button"
@@ -720,10 +981,12 @@ function ThreadCard({
                         disabled={busy}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void run(() => act.decide(task.id, "accept"));
+                          void decideHunks(task.id, "accept");
                         }}
                       >
-                        Apply to working tree
+                        {(task.diff.accepted?.length ?? 0) + (task.diff.rejected?.length ?? 0) > 0
+                          ? "Apply the rest"
+                          : "Apply to working tree"}
                       </button>
                       <button
                         type="button"
@@ -731,17 +994,43 @@ function ThreadCard({
                         disabled={busy}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void run(() => act.decide(task.id, "reject"));
+                          void decideHunks(task.id, "reject");
                         }}
                       >
-                        Discard
+                        {(task.diff.accepted?.length ?? 0) + (task.diff.rejected?.length ?? 0) > 0
+                          ? "Discard the rest"
+                          : "Discard"}
                       </button>
                     </>
                   )}
-                  {item.status === "applied" && <span className="cn-status is-applied">Applied</span>}
+                  {hosted && task.status === "needs_review" && item.reply_to && (
+                    <button
+                      type="button"
+                      className="cn-button"
+                      disabled={busy}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void decideHunks(task.id, "reject");
+                      }}
+                    >
+                      Discard
+                    </button>
+                  )}
+                  {item.status === "applied" && <span className="cn-status is-applied">{hosted ? "Kept" : "Applied"}</span>}
                   {item.status === "rejected" && <span className="cn-status is-rejected">Discarded</span>}
                 </div>
-                {diffFor === task.id && (patch === null ? <p className="cn-meta">Loading the diff…</p> : <DiffView patch={patch} />)}
+                {diffFor === task.id &&
+                  (hunks === null ? (
+                    <p className="cn-meta">Loading the diff…</p>
+                  ) : (
+                    <HunkReview
+                      hunks={hunks}
+                      busy={busy}
+                      hosted={hosted}
+                      readOnly={task.status !== "needs_review" || !item.reply_to}
+                      onDecide={(decision, ids) => void decideHunks(task.id, decision, ids)}
+                    />
+                  ))}
                 {task.diff.pages && task.diff.pages.length > 1 && (
                   <p className="cn-meta">
                     Also on{" "}
@@ -761,6 +1050,26 @@ function ThreadCard({
             )}
             {!mine && task && task.usage && usageLine(task.usage) && item.id === task.results[0] && (
               <p className="cn-meta cn-usage">{usageLine(task.usage)}</p>
+            )}
+            {!mine && item.kind === "answer" && !hosted && (
+              <div className="cn-row">
+                {item.status === "applied" ? (
+                  <span className="cn-status is-applied">Added to the page</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="cn-button"
+                    disabled={busy}
+                    title="Add this answer to the page, under its question"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void run(() => act.fold(item));
+                    }}
+                  >
+                    Add to page
+                  </button>
+                )}
+              </div>
             )}
             {mine && item.status === "failed" && task?.error && <p className="cn-error">{task.error}</p>}
           </section>
@@ -795,11 +1104,12 @@ function ThreadCard({
 }
 
 interface Actions {
+  fold: (answer: Annotation) => Promise<void>;
   remove: (id: string) => Promise<void>;
   reply: (root: Annotation, last: Annotation, text: string, send: boolean) => Promise<void>;
   resolve: (root: Annotation) => Promise<void>;
   reopen: (root: Annotation) => Promise<void>;
-  decide: (taskId: string, decision: "accept" | "reject") => Promise<void>;
+  decide: (taskId: string, decision: "accept" | "reject", hunks?: string[]) => Promise<void>;
 }
 
 // --- The layer the reader mounts ----------------------------------------------
@@ -815,6 +1125,8 @@ export function AnnotationLayer({
   onOpenChange,
   onOpenCode,
   onPage,
+  onPageChanged,
+  onCodeAnnotated,
 }: {
   repoId: string;
   pageId: string;
@@ -827,6 +1139,10 @@ export function AnnotationLayer({
   onOpenChange: (open: boolean) => void;
   onOpenCode: (ref: CodeRef) => void;
   onPage: (pageId: string) => void;
+  /** The page's text changed (an answer was added); reload it. */
+  onPageChanged: () => void;
+  /** Code in the source panel was annotated: close the panel to show Notes. */
+  onCodeAnnotated?: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
@@ -835,8 +1151,11 @@ export function AnnotationLayer({
   const [showResolved, setShowResolved] = useState(false);
   const [pageNote, setPageNote] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const { annotations, tasks, agents, refresh } = model;
+  const { annotations, tasks, agents, refresh, hosted } = model;
   const agent = agents[0];
+  // Drafts waiting for the visitor's key before they can be sent.
+  const [awaitingKey, setAwaitingKey] = useState<string[] | null>(null);
+  const [hasKey, setHasKey] = useState(() => !!providerKey());
   const agentName = agent?.name ?? "Claude Code";
   const threads = useMemo(() => threadsOf(annotations), [annotations]);
   const placed = usePlacedThreads(contentRef, threads, activeId, `${renderKey}:${pageId}`);
@@ -848,6 +1167,14 @@ export function AnnotationLayer({
     setExcluded(new Set());
     setFailure(null);
   }, [pageId]);
+
+  // When the Wiki caught up with changed files, show the page as it is now.
+  const updatedAt = model.worktree?.updated_at ?? "";
+  const seenUpdate = useRef(updatedAt);
+  useEffect(() => {
+    if (updatedAt && updatedAt !== seenUpdate.current) onPageChanged();
+    seenUpdate.current = updatedAt;
+  }, [updatedAt, onPageChanged]);
 
   useEffect(() => {
     if (!live) return;
@@ -883,15 +1210,28 @@ export function AnnotationLayer({
     .filter((item): item is Annotation => !!item);
   const chosen = sendable.filter((item) => !excluded.has(item.id));
 
-  const send = async (ids: string[]) => {
+  const send = async (ids: string[], key: string = providerKey()) => {
     if (!ids.length) return;
+    if (hosted && !key) {
+      setAwaitingKey(ids);
+      onOpenChange(true);
+      return;
+    }
     setSending(true);
     setFailure(null);
     try {
-      await dispatchTask(repoId, ids);
+      await dispatchTask(repoId, ids, hosted ? key : undefined);
       setExcluded(new Set());
+      setAwaitingKey(null);
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setFailure(message);
+      // A refused key is forgotten and asked for again.
+      if (hosted && error instanceof AnnotationApiError && (error.status === 400 || error.status === 402) && /key/i.test(message)) {
+        setProviderKey("");
+        setHasKey(false);
+        setAwaitingKey(ids);
+      }
     } finally {
       setSending(false);
       await refresh();
@@ -899,6 +1239,11 @@ export function AnnotationLayer({
   };
 
   const act: Actions = {
+    fold: async (answer) => {
+      await foldAnswer(repoId, pageId, answer.id);
+      await refresh();
+      onPageChanged();
+    },
     remove: async (id) => {
       await deleteAnnotation(repoId, id);
       await refresh();
@@ -921,9 +1266,9 @@ export function AnnotationLayer({
       await updateAnnotation(repoId, root.id, { status: root.kind === "note" ? "open" : "draft" });
       await refresh();
     },
-    decide: async (taskId, decision) => {
+    decide: async (taskId, decision, hunks) => {
       try {
-        await decideTask(repoId, taskId, decision);
+        await decideTask(repoId, taskId, decision, hunks);
       } finally {
         await refresh();
       }
@@ -932,6 +1277,7 @@ export function AnnotationLayer({
 
   const onSave = async (kind: HumanKind, text: string, anchor: AnnotationAnchor, sendNow: boolean) => {
     const created = await createAnnotation(repoId, { kind, text, on: anchor });
+    if (anchor.path) onCodeAnnotated?.();
     setActiveId(created.id);
     onOpenChange(true);
     await refresh();
@@ -948,8 +1294,9 @@ export function AnnotationLayer({
 
   const openThreads = placed.filter((p) => p.thread.root.status !== "resolved");
   const resolved = placed.filter((p) => p.thread.root.status === "resolved");
-  const pageLevel = openThreads.filter((p) => !p.thread.root.on.quote);
-  const quoted = openThreads.filter((p) => p.thread.root.on.quote);
+  const pageLevel = openThreads.filter((p) => !p.thread.root.on.quote && !p.thread.root.on.path);
+  const onCode = openThreads.filter((p) => p.thread.root.on.path);
+  const quoted = openThreads.filter((p) => p.thread.root.on.quote && !p.thread.root.on.path);
   const renderThread = (p: Placed) => (
     <ThreadCard
       key={p.thread.root.id}
@@ -959,6 +1306,7 @@ export function AnnotationLayer({
       selected={!excluded.has([p.thread.root, ...p.thread.replies].slice(-1)[0].id)}
       agentName={agentName}
       repoId={repoId}
+      hosted={hosted}
       now={now}
       onSelect={() => setActiveId(p.thread.root.id)}
       onToggle={(on) => {
@@ -1004,7 +1352,34 @@ export function AnnotationLayer({
             <>
               <div className="cn-agent">
                 <span className={`cn-dot${agent?.available ? " is-on" : ""}`} aria-hidden />
-                {agent?.available ? (
+                {hosted ? (
+                  <span>
+                    {agent?.available ? (
+                      <>
+                        <strong>{agentName}</strong> answers here, on your own OpenRouter or Anthropic key
+                        {agent?.budget_usd ? `, up to $${agent.budget_usd.toFixed(2)} a request` : ""}. Changes come
+                        back as a patch.
+                      </>
+                    ) : (
+                      <>{agentName} is not available on this server right now. Notes still save.</>
+                    )}
+                    {hasKey && (
+                      <>
+                        {" "}
+                        <button
+                          type="button"
+                          className="cn-link"
+                          onClick={() => {
+                            setProviderKey("");
+                            setHasKey(false);
+                          }}
+                        >
+                          Forget key
+                        </button>
+                      </>
+                    )}
+                  </span>
+                ) : agent?.available ? (
                   <span>
                     Tasks run on your <strong>{agentName}</strong>, in a worktree for changes
                   </span>
@@ -1014,6 +1389,20 @@ export function AnnotationLayer({
                   </span>
                 )}
               </div>
+              {model.worktree?.state === "updating" && (
+                <div className="cn-live" role="status">
+                  <span className="cn-spinner" aria-hidden />
+                  <span>
+                    Updating the Wiki for {model.worktree.changed.length || "your"} changed{" "}
+                    {model.worktree.changed.length === 1 ? "file" : "files"}
+                  </span>
+                </div>
+              )}
+              {model.worktree?.state === "failed" && (
+                <p className="cn-error cn-pad" role="alert">
+                  The Wiki could not catch up with your changed files: {model.worktree.error}
+                </p>
+              )}
               {live && (
                 <div className="cn-live" role="status">
                   <span className="cn-spinner" aria-hidden />
@@ -1042,6 +1431,19 @@ export function AnnotationLayer({
                   {failure || model.error}
                 </p>
               )}
+              {hosted && awaitingKey && (
+                <KeyPrompt
+                  count={awaitingKey.length}
+                  agentName={agentName}
+                  busy={sending}
+                  onCancel={() => setAwaitingKey(null)}
+                  onKey={(key) => {
+                    setProviderKey(key);
+                    setHasKey(true);
+                    void send(awaitingKey, key);
+                  }}
+                />
+              )}
               <div className="cn-threads">
                 {pageLevel.length > 0 && (
                   <>
@@ -1050,6 +1452,12 @@ export function AnnotationLayer({
                   </>
                 )}
                 {quoted.map(renderThread)}
+                {onCode.length > 0 && (
+                  <>
+                    <h3 className="cn-group">On the code</h3>
+                    {onCode.map(renderThread)}
+                  </>
+                )}
                 {model.ready && openThreads.length === 0 && (
                   <div className="cn-empty">
                     <p>

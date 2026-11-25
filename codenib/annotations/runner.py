@@ -12,6 +12,11 @@
    leaves a short note on every other Wiki page that cites a file it edited.
 5. ``accept`` applies a change's diff to the person's working tree; ``reject``
    drops it.
+
+The hosted Wiki serves one shared, read-only checkout. There each visitor's
+annotations and tasks live in a ``state`` folder of their own, a change runs in
+a private clone (``shared=True``), and accepting hunks only records them: the
+person takes the change away as a patch.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .agents import Agent, AgentRun, add_usage
+from .hunks import all_hunks, parse_patch, patch_for
 from .model import Annotation, AnnotationError, AnnotationStore, utc_now
 from .prompt import RESULT_SCHEMA, SYSTEM_PROMPT, PageLookup, build_prompt
 from .tasks import Task, TaskStore
@@ -58,11 +64,15 @@ def branch_name(task_id: str) -> str:
 
 
 def dispatch(
-    repo: Path, annotation_ids: Sequence[str], *, agent: str = "claude-code"
+    repo: Path,
+    annotation_ids: Sequence[str],
+    *,
+    agent: str = "claude-code",
+    state: Optional[Path] = None,
 ) -> Task:
     """Make one task of these annotations and mark them dispatched."""
 
-    store, tasks = AnnotationStore(repo), TaskStore(repo)
+    store, tasks = AnnotationStore(repo, state), TaskStore(repo, state)
     ids = list(dict.fromkeys(annotation_ids))
     if not ids:
         raise AnnotationError("select at least one annotation to dispatch")
@@ -215,11 +225,50 @@ def changed_ranges(patch: str) -> Dict[str, List[Tuple[int, int]]]:
     return ranges
 
 
-def _remove_worktree(repo: Path, worktree: Path) -> None:
+def _remove_worktree(repo: Path, worktree: Path, shared: bool = False) -> None:
+    if shared:
+        # A private clone: the shared checkout knows nothing about it.
+        shutil.rmtree(worktree, ignore_errors=True)
+        return
     if worktree.exists():
         _git(repo, "worktree", "remove", "--force", str(worktree), check=False)
         shutil.rmtree(worktree, ignore_errors=True)
     _git(repo, "worktree", "prune", check=False)
+
+
+def _make_workspace(
+    repo: Path, worktree: Path, base: str, task_id: str, shared: bool
+) -> None:
+    _remove_worktree(repo, worktree, shared)
+    worktree.parent.mkdir(parents=True, exist_ok=True)
+    if shared:
+        # Borrow the checkout's objects, write nothing into it.
+        _git(
+            worktree.parent,
+            "clone",
+            "-q",
+            "--shared",
+            "--no-checkout",
+            str(repo),
+            str(worktree),
+        )
+        _git(worktree, "checkout", "-q", "--detach", base)
+        return
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        branch_name(task_id),
+        str(worktree),
+        base,
+    )
+
+
+def _drop_branch(repo: Path, task_id: str, shared: bool) -> None:
+    if not shared:
+        _git(repo, "branch", "-D", branch_name(task_id), check=False)
 
 
 def run_task(
@@ -230,10 +279,12 @@ def run_task(
     page_lookup: PageLookup,
     pages_citing: Optional[PagesCiting] = None,
     repo_name: str = "",
+    state: Optional[Path] = None,
+    shared: bool = False,
 ) -> Task:
     """Run one task to the end; never raises for a failure of the agent."""
 
-    store, tasks = AnnotationStore(repo), TaskStore(repo)
+    store, tasks = AnnotationStore(repo, state), TaskStore(repo, state)
     task = tasks.update(
         task_id, status="running", started=utc_now(), progress="Starting"
     )
@@ -246,18 +297,7 @@ def run_task(
         cwd = repo
         if edit:
             base = _git(repo, "rev-parse", "HEAD").strip()
-            _remove_worktree(repo, worktree)
-            run_dir.mkdir(parents=True, exist_ok=True)
-            _git(
-                repo,
-                "worktree",
-                "add",
-                "-q",
-                "-b",
-                branch_name(task.id),
-                str(worktree),
-                base,
-            )
+            _make_workspace(repo, worktree, base, task.id, shared)
             cwd = worktree
         results: Dict[str, Dict[str, Any]] = {}
         usage: Dict[str, Any] = {}
@@ -319,7 +359,8 @@ def run_task(
                 patch = found.pop("patch")
                 ranges = found.pop("ranges")
                 (run_dir / "diff.patch").write_text(patch, encoding="utf-8")
-                diff = {"branch": branch_name(task.id), "base": base, **found}
+                branch = "" if shared else branch_name(task.id)
+                diff = {"branch": branch, "base": base, **found}
                 if pages_citing:
                     try:
                         diff["pages"] = pages_citing(ranges)
@@ -386,9 +427,11 @@ def run_task(
                 if not pending
                 else (f"no result for {len(pending)} of {len(inputs)} annotations")
             )
-        if edit and not diff:
-            _remove_worktree(repo, worktree)
-            _git(repo, "branch", "-D", branch_name(task.id), check=False)
+        if edit and (shared or not diff):
+            # A private clone is not needed once its diff is saved.
+            _remove_worktree(repo, worktree, shared)
+            if not diff:
+                _drop_branch(repo, task.id, shared)
         return tasks.update(
             task.id,
             status=status,
@@ -406,8 +449,8 @@ def run_task(
             except AnnotationError:
                 pass
         if edit:
-            _remove_worktree(repo, worktree)
-            _git(repo, "branch", "-D", branch_name(task.id), check=False)
+            _remove_worktree(repo, worktree, shared)
+            _drop_branch(repo, task.id, shared)
         return tasks.update(
             task.id,
             status="failed",
@@ -417,8 +460,8 @@ def run_task(
         )
 
 
-def task_patch(repo: Path, task_id: str) -> str:
-    path = TaskStore(repo).run_dir(task_id) / "diff.patch"
+def task_patch(repo: Path, task_id: str, state: Optional[Path] = None) -> str:
+    path = TaskStore(repo, state).run_dir(task_id) / "diff.patch"
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -426,8 +469,14 @@ def task_patch(repo: Path, task_id: str) -> str:
     return text[:_MAX_PATCH_BYTES]
 
 
-def _close_change(repo: Path, task: Task, status: str) -> None:
-    store = AnnotationStore(repo)
+def _close_change(
+    repo: Path,
+    task: Task,
+    status: str,
+    state: Optional[Path] = None,
+    shared: bool = False,
+) -> None:
+    store = AnnotationStore(repo, state)
     for annotation_id in task.inputs + task.results:
         try:
             annotation = store.get(annotation_id)
@@ -435,49 +484,128 @@ def _close_change(repo: Path, task: Task, status: str) -> None:
             continue
         if annotation.kind in ("change", "summary"):
             store.update(annotation_id, status=status)
-    tasks = TaskStore(repo)
-    _remove_worktree(repo, tasks.run_dir(task.id) / "worktree")
+    tasks = TaskStore(repo, state)
+    _remove_worktree(repo, tasks.run_dir(task.id) / "worktree", shared)
 
 
-def accept(repo: Path, task_id: str) -> Task:
-    """Apply a change's diff to the person's working tree."""
+def review(repo: Path, task_id: str, state: Optional[Path] = None) -> Dict[str, Any]:
+    """A change's diff, hunk by hunk, with what was decided about each."""
 
-    tasks = TaskStore(repo)
-    with tasks.lock:
-        task = tasks.get(task_id)
-        if task.status != "needs_review":
-            raise AnnotationError(
-                f"task {task_id} is {task.status}, not waiting for review"
-            )
-        patch = tasks.run_dir(task.id) / "diff.patch"
-        if not patch.is_file():
-            raise AnnotationError("the diff of this task is gone")
-        completed = subprocess.run(
-            ["git", "-C", str(repo), "apply", "--check", str(patch)],
-            capture_output=True,
-            text=True,
-            check=False,
+    task = TaskStore(repo, state).get(task_id)
+    patch = task_patch(repo, task_id, state)
+    accepted = set(task.diff.get("accepted") or [])
+    rejected = set(task.diff.get("rejected") or [])
+    hunks = []
+    for hunk in all_hunks(parse_patch(patch)):
+        state = (
+            "accepted"
+            if hunk.id in accepted
+            else "rejected" if hunk.id in rejected else "open"
         )
-        if completed.returncode != 0:
-            raise AnnotationError(
-                "The change no longer applies to your working tree: "
-                + (completed.stderr.strip().splitlines() or ["conflict"])[0]
-            )
-        _git(repo, "apply", str(patch))
-        _close_change(repo, task, "applied")
-        return tasks.update(task.id, status="done", finished=utc_now())
+        hunks.append({**hunk.to_json(), "state": state, "lines": hunk.lines[:2000]})
+    return {"patch": patch, "hunks": hunks}
 
 
-def reject(repo: Path, task_id: str) -> Task:
-    """Drop a change: its worktree and its branch go, the record stays."""
-
-    tasks = TaskStore(repo)
+def _decide(
+    repo: Path,
+    task_id: str,
+    hunks: Optional[Sequence[str]],
+    decision: str,
+    state: Optional[Path] = None,
+    shared: bool = False,
+) -> Task:
+    tasks = TaskStore(repo, state)
     with tasks.lock:
         task = tasks.get(task_id)
         if task.status != "needs_review":
             raise AnnotationError(
                 f"task {task_id} is {task.status}, not waiting for review"
             )
-        _close_change(repo, task, "rejected")
-        _git(repo, "branch", "-D", branch_name(task.id), check=False)
-        return tasks.update(task.id, status="rejected", finished=utc_now())
+        path = tasks.run_dir(task.id) / "diff.patch"
+        if not path.is_file():
+            raise AnnotationError("the diff of this task is gone")
+        files = parse_patch(path.read_text(encoding="utf-8"))
+        every = [hunk.id for hunk in all_hunks(files)]
+        accepted = list(task.diff.get("accepted") or [])
+        rejected = list(task.diff.get("rejected") or [])
+        undecided = [i for i in every if i not in accepted and i not in rejected]
+        chosen = list(dict.fromkeys(hunks)) if hunks else undecided
+        for hunk_id in chosen:
+            if hunk_id not in every:
+                raise AnnotationError(f"this change has no hunk {hunk_id}")
+            if hunk_id not in undecided:
+                raise AnnotationError(f"hunk {hunk_id} was already decided")
+        if decision == "accept" and chosen and shared:
+            # Nothing to apply to: the kept hunks become the patch to take.
+            accepted += chosen
+        elif decision == "accept" and chosen:
+            partial = tasks.run_dir(task.id) / f"accept-{len(accepted)}.patch"
+            partial.write_text(patch_for(files, chosen), encoding="utf-8")
+            completed = subprocess.run(
+                ["git", "-C", str(repo), "apply", "--check", "--recount", str(partial)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise AnnotationError(
+                    "The change no longer applies to your working tree: "
+                    + (completed.stderr.strip().splitlines() or ["conflict"])[0]
+                )
+            _git(repo, "apply", "--recount", str(partial))
+            accepted += chosen
+        else:
+            rejected += chosen
+        diff = {**task.diff, "accepted": accepted, "rejected": rejected}
+        if any(i not in accepted and i not in rejected for i in every):
+            return tasks.update(task.id, diff=diff)
+        # Every hunk is decided: the change is applied if any part of it was.
+        _close_change(repo, task, "applied" if accepted else "rejected", state, shared)
+        if not accepted:
+            _drop_branch(repo, task.id, shared)
+        return tasks.update(
+            task.id,
+            diff=diff,
+            status="done" if accepted else "rejected",
+            finished=utc_now(),
+        )
+
+
+def accept(
+    repo: Path,
+    task_id: str,
+    hunks: Optional[Sequence[str]] = None,
+    state: Optional[Path] = None,
+    shared: bool = False,
+) -> Task:
+    """Apply hunks of a change to the working tree; all undecided ones by default.
+
+    With ``shared`` the hunks are only recorded as kept (see ``kept_patch``).
+    """
+
+    return _decide(repo, task_id, hunks, "accept", state, shared)
+
+
+def reject(
+    repo: Path,
+    task_id: str,
+    hunks: Optional[Sequence[str]] = None,
+    state: Optional[Path] = None,
+    shared: bool = False,
+) -> Task:
+    """Discard hunks of a change; all undecided ones by default.
+
+    When nothing of the change was applied, its branch goes too; the record
+    stays.
+    """
+
+    return _decide(repo, task_id, hunks, "reject", state, shared)
+
+
+def kept_patch(repo: Path, task_id: str, state: Optional[Path] = None) -> str:
+    """The change without the hunks a person discarded."""
+
+    task = TaskStore(repo, state).get(task_id)
+    rejected = set(task.diff.get("rejected") or [])
+    files = parse_patch(task_patch(repo, task_id, state))
+    return patch_for(files, [h.id for h in all_hunks(files) if h.id not in rejected])

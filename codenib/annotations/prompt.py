@@ -215,7 +215,9 @@ def build_prompt(
         page = pages_seen.get(page_id) if page_id else None
         lines = [f"## Annotation {annotation.id} ({annotation.kind})"]
         title = str((page or {}).get("title") or page_id or "")
-        section = find_section(page, annotation) if page else None
+        on_code = bool(annotation.on.get("path"))
+        # An annotation on code is about that code, not a section of the page.
+        section = find_section(page, annotation) if page and not on_code else None
         where = f"Page {title!r}" if title else "The Wiki"
         heading = (section or {}).get("heading") or annotation.on.get("section")
         if heading:
@@ -229,7 +231,18 @@ def build_prompt(
                 + (f":{span}-{end}" if span and end else "")
             )
         quote = annotation.on.get("quote")
-        if quote:
+        if on_code and annotation.anchor_state == "changed":
+            lines.append(
+                "The code there has been edited since they selected it; the "
+                "lines above are where the closest match is now."
+            )
+        elif on_code and annotation.anchor_state == "detached":
+            lines.append("That code is no longer in the file.")
+        if quote and on_code:
+            lines.append(
+                "They selected this code:\n```\n" + _clip(quote, 1500) + "\n```"
+            )
+        elif quote:
             lines.append("They selected:\n" + _quote(_clip(quote, 600)))
         block = annotation.on.get("block")
         if block and _squash(block) != _squash(quote or ""):

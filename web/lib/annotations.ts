@@ -50,6 +50,8 @@ export interface Annotation {
   files: CodeRef[];
   created: string;
   updated: string;
+  /** Where the code it sits on stands now (code annotations only). */
+  anchor_state?: "current" | "moved" | "changed" | "detached" | null;
 }
 
 export interface TaskUsage {
@@ -75,6 +77,8 @@ export interface AgentTask {
   diff: {
     branch?: string;
     base?: string;
+    accepted?: string[];
+    rejected?: string[];
     files?: { path: string; added: number; deleted: number }[];
     pages?: { id: string; title?: string; files?: string[] }[];
   };
@@ -86,13 +90,28 @@ export interface AgentInfo {
   id: string;
   name: string;
   available: boolean;
-  install: string;
+  install?: string;
+  /** The hosted Wiki: Claude Code runs on the server, on the visitor's key. */
+  hosted?: boolean;
+  /** The most one hosted run spends of that key. */
+  budget_usd?: number;
+}
+
+export interface WorktreeStatus {
+  /** The local Wiki following its working tree: up to date, updating, or failed. */
+  state: "current" | "updating" | "failed";
+  error: string;
+  updated_at: string;
+  changed: string[];
 }
 
 export interface AnnotationState {
   annotations: Annotation[];
   tasks: AgentTask[];
   agents: AgentInfo[];
+  /** "hosted": the public Wiki, one folder per visitor on the server. */
+  mode?: "local" | "hosted";
+  worktree?: WorktreeStatus | null;
 }
 
 const SESSION_KEY = "codenib-local-session";
@@ -123,6 +142,62 @@ export function localSession(): string | null {
   return session || null;
 }
 
+const VISITOR_KEY = "codenib-visitor";
+let visitor: string | null = null;
+
+/**
+ * This browser's key on the hosted Wiki: its annotations are kept under it.
+ * Random, made on first use, kept for this origin. Anyone holding it sees
+ * this browser's annotations, so it never leaves the browser except to us.
+ */
+export function visitorKey(): string {
+  if (visitor) return visitor;
+  try {
+    visitor = window.localStorage.getItem(VISITOR_KEY);
+  } catch {
+    visitor = null;
+  }
+  if (!visitor || !/^[A-Za-z0-9_-]{32,128}$/.test(visitor)) {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    visitor = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    try {
+      window.localStorage.setItem(VISITOR_KEY, visitor);
+    } catch {
+      // A private window keeps annotations for this tab only.
+    }
+  }
+  return visitor;
+}
+
+const PROVIDER_KEY = "codenib-provider-key";
+
+/** The visitor's OpenRouter or Anthropic key, kept by this tab until it closes. */
+export function providerKey(): string {
+  try {
+    return window.sessionStorage.getItem(PROVIDER_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setProviderKey(key: string): void {
+  try {
+    if (key) window.sessionStorage.setItem(PROVIDER_KEY, key);
+    else window.sessionStorage.removeItem(PROVIDER_KEY);
+  } catch {
+    // Without storage the key is asked for again next time.
+  }
+}
+
+/** Which provider a pasted key belongs to, or null when it is neither. */
+export function keyProvider(key: string): "OpenRouter" | "Anthropic" | null {
+  const value = key.trim();
+  if (!/^[\x21-\x7e]{20,512}$/.test(value)) return null;
+  if (value.startsWith("sk-or-")) return "OpenRouter";
+  if (value.startsWith("sk-ant-")) return "Anthropic";
+  return null;
+}
+
 export class AnnotationApiError extends Error {
   constructor(
     message: string,
@@ -132,10 +207,11 @@ export class AnnotationApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const key = localSession();
   const headers = new Headers(init.headers);
   if (key) headers.set("X-CodeNib-Session", key);
+  else headers.set("X-CodeNib-Visitor", visitorKey());
   if (init.body) headers.set("Content-Type", "application/json");
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!response.ok) {
@@ -149,7 +225,11 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new AnnotationApiError(detail, response.status);
   }
-  return (await response.json()) as T;
+  return response;
+}
+
+async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return (await (await send(path, init)).json()) as T;
 }
 
 const repoPath = (repoId: string) => `/api/repos/${encodeURIComponent(repoId)}`;
@@ -184,23 +264,51 @@ export function deleteAnnotation(repoId: string, id: string): Promise<{ deleted:
   return call(`${repoPath(repoId)}/annotations/${id}`, { method: "DELETE" });
 }
 
-export function dispatchTask(repoId: string, annotations: string[]): Promise<AgentTask> {
+/** Send drafts to the agent; on the hosted Wiki, with the visitor's key. */
+export function dispatchTask(repoId: string, annotations: string[], key?: string): Promise<AgentTask> {
   return call(`${repoPath(repoId)}/tasks`, {
     method: "POST",
     body: JSON.stringify({ annotations, agent: "claude-code" }),
+    headers: key ? { Authorization: `Bearer ${key}` } : undefined,
   });
 }
 
-export function fetchTaskDiff(repoId: string, taskId: string): Promise<{ patch: string }> {
+/** A change without its discarded hunks, as a file for `git apply`. */
+export async function fetchTaskPatch(repoId: string, taskId: string): Promise<{ name: string; text: string }> {
+  const response = await send(`${repoPath(repoId)}/tasks/${taskId}/patch`);
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `codenib-${taskId.toLowerCase()}.patch`;
+  return { name, text: await response.text() };
+}
+
+export interface DiffHunk {
+  id: string;
+  path: string;
+  header: string;
+  added: number;
+  deleted: number;
+  state: "open" | "accepted" | "rejected";
+  lines: string[];
+}
+
+export function fetchTaskDiff(
+  repoId: string,
+  taskId: string,
+): Promise<{ patch: string; hunks: DiffHunk[] }> {
   return call(`${repoPath(repoId)}/tasks/${taskId}/diff`);
 }
 
+/** Accept or discard the hunks named, or every undecided hunk. */
 export function decideTask(
   repoId: string,
   taskId: string,
   decision: "accept" | "reject",
+  hunks?: string[],
 ): Promise<AgentTask> {
-  return call(`${repoPath(repoId)}/tasks/${taskId}/${decision}`, { method: "POST" });
+  return call(`${repoPath(repoId)}/tasks/${taskId}/${decision}`, {
+    method: "POST",
+    body: JSON.stringify({ hunks: hunks ?? [] }),
+  });
 }
 
 // --- Anchoring -------------------------------------------------------------
@@ -338,6 +446,98 @@ export function findAnchor(root: Element, anchor: AnnotationAnchor): Range | nul
   return range;
 }
 
+/**
+ * Describe a selection inside a source fragment: its file, the lines it
+ * covers (read from the fragment's gutter) and the selected code.
+ */
+export function anchorFromCodeSelection(range: Range, page: string): AnnotationAnchor | null {
+  if (range.collapsed) return null;
+  const start = range.startContainer.parentElement?.closest(".hl-code");
+  const end = range.endContainer.parentElement?.closest(".hl-code");
+  if (!start || start !== end) return null;
+  const code = start.querySelector("pre.hl-pre code");
+  const path = start.closest<HTMLElement>("[data-path]")?.dataset.path;
+  if (!code || !path || !code.contains(range.startContainer)) return null;
+  const quote = range.toString().replace(/\s+$/, "");
+  if (!quote.trim()) return null;
+  const rowOf = (node: Node, offset: number) => {
+    const before = document.createRange();
+    before.selectNodeContents(code);
+    before.setEnd(node, offset);
+    return before.toString().split("\n").length - 1;
+  };
+  const numbers = Array.from(start.querySelectorAll(".hl-gutter > div")).map((row) => {
+    const value = Number.parseInt(row.textContent ?? "", 10);
+    return Number.isFinite(value) ? value : null;
+  });
+  let first = rowOf(range.startContainer, range.startOffset);
+  let last = rowOf(range.endContainer, range.endOffset);
+  // A selection that ends at the start of a line does not cover that line.
+  if (last > first && range.toString().endsWith("\n")) last -= 1;
+  while (first < numbers.length && numbers[first] == null) first += 1;
+  while (last >= 0 && numbers[last] == null) last -= 1;
+  const startLine = numbers[first];
+  const endLine = numbers[last];
+  if (startLine == null || endLine == null || endLine < startLine) return null;
+  return {
+    page,
+    path,
+    start_line: startLine,
+    end_line: endLine,
+    quote: quote.slice(0, 2000),
+  };
+}
+
+// Words too common to say two passages are about the same thing.
+const STOPWORDS = new Set(
+  "a an and are as at be by for from has in into is it its of on or that the then this to was were which with".split(" "),
+);
+
+const words = (text: string) =>
+  new Set(
+    (text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? []).filter(
+      (word) => word.length > 1 && !STOPWORDS.has(word),
+    ),
+  );
+
+/** How alike two passages are: the Dice overlap of their words (0 to 1). */
+export function passageSimilarity(a: string, b: string): number {
+  const left = words(a);
+  const right = words(b);
+  if (!left.size || !right.size) return 0;
+  let shared = 0;
+  for (const word of left) if (right.has(word)) shared += 1;
+  return (2 * shared) / (left.size + right.size);
+}
+
+/**
+ * Find an anchor's words; when the page was rewritten and they are gone,
+ * fall back to the passage most like the one the person annotated.
+ */
+export function placeAnchor(
+  root: Element,
+  anchor: AnnotationAnchor,
+): { range: Range; moved: boolean } | null {
+  const exact = findAnchor(root, anchor);
+  if (exact) return { range: exact, moved: false };
+  const before = squash(anchor.block || anchor.quote || "");
+  if (!before) return null;
+  let best: Element | null = null;
+  let score = 0;
+  for (const block of Array.from(root.querySelectorAll(BLOCK_SELECTOR))) {
+    if (block.querySelector(BLOCK_SELECTOR)) continue; // the innermost passages only
+    const similarity = passageSimilarity(before, block.textContent ?? "");
+    if (similarity > score) {
+      best = block;
+      score = similarity;
+    }
+  }
+  if (!best || score < 0.5) return null;
+  const range = document.createRange();
+  range.selectNodeContents(best);
+  return { range, moved: true };
+}
+
 /** The block element a found range sits in, to scroll to or align beside. */
 export function anchorBlock(root: Element, range: Range): Element {
   return blockOf(range.startContainer, root);
@@ -416,4 +616,46 @@ export function usageLine(usage: TaskUsage): string {
   if (usage.cost_usd) parts.push(`$${usage.cost_usd.toFixed(usage.cost_usd < 0.1 ? 3 : 2)}`);
   if (usage.duration_ms) parts.push(`${Math.round(usage.duration_ms / 1000)} s`);
   return parts.join(" · ");
+}
+
+// --- People write the Wiki ------------------------------------------------
+
+export interface PageSource {
+  markdown: string;
+  /** The version the editor opened; saving refuses a page changed since. */
+  base: string;
+  /** "document": the repository file itself; "page": a Wiki page edit. */
+  kind: "document" | "page";
+  path: string;
+  edited: boolean;
+}
+
+const pagePath = (repoId: string, pageId: string) =>
+  `${repoPath(repoId)}/pages/${encodeURIComponent(pageId)}`;
+
+export function fetchPageSource(repoId: string, pageId: string): Promise<PageSource> {
+  return call(`${pagePath(repoId, pageId)}/markdown`);
+}
+
+export function savePageSource(
+  repoId: string,
+  pageId: string,
+  markdown: string,
+  base: string,
+): Promise<PageSource> {
+  return call(`${pagePath(repoId, pageId)}/markdown`, {
+    method: "PUT",
+    body: JSON.stringify({ markdown, base }),
+  });
+}
+
+export function revertPage(repoId: string, pageId: string): Promise<{ reverted: boolean }> {
+  return call(`${pagePath(repoId, pageId)}/markdown`, { method: "DELETE" });
+}
+
+export function foldAnswer(repoId: string, pageId: string, annotation: string): Promise<PageSource> {
+  return call(`${pagePath(repoId, pageId)}/fold`, {
+    method: "POST",
+    body: JSON.stringify({ annotation }),
+  });
 }

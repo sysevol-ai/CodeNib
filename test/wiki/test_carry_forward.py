@@ -239,3 +239,29 @@ def test_changed_files_keeps_non_ascii_names_unquoted(repo):
     third = _git(root, "rev-parse", "HEAD")
 
     assert changed_files(root, second, third) == {"src/café.py"}
+
+
+def test_uncommitted_changes_name_the_pages_to_write_again(repo, tmp_path):
+    """Same commit, edited working tree: the caller names the changed files."""
+
+    root, _first, second = repo
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    old = _wiki(store, root, second)
+    pages = {
+        "overview": _page("overview", "src/b.py"),
+        "core": _page("core", "src/a.py"),
+        "auth": _page("auth", "src/c.py"),
+    }
+    _publish(old, pages)
+    snapshot = tmp_path / "carry-forward.json"
+    save_snapshot(old, snapshot, "")
+
+    new = _wiki(store, root, second)
+    new._bundle.manifest.source_fingerprint = "fp-edited-worktree"
+    assert new.cached_outline() is None
+    result = carry_forward(new, snapshot, root, "", changed={"src/b.py"})
+
+    assert result.outline_reused
+    assert sorted(result.reused) == ["auth", "core"]
+    assert result.rewritten == ["overview"]
+    assert new.cached_page("overview") is None

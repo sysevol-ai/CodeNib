@@ -14,7 +14,8 @@
 .cn-picker,
 .cn-composer {
   position: fixed;
-  z-index: 950;
+  /* Above the source panel (1100), so code can be annotated in place. */
+  z-index: 1200;
   font-size: var(--fs-small);
   color: var(--text-primary);
   background: var(--bg-surface);
@@ -92,7 +93,8 @@
 }
 
 .cn-composer textarea,
-.cn-reply textarea {
+.cn-reply textarea,
+.cn-key input {
   width: 100%;
   resize: vertical;
   min-height: 64px;
@@ -105,7 +107,8 @@
   line-height: 1.5;
 }
 .cn-composer textarea:focus,
-.cn-reply textarea:focus {
+.cn-reply textarea:focus,
+.cn-key input:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: var(--focus-ring);
@@ -249,6 +252,9 @@
   width: min(420px, 100vw);
   display: flex;
   flex-direction: column;
+  /* Clear of the notch on a phone on its side, and of the home indicator. */
+  padding-right: var(--safe-right);
+  padding-bottom: var(--safe-bottom);
   background: var(--bg-surface);
   border-left: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-pop);
@@ -546,8 +552,10 @@
 @media (max-width: 820px) {
   .cn-drawer {
     top: auto;
-    height: min(70vh, 560px);
+    /* The bottom sheet keeps its reading height above the home indicator. */
+    height: calc(min(70vh, 560px) + var(--safe-bottom));
     width: 100vw;
+    padding-left: var(--safe-left);
     border-left: 0;
     border-top: 1px solid var(--border-subtle);
   }
@@ -593,4 +601,162 @@
   .wiki-grid.is-workspace.has-notes > .wiki-graph {
     display: none;
   }
+}
+
+/* --- Editing a page -------------------------------------------------------- */
+
+.cn-editor {
+  display: grid;
+  gap: 10px;
+}
+.cn-editor-bar {
+  position: sticky;
+  top: calc(var(--top-h) + 8px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.cn-editor-bar .cn-meta {
+  margin: 0;
+  margin-right: auto;
+}
+.cn-editor-bar code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+}
+.cn-editor-text {
+  width: 100%;
+  min-height: 70vh;
+  resize: vertical;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  line-height: 1.6;
+  tab-size: 2;
+}
+.cn-editor-text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.cn-edit-launch {
+  background: transparent;
+}
+.cn-edited {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* --- Reviewing a change hunk by hunk ---------------------------------------- */
+
+.cn-hunks {
+  display: grid;
+  gap: 12px;
+}
+.cn-hunk-file {
+  display: grid;
+  gap: 6px;
+}
+.cn-hunk-path {
+  font-size: var(--fs-micro);
+  font-weight: var(--fw-strong);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.cn-hunk {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.cn-hunk:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.cn-hunk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--bg-subtle);
+  font-size: var(--fs-micro);
+}
+.cn-hunk-range {
+  color: var(--text-muted);
+}
+.cn-hunk .cn-diff {
+  border: 0;
+  border-radius: 0;
+  max-height: 260px;
+}
+.cn-hunk.is-accepted .cn-diff,
+.cn-hunk.is-rejected .cn-diff {
+  opacity: 0.55;
+}
+.cn-hunk.is-rejected .cn-diff-add,
+.cn-hunk.is-rejected .cn-diff-del {
+  text-decoration: line-through;
+}
+
+/* --- Annotations on code ---------------------------------------------------- */
+
+.cn-code-anchor {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.cn-code-quote {
+  margin: 0;
+  width: 100%;
+  max-height: 7.5em;
+  overflow: hidden;
+  padding: 6px 10px;
+  border-left: 2px solid var(--accent);
+  background: var(--code-bg);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* A line of code with an open annotation: a mark in the source gutter. */
+.hl-gutter-noted {
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--accent);
+}
+
+/* The hosted Wiki asks for the visitor's key before the first run. */
+.cn-key {
+  display: grid;
+  gap: 8px;
+  margin: 12px 20px;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.cn-key label {
+  font-size: var(--fs-small);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.cn-key input {
+  min-height: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.cn-key .cn-meta a {
+  color: inherit;
+  text-decoration: underline;
 }

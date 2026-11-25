@@ -84,6 +84,7 @@ _KNOWN_KEYS = {
     "created",
     "updated",
     "source",
+    "anchor_state",
 }
 _ON_TEXT_KEYS = {
     "page": 200,
@@ -93,6 +94,9 @@ _ON_TEXT_KEYS = {
     "suffix": 200,
     "block": 4000,
     "path": 1000,
+    "commit": 64,  # the commit a code annotation was made at, to follow renames
+    "before": 600,  # the lines above annotated code, to tell repeated code apart
+    "after": 600,  # the lines below it
 }
 MAX_TEXT = 20_000
 
@@ -183,6 +187,8 @@ class Annotation:
     anchors: List[Dict[str, Any]] = field(default_factory=list)
     created: str = ""
     updated: str = ""
+    #: Where code it sits on stands now: current, moved, changed or detached.
+    anchor_state: str = ""
     extra: Dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -225,6 +231,7 @@ class Annotation:
             "files": list(self.files),
             "created": self.created,
             "updated": self.updated or self.created,
+            "anchor_state": self.anchor_state or None,
         }
 
     def dump(self) -> str:
@@ -242,6 +249,8 @@ class Annotation:
             meta["task"] = self.task
         if self.files:
             meta["files"] = self.files
+        if self.anchor_state:
+            meta["anchor_state"] = self.anchor_state
         meta["anchors"] = self.anchors
         meta["created"] = self.created
         if self.updated and self.updated != self.created:
@@ -277,6 +286,7 @@ class Annotation:
             anchors=anchors,
             created=str(created),
             updated=str(updated),
+            anchor_state=str(meta.get("anchor_state") or ""),
             extra={k: v for k, v in meta.items() if k not in _KNOWN_KEYS},
         )
         try:
@@ -323,12 +333,20 @@ def repo_lock(repo: Path) -> threading.RLock:
 
 
 class AnnotationStore:
-    """Annotations of one repository, read from and written to its notes dir."""
+    """Annotations of one repository, read from and written to its notes dir.
 
-    def __init__(self, repo: Path | str):
+    ``state`` keeps them outside the repository instead (``<state>/notes``):
+    the hosted Wiki serves one shared checkout and keeps each visitor's
+    annotations in a folder of their own.
+    """
+
+    def __init__(self, repo: Path | str, state: Path | str | None = None):
         self.repo = Path(repo)
-        self.directory = self.repo / NOTES_DIR
-        self.lock = repo_lock(self.repo)
+        self.state = Path(state) if state is not None else None
+        self.directory = (
+            self.state / "notes" if self.state is not None else self.repo / NOTES_DIR
+        )
+        self.lock = repo_lock(self.state if self.state is not None else self.repo)
 
     def _path(self, annotation_id: str) -> Path:
         if not is_id(annotation_id):
@@ -402,7 +420,15 @@ class AnnotationStore:
         with self.lock:
             annotation = self.get(annotation_id)
             for key, value in changes.items():
-                if key not in {"text", "kind", "status", "on", "task", "files"}:
+                if key not in {
+                    "text",
+                    "kind",
+                    "status",
+                    "on",
+                    "task",
+                    "files",
+                    "anchor_state",
+                }:
                     raise AnnotationError(f"cannot change {key!r}")
                 setattr(annotation, key, value)
             annotation.updated = utc_now()

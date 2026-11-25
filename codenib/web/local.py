@@ -12,7 +12,7 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import yaml
 
@@ -38,6 +38,9 @@ class LocalWiki:
     config_path: Path
     repo_id: str
     runtime_env: dict[str, str] = field(default_factory=dict, repr=False)
+    #: Write every page in the background once the Wiki is up, rather than
+    #: when someone first opens it.
+    prewarm: bool = False
 
 
 def _repo_id(name: str) -> str:
@@ -79,6 +82,8 @@ def prepare_local_wiki(
     api_key_env: str | None = None,
     embedding_api_key_env: str | None = None,
     model_options: Mapping[str, Any] | None = None,
+    prewarm: bool = False,
+    reindex_argv: Sequence[str] = (),
 ) -> LocalWiki:
     """Write the registry and config consumed by the existing Wiki service."""
     repo_path = lexical_repository_path(repo_path)
@@ -160,6 +165,8 @@ def prepare_local_wiki(
         "data_dir": str(data_dir),
         "mode": mode,
         "wiki_agent": agent_wiki,
+        "repo_docs": True,
+        "reindex_argv": list(reindex_argv),
         "cors_origins": [
             f"http://localhost:{frontend_port}",
             f"http://127.0.0.1:{frontend_port}",
@@ -209,6 +216,7 @@ def prepare_local_wiki(
         config_path=config_path,
         repo_id=repo_id,
         runtime_env=runtime_env,
+        prewarm=prewarm,
     )
 
 

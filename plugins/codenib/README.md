@@ -78,8 +78,9 @@ in the background as soon as the server starts; for other languages, on the
 first question that needs references. Run `/codenib:setup` to build the graph
 ahead of time. Outside a Git checkout, the server does not start.
 
-The server and its index run locally and call no model. `/codenib:wiki` calls a
-model only when you choose model-written pages and give it a key.
+The server and its index run locally and call no model. `/codenib:wiki` has
+pages written only when you choose it: by your Claude Code, on your plan, or by
+a model whose key you give it.
 
 ## Network and data
 
@@ -87,8 +88,9 @@ The MCP server reads the checkout and writes CodeNib's index under
 `~/.codenib`. It calls no model and needs no key. If `codenib` is not
 installed, the plugin runs it through `uvx`, which downloads the `codenib`
 package from PyPI. `/codenib:setup` installs CodeNib and language indexers only
-when you run it. `/codenib:wiki` sends source to a model provider only when you
-choose model-written pages and give it a key. In a local Wiki, a question or
+when you run it. `/codenib:wiki` sends source to a model only when you
+choose model-written pages: to your own Claude Code, or to the provider whose
+key you give it. In a local Wiki, a question or
 change request you send runs your own `claude` CLI on this machine, with file
 tools only; a change runs in a separate git worktree and reaches your working
 tree only when you apply it. Notes and tasks are saved under `.codenib/` in the

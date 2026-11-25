@@ -5,6 +5,7 @@ import { AppLink } from "@/lib/router";
 import { assetUrl, guardHome, homeRepository } from "@/lib/runtime";
 import { AGENT_SETUP_URL } from "@/components/AgentSetup";
 import { recordExperience } from "@/lib/experience";
+import { syncThemeColor } from "@/lib/pwa";
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -15,6 +16,7 @@ function ThemeToggle() {
   function toggle() {
     const next = theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
+    syncThemeColor(next);
     try {
       localStorage.setItem("cm-theme", next);
     } catch {}
@@ -82,6 +84,8 @@ export default function Header({
       <AppLink href="/" className="brand">
         <img className="brand-logo for-light" src={assetUrl("/codenib-logo.svg")} alt="CodeNib" width={101} height={32} />
         <img className="brand-logo for-dark" src={assetUrl("/codenib-logo-dark.svg")} alt="CodeNib" width={101} height={32} />
+        {/* A phone keeps the nib alone, so the page's own controls fit. */}
+        <img className="brand-mark" src={assetUrl("/codenib-icon.svg")} alt="CodeNib" width={23} height={28} />
       </AppLink>
       {center}
       <div className="header-right">
