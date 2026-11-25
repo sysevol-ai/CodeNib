@@ -29,7 +29,9 @@ async function checkSetup() {
   setup.replaceChildren();
   if (installed) {
     const found = document.createElement("span");
-    found.textContent = `${status.version || "codenib"} · ${status.codenib}`;
+    found.textContent = status.bundled
+      ? `${status.version || "CodeNib"} · built into this app`
+      : `${status.version || "codenib"} · ${status.codenib}`;
     setup.append(found);
     return;
   }

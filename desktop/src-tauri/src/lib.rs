@@ -51,6 +51,78 @@ struct Setup {
     codenib: Option<String>,
     /// What `codenib --version` printed.
     version: Option<String>,
+    /// True when the app runs the CodeNib it ships inside itself.
+    bundled: bool,
+}
+
+/// How to run CodeNib: the Python inside the app, or a `codenib` command.
+struct Runner {
+    program: PathBuf,
+    /// Arguments before CodeNib's own, such as `-m codenib`.
+    prefix: &'static [&'static str],
+    /// A folder to put first on PATH, so the runtime's own tools are found.
+    bin: Option<PathBuf>,
+    bundled: bool,
+}
+
+impl Runner {
+    fn command(&self, search: &str) -> Command {
+        let mut command = Command::new(&self.program);
+        command.args(self.prefix);
+        let path = match &self.bin {
+            Some(bin) => format!("{}:{search}", bin.display()),
+            None => search.to_owned(),
+        };
+        command.env("PATH", path);
+        if self.bundled {
+            // The app's runtime must not pick up the person's own packages,
+            // and its folder may be read-only.
+            command
+                .env("PYTHONNOUSERSITE", "1")
+                .env("PYTHONDONTWRITEBYTECODE", "1");
+        }
+        command
+    }
+}
+
+/// The Python that the app bundle carries, with CodeNib installed into it.
+fn bundled_python(app: &AppHandle) -> Option<PathBuf> {
+    let python = app
+        .path()
+        .resource_dir()
+        .ok()?
+        .join("python/bin/python3.12");
+    is_executable(&python).then_some(python)
+}
+
+/// `CODENIB_BIN` when set, else the app's own CodeNib, else one on the path.
+fn runner(app: &AppHandle, search: &str) -> Option<Runner> {
+    if let Ok(explicit) = std::env::var("CODENIB_BIN") {
+        let explicit = PathBuf::from(explicit);
+        if is_executable(&explicit) {
+            return Some(Runner {
+                program: explicit,
+                prefix: &[],
+                bin: None,
+                bundled: false,
+            });
+        }
+    }
+    if let Some(python) = bundled_python(app) {
+        let bin = python.parent().map(Path::to_path_buf);
+        return Some(Runner {
+            program: python,
+            prefix: &["-m", "codenib"],
+            bin,
+            bundled: true,
+        });
+    }
+    find_codenib(search).map(|program| Runner {
+        program,
+        prefix: &[],
+        bin: None,
+        bundled: false,
+    })
 }
 
 /// The address in a `codenib wiki` ready line, when the line is one.
@@ -109,14 +181,8 @@ fn is_executable(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// `CODENIB_BIN` when it is set, otherwise the first `codenib` on the path.
+/// The first `codenib` on the path.
 fn find_codenib(search: &str) -> Option<PathBuf> {
-    if let Ok(explicit) = std::env::var("CODENIB_BIN") {
-        let explicit = PathBuf::from(explicit);
-        if is_executable(&explicit) {
-            return Some(explicit);
-        }
-    }
     search
         .split(':')
         .map(|folder| Path::new(folder).join("codenib"))
@@ -201,17 +267,29 @@ fn remember(app: &AppHandle, repo: &str) {
 }
 
 #[tauri::command]
-async fn setup_status() -> Setup {
-    let codenib = find_codenib(&search_path());
-    let version = codenib.as_ref().and_then(|path| {
-        let output = Command::new(path).arg("--version").output().ok()?;
-        let text = String::from_utf8(output.stdout).ok()?;
-        let text = text.trim();
-        (output.status.success() && !text.is_empty()).then(|| text.to_owned())
-    });
+async fn setup_status(app: AppHandle) -> Setup {
+    let search = search_path();
+    let Some(runner) = runner(&app, &search) else {
+        return Setup {
+            codenib: None,
+            version: None,
+            bundled: false,
+        };
+    };
+    let version = runner
+        .command(&search)
+        .arg("--version")
+        .stdin(Stdio::null())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty());
     Setup {
-        codenib: codenib.map(|path| path.display().to_string()),
+        codenib: Some(runner.program.display().to_string()),
         version,
+        bundled: runner.bundled,
     }
 }
 
@@ -253,15 +331,15 @@ async fn open_repository(app: AppHandle, path: String) -> Result<(), String> {
     }
 
     let search = search_path();
-    let codenib = find_codenib(&search).ok_or("CodeNib is not installed on this Mac")?;
+    let runner = runner(&app, &search).ok_or("CodeNib is not installed on this Mac")?;
     let (port, api_port) = (free_port()?, free_port()?);
-    let mut child = Command::new(&codenib)
+    let mut child = runner
+        .command(&search)
         .arg("wiki")
         .arg(&repo)
         .args(["--no-open", "--port", &port.to_string()])
         .args(["--api-port", &api_port.to_string()])
         .current_dir(&repo)
-        .env("PATH", &search)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

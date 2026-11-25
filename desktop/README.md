@@ -13,11 +13,9 @@ that service. Everything stays on your Mac: the Wiki is served on
 `127.0.0.1`, notes and tasks are files under `.codenib/` in the repository,
 and tasks run on your own Claude Code sign-in.
 
-This first version needs CodeNib installed on the Mac:
-
-```bash
-uv tool install "codenib[graph]"     # or: pipx install "codenib[graph]"
-```
+The app carries its own CodeNib: a relocatable Python with this checkout's
+CodeNib installed, so a Mac needs nothing else. Tasks still run on the Claude
+Code you have installed and signed in to.
 
 ## Try a build
 
@@ -41,12 +39,18 @@ Alternatively, clear the flag on the download before copying the app:
 On a Mac with Rust, Node.js 22 and Xcode's command-line tools:
 
 ```bash
+(cd web && npm ci && npm run build)    # the Wiki frontend CodeNib serves
+desktop/scripts/bundle-python.sh       # Python and CodeNib into the app
 cd desktop
 npm ci
 npm run tauri dev      # run the app
 npm run build          # build CodeNib.app and the disk image
 cargo test --manifest-path src-tauri/Cargo.toml
+scripts/smoke-bundle.sh src-tauri/target/release/bundle/macos/CodeNib.app
 ```
+
+Without the bundled runtime (`tauri dev` before `bundle-python.sh`), the app
+uses a `codenib` on your login shell's `PATH` instead.
 
 | Path | Holds |
 | --- | --- |
@@ -54,7 +58,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 | `src-tauri/src/lib.rs` | Finding `codenib`, running `codenib wiki`, opening and closing Wiki windows |
 | `src-tauri/tauri.conf.json` | App name, window, content policy and bundle settings |
 | `src-tauri/Info.plist` | Lets the app load the Wiki from `127.0.0.1` |
+| `scripts/bundle-python.sh` | Fetches a pinned, checksummed Python and installs this CodeNib into `src-tauri/resources/python/` |
+| `scripts/smoke-bundle.sh` | Runs a built app's CodeNib on a small repository and saves a note |
 
-The app looks for `codenib` on your login shell's `PATH`, then in
-`~/.local/bin`, `/opt/homebrew/bin` and `/usr/local/bin`. Set `CODENIB_BIN` to
-use another one.
+`CODENIB_BIN` points the app at another `codenib`. Otherwise it runs its own,
+and without one it looks on your login shell's `PATH`, then in `~/.local/bin`,
+`/opt/homebrew/bin` and `/usr/local/bin`.

@@ -8,6 +8,10 @@ on:
   pull_request:
     paths:
       - "desktop/**"
+      - "codenib/**"
+      - "web/**"
+      - "pyproject.toml"
+      - "setup.py"
       - ".github/workflows/desktop.yml"
   push:
     branches:
@@ -43,11 +47,22 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: |
+            desktop/package-lock.json
+            web/package-lock.json
 
       - name: Test the app's Rust code
         working-directory: desktop/src-tauri
         run: cargo test --locked
+
+      - name: Build the Wiki frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Bundle Python and this CodeNib into the app
+        run: desktop/scripts/bundle-python.sh
 
       - name: Build the app and disk image
         working-directory: desktop
@@ -63,8 +78,13 @@ jobs:
           /usr/libexec/PlistBuddy \
             -c "Print :NSAppTransportSecurity:NSAllowsLocalNetworking" \
             "$APP/Contents/Info.plist" | grep -qx true
+          test -x "$APP/Contents/Resources/python/bin/python3.12"
           codesign --verify --deep --strict --verbose=2 "$APP"
+          du -sh "$APP"
           ls -la desktop/src-tauri/target/release/bundle/dmg/
+
+      - name: Run the app's own CodeNib on a repository
+        run: desktop/scripts/smoke-bundle.sh desktop/src-tauri/target/release/bundle/macos/CodeNib.app
 
       - name: Upload the disk image
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
