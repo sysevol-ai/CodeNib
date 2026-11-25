@@ -27,8 +27,12 @@ repository change
 
 On a later commit, CodeNib reuses views whose source and builder identities
 are still current. A requested view affected by source or policy changes
-rebuilds in an isolated generation. File- and symbol-level delta repair
-remains disabled until it can use the same pinned source authority.
+rebuilds in an isolated generation, in full by default. A Python graph can
+instead be patched when you opt in: its builder rechecks only the changed
+files, read from the same pinned source rather than from Git. The patched graph
+equaled a fresh build on all 20 commits measured in four repositories; see
+[how exact a patch is](../incremental_graph/index.md#how-exact-a-patch-is).
+Graphs in other languages and the other views are always rebuilt in full.
 
 ## Querying from Python
 
