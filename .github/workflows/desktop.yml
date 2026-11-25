@@ -49,6 +49,7 @@ jobs:
           cache: npm
           cache-dependency-path: |
             desktop/package-lock.json
+            desktop/app/package-lock.json
             web/package-lock.json
 
       - name: Test the app's Rust code
@@ -68,6 +69,7 @@ jobs:
         working-directory: desktop
         run: |
           npm ci
+          npm --prefix app ci
           npm run build
 
       - name: Check the bundle
