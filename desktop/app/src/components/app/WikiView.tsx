@@ -365,6 +365,82 @@ function threadNeeds(thread: Thread, annotations: Annotation[]): boolean {
 
 type Layout = { tops: Record<string, number>; paths: { id: string; d: string }[] };
 
+/** The words a thread is about, as a DOM range inside its block, when the
+ *  quote is still on the page. */
+function quoteRange(root: HTMLElement, on: Anchor): Range | null {
+  const quote = (on.quote ?? "").replace(/\s+/g, " ").trim();
+  if (quote.length < 2) return null;
+  const block = anchorBlock(root, on);
+  if (!block) return null;
+  // Walk the block's text, mapping whitespace-squashed offsets back to nodes.
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) =>
+      node.parentElement?.closest(".block-handle, .cite, .src-mark, .composer")
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT,
+  });
+  const map: { node: Text; offset: number }[] = [];
+  let flat = "";
+  let lastSpace = true;
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    const value = node.data;
+    for (let i = 0; i < value.length; i++) {
+      const space = /\s/.test(value[i]);
+      if (space && lastSpace) continue;
+      flat += space ? " " : value[i];
+      map.push({ node, offset: i });
+      lastSpace = space;
+    }
+  }
+  const at = flat.toLowerCase().indexOf(quote.toLowerCase());
+  if (at < 0) return null;
+  const first = map[at];
+  const last = map[at + quote.length - 1];
+  if (!first || !last) return null;
+  const range = document.createRange();
+  range.setStart(first.node, first.offset);
+  range.setEnd(last.node, last.offset + 1);
+  return range;
+}
+
+/** Marks every thread's words in the text with the CSS Highlight API, which
+ *  colours ranges without changing the page's DOM (React owns it). */
+function QuoteHighlights({
+  root,
+  threads,
+  focus,
+}: {
+  root: React.RefObject<HTMLDivElement | null>;
+  threads: Thread[];
+  focus: string | null;
+}) {
+  useLayoutEffect(() => {
+    const registry = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
+    const HighlightCtor = (window as unknown as { Highlight?: new (...ranges: Range[]) => unknown }).Highlight;
+    if (!registry || !HighlightCtor || !root.current) return;
+    const draw = () => {
+      if (!root.current) return;
+      const all: Range[] = [];
+      const focused: Range[] = [];
+      for (const thread of threads) {
+        const range = quoteRange(root.current, thread.root.on);
+        if (!range) continue;
+        (thread.root.id === focus ? focused : all).push(range);
+      }
+      registry.set("note-anchor", new HighlightCtor(...all));
+      registry.set("note-anchor-focus", new HighlightCtor(...focused));
+    };
+    draw();
+    const timer = window.setTimeout(draw, 400);
+    return () => {
+      window.clearTimeout(timer);
+      registry.delete("note-anchor");
+      registry.delete("note-anchor-focus");
+    };
+  }, [root, threads, focus]);
+  return null;
+}
+
 /** Where a thread belongs: the block that holds its quote, else its section's
  *  heading, else the top of the page. */
 function anchorBlock(root: HTMLElement, on: Anchor): HTMLElement | null {
@@ -599,7 +675,9 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
   const d = data[repo];
   const [page, setPage] = useState<Page | null>(null);
   const [error, setError] = useState("");
-  const [composing, setComposing] = useState<{ block: number; kind: Kind } | null>(null);
+  const [composing, setComposing] = useState<{ block: number; kind: Kind; quote?: string } | null>(null);
+  const [picked, setPicked] = useState<{ block: number; quote: string; x: number; y: number } | null>(null);
+  const [focusThread, setFocusThread] = useState<string | null>(null);
   const annotate = useAnnotate(repo);
   const pageRef = useRef<HTMLDivElement>(null);
   const noteRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -743,7 +821,7 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
           await annotate(composing.kind, body, {
             page: pageId,
             section: sectionTitle,
-            quote: plain(text).slice(0, 160),
+            quote: composing.quote ?? plain(text).slice(0, 160),
             block: plain(text).slice(0, 600),
           });
           toast(composing.kind === "note" ? "Note saved in .codenib/notes/" : `Sent to ${who} on this Mac`);
@@ -751,9 +829,73 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
       />
     ) : null;
 
+  // Select words in the article to comment on them, as in a shared document.
+  const onPointerUp = () => {
+    window.setTimeout(() => {
+      const selection = window.getSelection();
+      const quote = selection?.toString().replace(/\s+/g, " ").trim() ?? "";
+      if (!selection || selection.isCollapsed || quote.length < 2 || !selection.rangeCount) {
+        setPicked(null);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const owner = (range.commonAncestorContainer instanceof Element
+        ? range.commonAncestorContainer
+        : range.commonAncestorContainer.parentElement
+      )?.closest<HTMLElement>("[data-block]");
+      if (!owner || !pageRef.current?.contains(owner) || owner.closest(".composer")) {
+        setPicked(null);
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      setPicked({ block: Number(owner.dataset.block), quote: quote.slice(0, 300), x: rect.left + rect.width / 2, y: rect.top });
+    }, 0);
+  };
+
+  const startFromSelection = (kind: Kind) => {
+    if (!picked) return;
+    setComposing({ block: picked.block, kind, quote: picked.quote });
+    setPicked(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  // Annotated words are marked in place; a click on them opens their thread.
+  const onArticleClick = (event: React.MouseEvent) => {
+    const root = pageRef.current;
+    if (!root || window.getSelection()?.toString()) return;
+    for (const thread of threads) {
+      const range = quoteRange(root, thread.root.on);
+      if (!range) continue;
+      for (const r of Array.from(range.getClientRects())) {
+        if (event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom) {
+          setFocusThread(thread.root.id);
+          noteRefs.current[thread.root.id]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          return;
+        }
+      }
+    }
+  };
+
   return (
     <div className="wiki-page" ref={pageRef}>
-      <article className="article">
+      {picked && (
+        <div className="select-bar" style={{ left: picked.x, top: picked.y }} role="toolbar" aria-label="Selected words">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => startFromSelection("note")}>
+            <StickyNote />
+            Comment
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => startFromSelection("ask")}>
+            <MessageCircleQuestion />
+            Ask {who}
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => startFromSelection("change")}>
+            <PencilLine />
+            Change the code
+          </button>
+        </div>
+      )}
+      <QuoteHighlights root={pageRef} threads={threads} focus={focusThread} />
+      <article className="article" onPointerUp={onPointerUp} onClick={onArticleClick}>
         <Block
           index={0}
           label="the page"
@@ -823,7 +965,12 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
             ref={(el) => {
               noteRefs.current[thread.root.id] = el;
             }}
-            className={cn("note", threadNeeds(thread, d?.notes?.annotations ?? []) && "is-needs")}
+            className={cn(
+              "note",
+              threadNeeds(thread, d?.notes?.annotations ?? []) && "is-needs",
+              focusThread === thread.root.id && "is-focus",
+            )}
+            onClick={() => setFocusThread(thread.root.id)}
             style={{ top: layout?.tops[thread.root.id] ?? 0, visibility: layout ? "visible" : "hidden" }}
           >
             <NoteThread repo={repo} thread={thread} onReview={onReview} />

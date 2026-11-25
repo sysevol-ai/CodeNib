@@ -1136,3 +1136,52 @@ button.sb-service:hover {
 .rail-actions {
   margin-bottom: 6px;
 }
+
+/* ---------- comment on selected words, as in a shared document ---------- */
+.select-bar {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  transform: translate(-50%, calc(-100% - 8px));
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--sheet);
+  box-shadow: var(--shadow-card);
+}
+
+.select-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.select-bar button:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.select-bar svg {
+  width: 14px;
+  height: 14px;
+}
+
+::highlight(note-anchor) {
+  background-color: color-mix(in oklab, #f5c542 32%, transparent);
+}
+
+::highlight(note-anchor-focus) {
+  background-color: color-mix(in oklab, #f5c542 62%, transparent);
+}
+
+.note.is-focus {
+  box-shadow: inset 3px 0 0 #e0a800;
+}
