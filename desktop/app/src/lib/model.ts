@@ -57,7 +57,7 @@ export interface Page {
   markdown: string;
   citations?: Citation[];
   evidence?: { items?: EvidenceItem[]; relations?: EvidenceRelation[] };
-  generation?: { mode?: string; model?: string | null; renderer?: string | null };
+  generation?: { mode?: string; model?: string | null; renderer?: string | null; reason?: string | null };
 }
 
 export type AnnotationKind = "question" | "change" | "note" | "answer" | "summary";

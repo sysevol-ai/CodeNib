@@ -102,7 +102,14 @@ function Name({ text, className }: { text: string; className?: string }) {
   );
 }
 
-const shortName = (name: string) => name.split(":").pop() ?? name;
+/** A symbol's name as a person reads it: no file path, and no internal scope
+ *  marker such as "(_codenib_l375_c4)" that the index adds to nested code. */
+const shortName = (name: string) =>
+  (name.split(":").pop() ?? name).replace(/\(_codenib_l\d+_c\d+\)/g, "()").replace(/\(\)\(\)$/, "()");
+
+/** Calls lead from function to function; a field or type alias (str, _VT)
+ *  is not a step a reader can follow. */
+const isStep = (node: { kind?: string }) => !["field", "variable", "attribute", "type_alias"].includes(node.kind ?? "");
 
 function Empty({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -110,6 +117,33 @@ function Empty({ title, children }: { title: string; children: React.ReactNode }
       <h1 className="view-title">
         {title} <span className="two-tone">{children}</span>
       </h1>
+    </div>
+  );
+}
+
+/** A view whose data could not be read: say so, never "nothing here". */
+function Failed({ title, repo, error }: { title: string; repo: string; error: string }) {
+  const { restart } = useStore();
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="view">
+      <h1 className="view-title">
+        {title} <span className="two-tone">CodeNib could not read this page's code.</span>
+      </h1>
+      <p className="view-sub">{error}</p>
+      <div>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            void restart(repo).finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "Restarting…" : "Restart CodeNib for this repository"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -453,6 +487,7 @@ export function ImpactView({ repo, pageId }: { repo: string; pageId: string }) {
   }, [rows, focus]);
 
   if (boundary.loading) return <Empty title="Impact.">Reading the index…</Empty>;
+  if (boundary.error) return <Failed title="Impact." repo={repo} error={boundary.error} />;
   if (!boundary.value?.available || !boundary.value.focus?.length)
     return <Empty title="Impact.">This page names no symbols the symbol graph knows, so there is nothing to trace yet.</Empty>;
 
@@ -631,7 +666,7 @@ interface Step {
 
 /** The longest chain of calls through the page's own graph, at most six. */
 function chainOf(graph: Graph): Step[] {
-  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const byId = new Map(graph.nodes.filter(isStep).map((n) => [n.id, n]));
   const out = new Map<string, GraphEdge[]>();
   const into = new Set<string>();
   for (const e of graph.edges) {
@@ -645,8 +680,9 @@ function chainOf(graph: Graph): Step[] {
     if (path.length >= 6) return;
     for (const e of out.get(id) ?? []) if (!path.includes(e.target)) walk(e.target, [...path, e.target]);
   };
-  const starts = graph.nodes.filter((n) => out.has(n.id) && !into.has(n.id));
-  for (const s of starts.length ? starts : graph.nodes.filter((n) => out.has(n.id))) walk(s.id, [s.id]);
+  const nodes = [...byId.values()];
+  const starts = nodes.filter((n) => out.has(n.id) && !into.has(n.id));
+  for (const s of starts.length ? starts : nodes.filter((n) => out.has(n.id))) walk(s.id, [s.id]);
   return best.map((id, i) => {
     const nextId = best[i + 1];
     const edge = nextId ? (out.get(id) ?? []).find((e) => e.target === nextId) : undefined;
@@ -783,6 +819,7 @@ export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string
   }, [move]);
 
   if (graph.loading) return <Empty title="Walkthrough.">Reading the page's calls…</Empty>;
+  if (graph.error) return <Failed title="Walkthrough." repo={repo} error={graph.error} />;
   if (steps.length < 2)
     return (
       <Empty title="Walkthrough.">

@@ -30,8 +30,11 @@ use tauri_plugin_dialog::DialogExt;
 
 /// The line `codenib wiki` prints once both of its services answer.
 const READY: &str = "CodeNib Wiki is ready: ";
-/// How long one forwarded request may take; writing a page can be slow.
-const API_TIMEOUT: Duration = Duration::from_secs(300);
+/// How long one forwarded request may take. Opening a page that is not
+/// written yet, or writing one again, waits for the person's agent and for
+/// pages written before it: 87 s of model calls took over 15 minutes behind
+/// the background writer, so five minutes reported a failure that was not one.
+const API_TIMEOUT: Duration = Duration::from_secs(20 * 60);
 /// The last lines of a starting service, kept to explain a failure.
 const TAIL: usize = 12;
 

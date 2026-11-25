@@ -992,3 +992,119 @@ button.sb-service:hover {
 .walk-recap strong {
   color: var(--ink);
 }
+
+/* ---------- a page its writer did not finish ---------- */
+.page-degraded {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 20px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in oklab, var(--danger) 35%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--danger) 6%, var(--sheet));
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-2);
+}
+
+.page-degraded p {
+  margin: 0;
+}
+
+.page-degraded strong {
+  color: var(--ink);
+}
+
+.page-degraded .page-wait-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- the margin before there are notes: outline and cited code ---------- */
+.page-rail {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 260px;
+}
+
+.rail-group h3 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-ink);
+}
+
+.rail-group ol,
+.rail-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-link {
+  display: block;
+  width: 100%;
+  padding: 4px 0 4px 10px;
+  border-left: 2px solid var(--line);
+  font-size: 13.5px;
+  line-height: 20px;
+  text-align: left;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.rail-link:hover {
+  color: var(--ink);
+}
+
+.rail-link.is-here {
+  border-left-color: var(--nib);
+  color: var(--ink);
+  font-weight: 550;
+}
+
+.rail-group li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.src-mark.rail-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--ink-2);
+}
+
+.src-mark.rail-source:hover {
+  color: var(--nib);
+}
+
+.rail-count {
+  flex: none;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--well);
+  font-size: 12.5px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--muted-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.page-rail .notes-empty {
+  margin: 0;
+}

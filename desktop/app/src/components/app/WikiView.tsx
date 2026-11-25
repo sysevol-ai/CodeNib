@@ -14,7 +14,7 @@ import { message, type AgentStatus, type WriterId } from "@/lib/backend";
 import { agentName, ago, taskNeed, type Anchor, type Annotation, type Page, type Task } from "@/lib/model";
 import { repoPath, stillWriting, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { Markdown, splitBlocks } from "./markdown";
+import { Markdown, splitBlocks, type MdBlock } from "./markdown";
 import { SourceMark } from "./SourceMark";
 import { StatusMark } from "./StatusMark";
 
@@ -393,6 +393,153 @@ export function keepValidatedDiagrams(markdown: string, validated: boolean): str
     .trimEnd();
 }
 
+/** The margin when a page has no notes yet: where you are on the page, the
+ *  code it rests on, and how to start a note. */
+function PageRail({ repo, page, blocks, who }: { repo: string; page: Page; blocks: MdBlock[]; who: string }) {
+  const sections = blocks
+    .map((block, i) => ({ title: block.title, heading: block.heading, index: i + 1 }))
+    .filter((b) => b.heading === 2 && b.title);
+  const [here, setHere] = useState<number | null>(null);
+  useEffect(() => {
+    const targets = sections
+      .map((s) => document.querySelector<HTMLElement>(`[data-block="${s.index}"]`))
+      .filter((el): el is HTMLElement => !!el);
+    if (!targets.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const seen = entries.filter((e) => e.isIntersecting).map((e) => Number((e.target as HTMLElement).dataset.block));
+        if (seen.length) setHere(Math.min(...seen));
+      },
+      { rootMargin: "0px 0px -70% 0px" },
+    );
+    targets.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+    // Sections change only with the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page.id, sections.length]);
+
+  // The files the page cites, most cited first, each opening its code.
+  const counts = new Map<string, number>();
+  for (const m of page.markdown.matchAll(/\(#evidence-(E\d+)\)/g)) counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+  const files = new Map<string, { file: string; start: number; end: number; cites: number }>();
+  for (const item of page.evidence?.items ?? []) {
+    if (!item.file || !item.start_line) continue;
+    const known = files.get(item.file);
+    const cites = (known?.cites ?? 0) + (counts.get(item.id) ?? 0);
+    files.set(item.file, {
+      file: item.file,
+      start: Math.min(known?.start ?? item.start_line, item.start_line),
+      end: Math.max(known?.end ?? item.end_line, item.end_line),
+      cites,
+    });
+  }
+  const sources = [...files.values()].sort((a, b) => b.cites - a.cites).slice(0, 8);
+
+  return (
+    <div className="page-rail">
+      {sections.length > 1 && (
+        <nav className="rail-group" aria-label="On this page">
+          <h3>On this page</h3>
+          <ol>
+            {sections.map((s) => (
+              <li key={s.index}>
+                <button
+                  type="button"
+                  className={cn("rail-link", here === s.index && "is-here")}
+                  onClick={() =>
+                    document.querySelector(`[data-block="${s.index}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  }
+                >
+                  {s.title}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )}
+      {sources.length > 0 && (
+        <section className="rail-group" aria-label="Code this page cites">
+          <h3>Code it cites</h3>
+          <ul>
+            {sources.map((s) => (
+              <li key={s.file}>
+                <SourceMark
+                  repo={repo}
+                  file={s.file}
+                  start={s.start}
+                  end={s.end}
+                  label={s.file.split("/").slice(-2).join("/")}
+                  className="rail-source"
+                  title={`${s.file} · lines ${s.start}–${s.end}`}
+                />
+                {s.cites > 0 && <span className="rail-count">{s.cites}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <p className="notes-empty">
+        Point at a paragraph and use its handle to ask {who}, request a change or leave a note. Notes stay beside the
+        words they are about.
+      </p>
+    </div>
+  );
+}
+
+/** A page whose writer failed: say so, show what the index knows, and offer
+ *  to write it again now rather than after the writer's cooldown. */
+function RewritePage({ writer, reason, onRewrite }: { writer: string; reason: string; onRewrite: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!busy) return;
+    setSeconds(0);
+    const timer = window.setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [busy]);
+  const notice =
+    reason === "model_unavailable" ? (
+      <>
+        <strong>This page was not written.</strong> {writer} did not answer while it was being written, so it shows only
+        what the index records about these files.
+      </>
+    ) : (
+      <>
+        <strong>Read this page with care.</strong> Parts of {writer}'s draft did not pass the checks against the
+        source, so not every claim here is confirmed by the code it cites.
+      </>
+    );
+  return (
+    <div className="page-degraded" role="status">
+      <p>{notice}</p>
+      {busy ? (
+        <p className="page-wait-meta">
+          <StatusMark status="working" /> {writer} is writing this page · {Math.floor(seconds / 60)}:
+          {String(seconds % 60).padStart(2, "0")}
+        </p>
+      ) : (
+        <div>
+          <Button
+            size="sm"
+            onClick={() => {
+              setBusy(true);
+              setError("");
+              onRewrite()
+                .catch((e) => setError(message(e)))
+                .finally(() => setBusy(false));
+            }}
+          >
+            <RotateCw />
+            Write this page again
+          </Button>
+        </div>
+      )}
+      {error && <p className="add-warn">{error}</p>}
+    </div>
+  );
+}
+
 /** Waiting for a page; says when an agent is writing it, and for how long. */
 function PageWait({ repo, pageId }: { repo: string; pageId: string }) {
   const { data, repos } = useStore();
@@ -548,13 +695,19 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
   }
 
   const isDoc = pageId.startsWith("doc--");
-  const generated = page.generation?.mode && page.generation.mode !== "offline";
+  const degraded = page.generation?.mode === "degraded";
+  const generated = page.generation?.mode && page.generation.mode !== "offline" && !degraded;
+  const writerName = page.generation?.model?.startsWith("codex") ? "Codex" : "Claude Code";
   const meta = isDoc
     ? `Docs · from the repository`
     : `Analysis · ${d?.info?.repo ?? ""}${d?.info?.commit_short ? ` at ${d.info.commit_short}` : ""} · ${
-        generated
-          ? `written by ${page.generation?.model?.startsWith("codex") ? "Codex" : "Claude Code"}`
-          : "built from the index on this Mac"
+        degraded
+          ? page.generation?.reason === "model_unavailable"
+            ? `from the index; ${writerName} did not write it`
+            : `written by ${writerName} · not every claim confirmed`
+          : generated
+            ? `written by ${writerName}`
+            : "built from the index on this Mac"
       }`;
   let section = "";
 
@@ -591,6 +744,17 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
         >
           <h1>{page.title}</h1>
           <p className="page-meta">{meta}</p>
+          {degraded && (
+            <RewritePage
+              writer={writerName}
+              reason={page.generation?.reason ?? ""}
+              onRewrite={async () => {
+                const path = repoPath(d, `/wiki/${encodeURIComponent(pageId)}?retry=1`);
+                if (!path) return;
+                setPage(await call<Page>(repo, "GET", path));
+              }}
+            />
+          )}
         </Block>
         {blocks.map((block, i) => {
           if (block.heading) section = block.title;
@@ -630,11 +794,7 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
         ))}
       </svg>
       <div className="notes" aria-label="Notes on this page">
-        {threads.length === 0 && (
-          <p className="notes-empty">
-            Point at a paragraph and use its handle to ask {who}, request a change or leave a note.
-          </p>
-        )}
+        {threads.length === 0 && <PageRail repo={repo} page={page} blocks={blocks} who={who} />}
         {threads.map((thread) => (
           <aside
             key={thread.root.id}

@@ -45,19 +45,19 @@ from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
 from ..wiki import WikiBuilder
-from ..wiki.flowchart import (drop_flow_duplicate_interactions,
-                              qualify_flow_caption)
+from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
 from ..wiki.media_context import visual_document_contexts
 from ..wiki.media_evidence import build_media_evidence_pack
-from ..wiki.media_generation import (image_generator_from_config,
-                                     materialize_media_slots,
-                                     read_generated_media_asset,
-                                     redact_media_evidence_packs)
+from ..wiki.media_generation import (
+    image_generator_from_config,
+    materialize_media_slots,
+    read_generated_media_asset,
+    redact_media_evidence_packs,
+)
 from ..wiki.media_storage import load_multimodal_knowledge_bundle
 from ..wiki.narrator import Narrator
 from ..wiki.repo_docs import doc_page, find_docs, is_doc_id
-from ..wiki.repository_visuals import (attach_repository_visual,
-                                       discover_overview_visual)
+from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.sqlite_store import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
@@ -70,14 +70,28 @@ from .experience import router as experience_router
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
-from .prerender import (attr, outline_pages, page_body, page_description,
-                        page_route, robots, sitemap, standalone_document)
+from .prerender import (
+    attr,
+    outline_pages,
+    page_body,
+    page_description,
+    page_route,
+    robots,
+    sitemap,
+    standalone_document,
+)
 from .repo_registry import RepoRegistry
 from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
-from .schemas import (ChatRequest, ChatResponse, EdgeLabelRequest,
-                      EdgeLabelResponse, RepoIndexStatus, RepoInfo,
-                      agent_result_to_response)
+from .schemas import (
+    ChatRequest,
+    ChatResponse,
+    EdgeLabelRequest,
+    EdgeLabelResponse,
+    RepoIndexStatus,
+    RepoInfo,
+    agent_result_to_response,
+)
 from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
@@ -1332,6 +1346,14 @@ async def wiki_tree(repo_id: str, cached_only: bool = False) -> dict:
         return tree
 
 
+def _require_local_session(request: Request) -> None:
+    """Only the person at a local Wiki, with its session key, may continue."""
+
+    if wiki_annotations.hosted_enabled() or not wiki_annotations.enabled():
+        raise HTTPException(status_code=403, detail="Only a local Wiki can do this")
+    wiki_annotations._authorize(request)
+
+
 def _written_pages(builder) -> dict:
     """Which pages a writing agent has finished, read from the cache only.
 
@@ -1372,13 +1394,27 @@ async def wiki_progress(repo_id: str) -> dict:
 async def wiki_page(
     repo_id: str,
     page_id: str,
+    request: Request = None,  # type: ignore[assignment] - FastAPI passes it
     materialize_media: bool = True,
+    retry: bool = False,
 ) -> dict:
     with _pinned_bundle(repo_id) as bundle:
         builder = await _run_pinned_thread(_wiki, repo_id, bundle)
         if is_doc_id(page_id) and _repo_docs_enabled():
             page = await _run_pinned_thread(
                 doc_page, Path(bundle.entry.repo_dir), page_id
+            )
+        elif retry and callable(getattr(builder, "cached_page", None)):
+            # Write a page whose writer failed again now, instead of after its
+            # cooldown. It spends the person's own agent, so only a local
+            # Wiki's session may ask.
+            if request is None:
+                raise HTTPException(
+                    status_code=403, detail="Only a local Wiki can do this"
+                )
+            _require_local_session(request)
+            page = await _run_pinned_thread(
+                partial(builder.page, page_id, retry_degraded_now=True)
             )
         else:
             page = await _run_pinned_thread(builder.page, page_id)

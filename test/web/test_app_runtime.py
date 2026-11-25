@@ -2571,3 +2571,19 @@ def test_written_pages_without_a_writer() -> None:
     from codenib.web.app import _written_pages
 
     assert _written_pages(object()) == {"writing": False, "pages": [], "written": []}
+
+
+def test_retrying_a_page_needs_a_local_session(monkeypatch) -> None:
+    import pytest
+    from fastapi import HTTPException
+
+    from codenib.web import annotations as local
+    from codenib.web.app import _require_local_session
+
+    class Req:
+        headers = {"host": "127.0.0.1:8000", "X-CodeNib-Session": "k"}
+
+    monkeypatch.delenv(local.TOKEN_ENV, raising=False)
+    with pytest.raises(HTTPException) as hosted:
+        _require_local_session(Req())
+    assert hosted.value.status_code == 403
