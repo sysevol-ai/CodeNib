@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CodeNib</title>
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="main.js"></script>
+  </head>
+  <body>
+    <main class="sheet">
+      <header class="brand">
+        <img src="nib.svg" alt="" width="22" height="27" />
+        <span>CodeNib</span>
+      </header>
+
+      <h1>Open a repository</h1>
+      <p class="lead">
+        Read its Wiki and work on it with your own Claude Code. Notes and
+        tasks stay in the repository, on this Mac.
+      </p>
+
+      <button id="open" class="primary" type="button" disabled>
+        Choose a folder&hellip;
+        <kbd>&#8984;O</kbd>
+      </button>
+
+      <section id="recent-section" hidden>
+        <h2>Recent</h2>
+        <ol id="recent"></ol>
+      </section>
+
+      <section id="opening" hidden aria-live="polite">
+        <h2 id="opening-title">Opening</h2>
+        <p id="opening-line" class="mono"></p>
+      </section>
+
+      <p id="error" class="error" role="alert" hidden></p>
+
+      <footer id="setup" class="setup"></footer>
+    </main>
+  </body>
+</html>
