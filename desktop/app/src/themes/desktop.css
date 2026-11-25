@@ -426,3 +426,31 @@ body {
   gap: 8px;
   margin-top: 12px;
 }
+
+/* ---------- map on any repository: boxes in a grid, calls drawn under them */
+.map-grid {
+  position: relative;
+  display: grid;
+  gap: 56px 48px;
+  padding: 16px 0 8px;
+  max-width: 1040px;
+}
+
+.map-grid .map-area {
+  position: relative;
+  z-index: 1;
+  min-height: 72px;
+  min-width: 0;
+}
+
+.map-grid .map-area-title code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pg-section {
+  margin-top: 40px;
+  max-width: 1040px;
+}

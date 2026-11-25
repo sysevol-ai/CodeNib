@@ -5,7 +5,8 @@ import { CommandPalette } from "@/components/app/CommandPalette";
 import { InboxView } from "@/components/app/InboxView";
 import { ReviewView } from "@/components/app/ReviewView";
 import { Opening, Welcome } from "@/components/app/Screens";
-import { Toolbar } from "@/components/app/Toolbar";
+import { ImpactView, MapView, WalkthroughView } from "@/components/app/AnalysisViews";
+import { ModeSwitch, Toolbar, type Mode } from "@/components/app/Toolbar";
 import { WikiView } from "@/components/app/WikiView";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -15,7 +16,7 @@ import { useSystemMode } from "@/lib/look";
 import { flattenPages } from "@/lib/model";
 import { StoreProvider, useStore } from "@/lib/store";
 
-function PageScreen({ repo, page }: { repo: string; page: string }) {
+function PageScreen({ repo, page, mode }: { repo: string; page: string; mode: Mode }) {
   const { repos, data, setPalette, go } = useStore();
   const entry = repos.find((r) => r.path === repo);
   const d = data[repo];
@@ -32,16 +33,31 @@ function PageScreen({ repo, page }: { repo: string; page: string }) {
     page || docs.find((doc) => doc.path === "README.md")?.id || pages.find((p) => p.id === "overview")?.id || pages[0]?.id || "";
   const title =
     docs.find((doc) => doc.id === pageId)?.title ?? pages.find((p) => p.id === pageId)?.title ?? pageId;
+  const label = { page: "", map: "Map", impact: "Impact", walkthrough: "Walkthrough" }[mode];
+  const isDoc = pageId.startsWith("doc--");
   return (
     <>
-      <Toolbar parts={[entry.name, title]} onAsk={() => setPalette({ open: true })} />
-      <ScrollArea className="main-scroll">
-        <WikiView
-          key={`${repo}:${pageId}`}
-          repo={repo}
-          pageId={pageId}
-          onReview={(task) => go({ kind: "review", repo, task })}
-        />
+      <Toolbar parts={label ? [entry.name, title, label] : [entry.name, title]} onAsk={() => setPalette({ open: true })}>
+        {!isDoc && (
+          <ModeSwitch
+            mode={mode}
+            modes={["page", "map", "impact", "walkthrough"]}
+            go={(next) => go({ kind: next, repo, page: pageId })}
+          />
+        )}
+      </Toolbar>
+      <ScrollArea className="main-scroll" key={`${mode}:${pageId}`}>
+        {mode === "page" && (
+          <WikiView
+            key={`${repo}:${pageId}`}
+            repo={repo}
+            pageId={pageId}
+            onReview={(task) => go({ kind: "review", repo, task })}
+          />
+        )}
+        {mode === "map" && <MapView repo={repo} pageId={pageId} />}
+        {mode === "impact" && <ImpactView repo={repo} pageId={pageId} />}
+        {mode === "walkthrough" && <WalkthroughView repo={repo} pageId={pageId} />}
       </ScrollArea>
     </>
   );
@@ -86,7 +102,9 @@ function Shell() {
       <SidebarProvider className="window-body" style={{ "--sidebar-width": "272px" } as React.CSSProperties}>
         <AppSidebar />
         <main className="window-main">
-          {view.kind === "page" && <PageScreen repo={view.repo} page={view.page} />}
+          {(view.kind === "page" || view.kind === "map" || view.kind === "impact" || view.kind === "walkthrough") && (
+            <PageScreen repo={view.repo} page={view.page} mode={view.kind} />
+          )}
           {view.kind === "inbox" && (
             <>
               <Toolbar parts={["Inbox"]} />
@@ -96,7 +114,7 @@ function Shell() {
             </>
           )}
           {view.kind === "review" && <ReviewScreen repo={view.repo} task={view.task} />}
-          {(view.kind === "home" || view.kind === "map" || view.kind === "impact" || view.kind === "walkthrough") && (
+          {view.kind === "home" && (
             <>
               <Toolbar parts={["CodeNib"]} />
               <Welcome />

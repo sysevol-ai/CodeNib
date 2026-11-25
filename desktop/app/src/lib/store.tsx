@@ -59,7 +59,7 @@ function savedView(): View {
   try {
     const raw = localStorage.getItem(LAST);
     const view = raw ? (JSON.parse(raw) as View) : null;
-    if (view && (view.kind === "page" || view.kind === "review" || view.kind === "inbox")) return view;
+    if (view && view.kind !== "home") return view;
   } catch {
     // A missing or unreadable bookmark just starts at home.
   }
