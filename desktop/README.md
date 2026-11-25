@@ -26,9 +26,15 @@ runner. Download `CodeNib-macos-apple-silicon` from the run's artifacts, open
 the disk image and drag CodeNib to Applications.
 
 The app is signed ad hoc, not with a Developer ID, so macOS stops it the first
-time. Open System Settings, then Privacy & Security, and choose **Open
-Anyway** for CodeNib. Alternatively, run
-`xattr -dr com.apple.quarantine /Applications/CodeNib.app` once.
+time. Open it once, close the warning, then open System Settings, then
+Privacy & Security, and choose **Open Anyway** for CodeNib. The button shows
+for a while after the blocked attempt.
+
+`xattr -dr com.apple.quarantine /Applications/CodeNib.app` works only when
+Terminal has App Management access (System Settings, then Privacy & Security,
+then App Management); without it macOS answers "Operation not permitted".
+Alternatively, clear the flag on the download before copying the app:
+`xattr -d com.apple.quarantine ~/Downloads/CodeNib*.dmg`.
 
 ## Develop
 
