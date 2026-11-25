@@ -262,7 +262,10 @@ export function AddRepoDialog() {
   }, []);
 
   const writerId = writer === "none" ? null : writer;
-  const canAdd = tab === "folder" ? !!(adding?.tab === "folder" && adding.folder) : !!picked;
+  // A writer that is not installed or signed in would stop the repository
+  // from opening; the choice explains why and links to Accounts.
+  const writerReady = !writerId || !unavailable(agents?.find((a) => a.id === writerId));
+  const canAdd = writerReady && (tab === "folder" ? !!(adding?.tab === "folder" && adding.folder) : !!picked);
 
   const add = async () => {
     if (!adding || busy) return;

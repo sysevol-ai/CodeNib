@@ -265,7 +265,7 @@ export function AccountsDialog() {
 
   return (
     <Dialog open={accountsOpen} onOpenChange={setAccountsOpen}>
-      <DialogContent className="add-dialog accounts-dialog">
+      <DialogContent className="add-dialog accounts-dialog" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>Accounts</DialogTitle>
           <DialogDescription>

@@ -571,7 +571,7 @@ body {
 }
 
 .segment-note {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 450;
   color: var(--muted-ink);
 }
