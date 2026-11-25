@@ -59,7 +59,7 @@ function savedView(): View {
   try {
     const raw = localStorage.getItem(LAST);
     const view = raw ? (JSON.parse(raw) as View) : null;
-    if (view && view.kind === "page") return view;
+    if (view && (view.kind === "page" || view.kind === "review" || view.kind === "inbox")) return view;
   } catch {
     // A missing or unreadable bookmark just starts at home.
   }
@@ -197,7 +197,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const first = "repo" in shown ? list.find((r) => r.path === shown.repo) : undefined;
       const target = first ?? list[0];
       // Nothing saved, or the saved repository is gone: show the first one.
-      if (!first && list[0]) setView({ kind: "page", repo: list[0].path, page: "" });
+      if (!first && list[0] && shown.kind !== "inbox") setView({ kind: "page", repo: list[0].path, page: "" });
       if (target) {
         if (target.status === "ready") void reload(target.path);
         else void backend.start(target.path).then((r) => setRepos((all) => all.map((x) => (x.path === r.path ? r : x))));

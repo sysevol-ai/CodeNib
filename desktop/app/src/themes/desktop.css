@@ -410,3 +410,19 @@ body {
   display: block;
   padding-left: 16px;
 }
+
+/* ---------- review on its own page ---------- */
+.review-page {
+  max-width: 880px;
+  padding: 44px 48px 96px 72px;
+}
+
+.review-summary {
+  margin-top: 8px;
+}
+
+.review-all {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}

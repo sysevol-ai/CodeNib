@@ -53,7 +53,7 @@ for (const name of engines) {
     await context.addInitScript(mock);
     const page = await context.newPage();
     const errors = [];
-    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("pageerror", (e) => !/access control checks/.test(e.message) && errors.push(e.message));
     // WebKit reports fetches cut off by a reload as access-control errors.
     page.on("console", (m) => m.type() === "error" && !/access control checks/.test(m.text()) && errors.push(m.text()));
     await page.goto(base);

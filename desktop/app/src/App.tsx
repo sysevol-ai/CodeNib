@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { AddRepoDialog } from "@/components/app/AddRepoDialog";
 import { AppSidebar } from "@/components/app/AppSidebar";
 import { CommandPalette } from "@/components/app/CommandPalette";
+import { InboxView } from "@/components/app/InboxView";
+import { ReviewView } from "@/components/app/ReviewView";
 import { Opening, Welcome } from "@/components/app/Screens";
 import { Toolbar } from "@/components/app/Toolbar";
 import { WikiView } from "@/components/app/WikiView";
@@ -45,6 +47,21 @@ function PageScreen({ repo, page }: { repo: string; page: string }) {
   );
 }
 
+function ReviewScreen({ repo, task }: { repo: string; task: string }) {
+  const { repos, data } = useStore();
+  const entry = repos.find((r) => r.path === repo);
+  if (!entry) return <Welcome />;
+  if (entry.status !== "ready" || !data[repo]?.notes) return <Opening repo={entry} />;
+  return (
+    <>
+      <Toolbar parts={[entry.name, "Review the change"]} />
+      <ScrollArea className="main-scroll">
+        <ReviewView key={task} repo={repo} taskId={task} />
+      </ScrollArea>
+    </>
+  );
+}
+
 function Shell() {
   const { view, setPalette, palette, chooseFolder } = useStore();
 
@@ -70,7 +87,16 @@ function Shell() {
         <AppSidebar />
         <main className="window-main">
           {view.kind === "page" && <PageScreen repo={view.repo} page={view.page} />}
-          {(view.kind === "home" || view.kind === "inbox" || view.kind === "review" || view.kind === "map" || view.kind === "impact" || view.kind === "walkthrough") && (
+          {view.kind === "inbox" && (
+            <>
+              <Toolbar parts={["Inbox"]} />
+              <ScrollArea className="main-scroll">
+                <InboxView />
+              </ScrollArea>
+            </>
+          )}
+          {view.kind === "review" && <ReviewScreen repo={view.repo} task={view.task} />}
+          {(view.kind === "home" || view.kind === "map" || view.kind === "impact" || view.kind === "walkthrough") && (
             <>
               <Toolbar parts={["CodeNib"]} />
               <Welcome />
