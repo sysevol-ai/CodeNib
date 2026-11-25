@@ -21,6 +21,7 @@ from types import SimpleNamespace
 import pytest
 
 import codenib._contained_source as contained_source_module
+import codenib._system_links as system_links_module
 import codenib._windows_fs_authority as windows_fs_module
 import codenib.source_fingerprint as source_fingerprint_module
 from codenib.artifacts.runtime import SourceBindingCleanupOwner
@@ -6294,7 +6295,7 @@ def _mac_tree(**extra: tuple[int, int]) -> _FakeTree:
 
 
 def _follow(tree: _FakeTree, path: str) -> Path:
-    return source_fingerprint_module._follow_system_links(
+    return system_links_module.follow_system_links(
         Path(path), lstat=tree.lstat, readlink=tree.readlink
     )
 
@@ -6354,3 +6355,24 @@ def test_lexical_repository_path_is_unchanged_without_system_links(
     assert source_fingerprint_module.lexical_repository_path(
         tmp_path / "user-link"
     ) == Path(os.path.abspath(tmp_path / "user-link"))
+
+
+def test_publication_paths_follow_the_same_system_links(monkeypatch) -> None:
+    import codenib._atomic_directory as atomic_directory
+
+    tree = _mac_tree()
+    monkeypatch.setattr(
+        atomic_directory,
+        "follow_system_links",
+        lambda path: system_links_module.follow_system_links(
+            path, lstat=tree.lstat, readlink=tree.readlink
+        ),
+    )
+
+    # `codenib artifact pack --output $TMPDIR/...` publishes under /private.
+    assert atomic_directory.lexical_directory_path(
+        Path("/var/folders/9d/repo/out")
+    ) == Path("/private/var/folders/9d/repo/out")
+    assert atomic_directory.lexical_directory_path(Path("/Users/me/code/out")) == Path(
+        "/Users/me/code/out"
+    )

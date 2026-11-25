@@ -21,47 +21,40 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Iterator, Mapping, TypeVar
 
-from ._contained_source import (
-    SECURE_CONTAINED_SYMLINKS,
-    _arm_or_reuse_descriptor_close_cookie,
-    _attach_source_cleanup_owner,
-    _binding_identity,
-    _descriptor_has_close_cookie,
-    _descriptor_ownership_identity,
-    _discard_descriptor_close_cookie,
-    _identity_is_reliable,
-    _inherit_source_cleanup_owner,
-    _open_windows_pinned_repository_root,
-    _resolved_repository_file_at,
-    _resolved_windows_repository_file_at,
-    _SourceCleanupSlot,
-    _verify_windows_pinned_repository_root,
-    _version_identity,
-    _windows_binding_identity,
-    _windows_entry_is_reparse,
-    _windows_find_child,
-    _windows_identity_is_reliable,
-    _windows_link_target_text,
-    _windows_metadata_is_reparse,
-    _windows_open_child,
-    _windows_version_identity,
-)
-from ._windows_fs_authority import (
-    IO_REPARSE_TAG_SYMLINK as _WINDOWS_IO_REPARSE_TAG_SYMLINK,
-)
-from ._windows_fs_authority import WindowsDirectoryEntry as _WindowsDirectoryEntry
-from ._windows_fs_authority import WindowsHandleMetadata as _WindowsHandleMetadata
+from ._contained_source import (SECURE_CONTAINED_SYMLINKS,
+                                _arm_or_reuse_descriptor_close_cookie,
+                                _attach_source_cleanup_owner,
+                                _binding_identity,
+                                _descriptor_has_close_cookie,
+                                _descriptor_ownership_identity,
+                                _discard_descriptor_close_cookie,
+                                _identity_is_reliable,
+                                _inherit_source_cleanup_owner,
+                                _open_windows_pinned_repository_root,
+                                _resolved_repository_file_at,
+                                _resolved_windows_repository_file_at,
+                                _SourceCleanupSlot,
+                                _verify_windows_pinned_repository_root,
+                                _version_identity, _windows_binding_identity,
+                                _windows_entry_is_reparse, _windows_find_child,
+                                _windows_identity_is_reliable,
+                                _windows_link_target_text,
+                                _windows_metadata_is_reparse,
+                                _windows_open_child, _windows_version_identity)
+from ._system_links import follow_system_links
+from ._windows_fs_authority import \
+    IO_REPARSE_TAG_SYMLINK as _WINDOWS_IO_REPARSE_TAG_SYMLINK
+from ._windows_fs_authority import \
+    WindowsDirectoryEntry as _WindowsDirectoryEntry
+from ._windows_fs_authority import \
+    WindowsHandleMetadata as _WindowsHandleMetadata
 from ._windows_fs_authority import WindowsKernelApi as _WindowsKernelApi
 from ._windows_fs_authority import WindowsReparsePoint as _WindowsReparsePoint
 from ._windows_fs_authority import _WindowsHandleCleanup
-from .repository_filters import (
-    REPOSITORY_FILTER_POLICY_VERSION,
-    repository_path_is_visible,
-)
-from .repository_source_selection import (
-    DEFAULT_REPOSITORY_SOURCE_SELECTION,
-    RepositorySourceSelection,
-)
+from .repository_filters import (REPOSITORY_FILTER_POLICY_VERSION,
+                                 repository_path_is_visible)
+from .repository_source_selection import (DEFAULT_REPOSITORY_SOURCE_SELECTION,
+                                          RepositorySourceSelection)
 
 SOURCE_FINGERPRINT_VERSION = 2
 
@@ -2006,80 +1999,14 @@ def lexical_repository_path(value: str | Path) -> Path:
     """Return an absolute repository path without following replaceable links.
 
     Links that only the system administrator can replace are followed (see
-    ``_follow_system_links``); every other link stays in the path, where
+    ``follow_system_links``); every other link stays in the path, where
     pinning the repository root refuses it.
     """
 
     path = Path(os.path.abspath(os.path.expanduser(os.fspath(value))))
     if os.name != "posix":
         return path
-    return _follow_system_links(path)
-
-
-# A system link that leads to another system link is followed this many times.
-_MAX_SYSTEM_LINK_HOPS = 8
-
-
-def _replaceable_only_by_root(link: os.stat_result, parent: os.stat_result) -> bool:
-    """True when only root can change the link or swap it for another entry."""
-
-    return (
-        link.st_uid == 0
-        and parent.st_uid == 0
-        and stat.S_ISDIR(parent.st_mode)
-        and not parent.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
-    )
-
-
-def _follow_system_links(
-    path: Path,
-    *,
-    lstat: Callable[[str], os.stat_result] = os.lstat,
-    readlink: Callable[[str], str] = os.readlink,
-) -> Path:
-    """Follow the ancestor links that only root can replace.
-
-    macOS ships ``/var``, ``/tmp`` and ``/etc`` as root-owned links into
-    ``/private``, so every temporary directory and ``$TMPDIR`` lies behind
-    one. Whoever can replace such a link already controls the machine, so
-    following it widens nothing a replaceable link could redirect. The walk
-    stops at the first link anyone else could replace, and at a missing
-    component; the rest of the path is kept as written.
-    """
-
-    parts = path.parts
-    current = Path(parts[0])
-    index = 1
-    hops = 0
-    while index < len(parts):
-        candidate = current / parts[index]
-        try:
-            metadata = lstat(os.fspath(candidate))
-        except OSError:
-            break
-        if not stat.S_ISLNK(metadata.st_mode):
-            current = candidate
-            index += 1
-            continue
-        try:
-            parent = lstat(os.fspath(current))
-        except OSError:
-            break
-        if hops >= _MAX_SYSTEM_LINK_HOPS or not _replaceable_only_by_root(
-            metadata, parent
-        ):
-            break
-        try:
-            target = readlink(os.fspath(candidate))
-        except OSError:
-            break
-        hops += 1
-        # ``current`` holds no links, so ".." in the target is lexical here.
-        resolved = Path(os.path.normpath(os.path.join(current, target)))
-        parts = resolved.parts + parts[index + 1 :]
-        current = Path(parts[0])
-        index = 1
-    return Path(current, *parts[index:])
+    return follow_system_links(path)
 
 
 def _lexical_windows_repository_path(value: str | Path) -> Path:
