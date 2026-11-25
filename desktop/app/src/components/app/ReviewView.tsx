@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Kbd } from "@/components/ui/kbd";
 import { message } from "@/lib/backend";
-import { ago, taskNeed, taskTitle } from "@/lib/model";
+import { agentName, ago, taskNeed, taskTitle } from "@/lib/model";
 import { repoPath, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { CodeLine } from "./CodeLines";
@@ -121,7 +121,7 @@ export function ReviewView({ repo, taskId }: { repo: string; taskId: string }) {
         </div>
         <h2 className="review-title">{task ? taskTitle(task, annotations) : "A change"}</h2>
         <p className="review-sub">
-          Claude Code changed {files.size} {files.size === 1 ? "file" : "files"} in a separate worktree. Your working
+          {agentName(task?.agent)} changed {files.size} {files.size === 1 ? "file" : "files"} in a separate worktree. Your working
           tree stays as it is until you apply.
           {asked?.on.page && (
             <>

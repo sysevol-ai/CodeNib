@@ -71,6 +71,8 @@ export interface Annotation {
 
 export interface Task {
   id: string;
+  /** The agent that ran it: "claude-code" or "codex". */
+  agent?: string;
   inputs: string[];
   kind: "question" | "change";
   status: "queued" | "running" | "needs_review" | "done" | "rejected" | "failed";
@@ -80,6 +82,13 @@ export interface Task {
   results: string[];
   progress: string;
   diff?: { files?: string[]; stat?: string };
+}
+
+const AGENT_NAMES: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex" };
+
+/** "Claude Code" or "Codex" for an agent id. */
+export function agentName(id: string | undefined | null): string {
+  return AGENT_NAMES[id ?? ""] ?? "Claude Code";
 }
 
 export interface Agent {

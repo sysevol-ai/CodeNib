@@ -115,7 +115,7 @@ export function InboxView() {
         </div>
         <p className="inbox-sub">
           {rows.length === 0
-            ? "Ask about a paragraph or request a change on any page; Claude Code's answers and changes land here."
+            ? "Ask about a paragraph or request a change on any page; your agent's answers and changes land here."
             : `Tasks from ${repos.length === 1 ? "your repository" : `your ${repos.length} repositories`} on this Mac, newest first.`}
         </p>
 

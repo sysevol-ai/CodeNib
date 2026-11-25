@@ -3,7 +3,17 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { backend, listen, message, type Progress, type RepoView, type Setup } from "./backend";
+import {
+  backend,
+  listen,
+  message,
+  type AgentStatus,
+  type GitHubStatus,
+  type Progress,
+  type RepoView,
+  type Setup,
+  type WriterId,
+} from "./backend";
 import { deriveFileAreas, type FileAreas, type FileEdge, type FileNode, type MapArea } from "./areas";
 import type { NotesState, RepoInfo, Tree } from "./model";
 
@@ -36,15 +46,31 @@ interface Store {
   reload: (path: string) => Promise<void>;
   refreshNotes: (path: string) => Promise<void>;
   call: <T>(path: string, method: string, apiPath: string, body?: unknown) => Promise<T>;
-  addFolder: string | null;
-  setAddFolder: (path: string | null) => void;
+  /** The add-a-repository dialog, when it is open. */
+  adding: Adding | null;
+  setAdding: (adding: Adding | null) => void;
+  /** Pick a folder, then show the dialog for it. */
   chooseFolder: () => Promise<void>;
-  addRepository: (path: string, analysis: boolean, generate: boolean) => Promise<void>;
+  /** Show the dialog on its GitHub side, with a name or address filled in. */
+  openFromGitHub: (input?: string) => void;
+  addRepository: (path: string, analysis: boolean, writer: WriterId | null) => Promise<void>;
+  /** Claude Code and Codex on this Mac; null until first checked. */
+  agents: AgentStatus[] | null;
+  github: GitHubStatus | null;
+  setGithub: (status: GitHubStatus) => void;
+  refreshAccounts: () => Promise<void>;
+  accountsOpen: boolean;
+  setAccountsOpen: (open: boolean) => void;
+  /** The agent questions and changes go to. */
+  taskAgent: WriterId;
+  setTaskAgent: (id: WriterId) => void;
   removeRepository: (path: string) => Promise<void>;
   restart: (path: string) => Promise<void>;
   palette: { open: boolean; ask?: string };
   setPalette: (palette: { open: boolean; ask?: string }) => void;
 }
+
+export type Adding = { tab: "folder"; folder: string | null } | { tab: "github"; input: string };
 
 const StoreContext = createContext<Store | null>(null);
 
@@ -56,6 +82,7 @@ export function useStore(): Store {
 
 const LAST = "codenib.last-view";
 const LINES = 40;
+const TASK_AGENT = "codenib.task-agent";
 
 function savedView(): View {
   try {
@@ -80,7 +107,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Record<string, RepoData>>({});
   const [lines, setLines] = useState<Record<string, string[]>>({});
   const [view, setView] = useState<View>(savedView);
-  const [addFolder, setAddFolder] = useState<string | null>(null);
+  const [adding, setAdding] = useState<Adding | null>(null);
+  const [agents, setAgents] = useState<AgentStatus[] | null>(null);
+  const [github, setGithub] = useState<GitHubStatus | null>(null);
+  const [accountsOpen, setAccountsOpen] = useState(false);
+  const [chosenAgent, setChosenAgent] = useState<WriterId | null>(() => {
+    try {
+      const saved = localStorage.getItem(TASK_AGENT);
+      return saved === "claude-code" || saved === "codex" ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+  // Without a choice: the first agent that is signed in, Claude Code first.
+  const taskAgent: WriterId =
+    chosenAgent ?? agents?.find((a) => a.installed && a.signed_in)?.id ?? "claude-code";
+  const setTaskAgent = useCallback((id: WriterId) => {
+    setChosenAgent(id);
+    try {
+      localStorage.setItem(TASK_AGENT, id);
+    } catch {
+      // The choice still holds until the app quits.
+    }
+  }, []);
   const [palette, setPalette] = useState<{ open: boolean; ask?: string }>({ open: false });
   const loading = useRef(new Set<string>());
   const dataRef = useRef(data);
@@ -235,12 +284,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const chooseFolder = useCallback(async () => {
     const folder = await backend.pickFolder();
-    if (folder) setAddFolder(folder);
+    if (folder) setAdding({ tab: "folder", folder });
   }, []);
 
+  const openFromGitHub = useCallback((input = "") => setAdding({ tab: "github", input }), []);
+
+  const refreshAccounts = useCallback(async () => {
+    await Promise.all([
+      backend
+        .agents()
+        .then(setAgents)
+        .catch(() => setAgents([])),
+      backend
+        .github()
+        .then(setGithub)
+        .catch(() => setGithub(null)),
+    ]);
+  }, []);
+
+  // Sign-ins change outside the app (in Terminal, on github.com): check on
+  // start and whenever the window comes back to the front.
+  useEffect(() => {
+    void refreshAccounts();
+    const onFocus = () => void refreshAccounts();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshAccounts]);
+
   const addRepository = useCallback(
-    async (path: string, analysis: boolean, generate: boolean) => {
-      const added = await backend.add(path, analysis, generate);
+    async (path: string, analysis: boolean, writer: WriterId | null) => {
+      const added = await backend.add(path, analysis, writer);
       setRepos((all) => [...all.filter((r) => r.path !== path), added]);
       setLines((all) => ({ ...all, [path]: [] }));
       setData((all) => {
@@ -281,16 +354,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reload,
       refreshNotes,
       call,
-      addFolder,
-      setAddFolder,
+      adding,
+      setAdding,
       chooseFolder,
+      openFromGitHub,
       addRepository,
+      agents,
+      github,
+      setGithub,
+      refreshAccounts,
+      accountsOpen,
+      setAccountsOpen,
+      taskAgent,
+      setTaskAgent,
       removeRepository,
       restart,
       palette,
       setPalette,
     }),
-    [setup, repos, data, lines, view, go, open, reload, refreshNotes, call, addFolder, chooseFolder, addRepository, removeRepository, restart, palette],
+    [
+      setup,
+      repos,
+      data,
+      lines,
+      view,
+      go,
+      open,
+      reload,
+      refreshNotes,
+      call,
+      adding,
+      chooseFolder,
+      openFromGitHub,
+      addRepository,
+      agents,
+      github,
+      refreshAccounts,
+      accountsOpen,
+      taskAgent,
+      setTaskAgent,
+      removeRepository,
+      restart,
+      palette,
+    ],
   );
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;

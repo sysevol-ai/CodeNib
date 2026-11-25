@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
-import { message } from "@/lib/backend";
-import { ago, taskNeed, type Anchor, type Annotation, type Page, type Task } from "@/lib/model";
+import { message, type AgentStatus, type WriterId } from "@/lib/backend";
+import { agentName, ago, taskNeed, type Anchor, type Annotation, type Page, type Task } from "@/lib/model";
 import { repoPath, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Markdown, splitBlocks } from "./markdown";
@@ -21,7 +21,7 @@ import { StatusMark } from "./StatusMark";
 export type Kind = "ask" | "change" | "note";
 
 const KIND: Record<Kind, { api: "question" | "change" | "note"; placeholder: string; send: string }> = {
-  ask: { api: "question", placeholder: "Ask Claude Code about this", send: "Ask" },
+  ask: { api: "question", placeholder: "Ask about this", send: "Ask" },
   change: { api: "change", placeholder: "Describe the change you want", send: "Request change" },
   note: { api: "note", placeholder: "Write a note that every later task on this page reads", send: "Save note" },
 };
@@ -41,19 +41,27 @@ function plain(markdown: string): string {
   );
 }
 
-/** Save an annotation and, for a question or a change, send it to Claude Code. */
+/** Why the chosen agent cannot take a task now, or null when it can. */
+export function agentProblem(agents: AgentStatus[] | null, id: WriterId): string | null {
+  const agent = agents?.find((a) => a.id === id);
+  if (!agents || !agent) return null;
+  if (!agent.installed) return `${agent.name} is not installed on this Mac. Open Accounts to install it.`;
+  if (!agent.signed_in) return `${agent.name} is not signed in. Open Accounts to sign in.`;
+  return null;
+}
+
+/** Save an annotation and, for a question or a change, send it to the chosen agent. */
 export function useAnnotate(repo: string) {
-  const { data, call, refreshNotes } = useStore();
+  const { data, call, refreshNotes, agents, taskAgent, setAccountsOpen } = useStore();
   return useCallback(
     async (kind: Kind, text: string, on: Anchor, replyTo?: string) => {
       const d = data[repo];
       const base = repoPath(d, "");
       if (!base) throw new Error("This repository is not open yet");
-      const claude = d?.notes?.agents.find((a) => a.id === "claude-code");
-      if (kind !== "note" && claude && !claude.available) {
-        throw new Error(
-          `Claude Code is not installed on this Mac. Install it with ${claude.install ?? "npm install -g @anthropic-ai/claude-code"}, sign in, then try again.`,
-        );
+      const problem = kind === "note" ? null : agentProblem(agents, taskAgent);
+      if (problem) {
+        setAccountsOpen(true);
+        throw new Error(problem);
       }
       const created = await call<Annotation>(repo, "POST", `${base}/annotations`, {
         kind: KIND[kind].api,
@@ -62,12 +70,12 @@ export function useAnnotate(repo: string) {
         reply_to: replyTo ?? null,
       });
       if (kind !== "note") {
-        await call<Task>(repo, "POST", `${base}/tasks`, { annotations: [created.id] });
+        await call<Task>(repo, "POST", `${base}/tasks`, { annotations: [created.id], agent: taskAgent });
       }
       await refreshNotes(repo);
       return created;
     },
-    [repo, data, call, refreshNotes],
+    [repo, data, call, refreshNotes, agents, taskAgent, setAccountsOpen],
   );
 }
 
@@ -82,6 +90,8 @@ export function Composer({
   onClose: () => void;
   initial?: string;
 }) {
+  const { taskAgent } = useStore();
+  const who = agentName(taskAgent);
   const [text, setText] = useState(initial);
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -118,7 +128,7 @@ export function Composer({
       />
       <div className="composer-row">
         <span className="composer-hint">
-          {kind === "note" ? "Saved in the repository's .codenib/notes/." : "Runs on your Claude Code, on this Mac."}{" "}
+          {kind === "note" ? "Saved in the repository's .codenib/notes/." : `Runs on your ${who}, on this Mac.`}{" "}
           <Kbd>⌘</Kbd>
           <Kbd>Enter</Kbd>
         </span>
@@ -241,8 +251,9 @@ function whoLine(a: Annotation): string {
 }
 
 function NoteThread({ repo, thread, onReview }: { repo: string; thread: Thread; onReview: (task: string) => void }) {
-  const { data, call, refreshNotes } = useStore();
+  const { data, call, refreshNotes, taskAgent } = useStore();
   const annotate = useAnnotate(repo);
+  const doer = agentName(thread.task?.agent ?? taskAgent);
   const [replying, setReplying] = useState(false);
   const { root, replies, task } = thread;
   const all = [root, ...replies];
@@ -262,7 +273,10 @@ function NoteThread({ repo, thread, onReview }: { repo: string; thread: Thread; 
     if (!base) return;
     const pending = all.filter((a) => a.author === "human" && ["draft", "failed"].includes(a.status));
     try {
-      await call(repo, "POST", `${base}/tasks`, { annotations: (pending.length ? pending : [root]).map((a) => a.id) });
+      await call(repo, "POST", `${base}/tasks`, {
+        annotations: (pending.length ? pending : [root]).map((a) => a.id),
+        agent: taskAgent,
+      });
       await refreshNotes(repo);
     } catch (error) {
       toast.error(message(error));
@@ -282,7 +296,7 @@ function NoteThread({ repo, thread, onReview }: { repo: string; thread: Thread; 
           </div>
         ) : (
           <div key={a.id}>
-            <div className="note-who">{a.kind === "summary" ? "Claude Code made the change" : "Claude Code answered"}</div>
+            <div className="note-who">{a.kind === "summary" ? `${doer} made the change` : `${doer} answered`}</div>
             <div className="note-text note-md">
               <Markdown text={a.text} />
             </div>
@@ -292,14 +306,14 @@ function NoteThread({ repo, thread, onReview }: { repo: string; thread: Thread; 
       {task && (task.status === "queued" || task.status === "running") && (
         <div className="note-who note-working">
           <StatusMark status="working" />
-          {task.progress || (task.status === "queued" ? "Waiting for Claude Code" : "Claude Code is working")}
+          {task.progress || (task.status === "queued" ? `Waiting for ${doer}` : `${doer} is working`)}
         </div>
       )}
       {task?.status === "failed" && (
         <div className="note-failed">
           <div className="note-who">
             <StatusMark status="failed" />
-            Claude Code could not finish
+            {doer} could not finish
           </div>
           {task.error && <p className="note-text">{task.error}</p>}
           <Button variant="outline" size="sm" onClick={() => void resend()}>
@@ -311,7 +325,7 @@ function NoteThread({ repo, thread, onReview }: { repo: string; thread: Thread; 
       {root.status === "draft" && !task && (
         <div className="note-cta">
           <Button variant="outline" size="sm" onClick={() => void resend()}>
-            Send to Claude Code
+            Send to {agentName(taskAgent)}
           </Button>
         </div>
       )}
@@ -369,7 +383,8 @@ function anchorBlock(root: HTMLElement, on: Anchor): HTMLElement | null {
 }
 
 export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: string; onReview: (task: string) => void }) {
-  const { data, call, go, palette, setPalette } = useStore();
+  const { data, call, go, palette, setPalette, taskAgent } = useStore();
+  const who = agentName(taskAgent);
   const d = data[repo];
   const [page, setPage] = useState<Page | null>(null);
   const [error, setError] = useState("");
@@ -490,7 +505,9 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
   const meta = isDoc
     ? `Docs · from the repository`
     : `Analysis · ${d?.info?.repo ?? ""}${d?.info?.commit_short ? ` at ${d.info.commit_short}` : ""} · ${
-        generated ? "written by Claude Code" : "built from the index on this Mac"
+        generated
+          ? `written by ${page.generation?.model?.startsWith("codex") ? "Codex" : "Claude Code"}`
+          : "built from the index on this Mac"
       }`;
   let section = "";
   const onPage = (next: string) => go({ kind: "page", repo, page: next });
@@ -511,7 +528,7 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
             quote: plain(text).slice(0, 160),
             block: plain(text).slice(0, 600),
           });
-          toast(composing.kind === "note" ? "Note saved in .codenib/notes/" : "Sent to Claude Code on this Mac");
+          toast(composing.kind === "note" ? "Note saved in .codenib/notes/" : `Sent to ${who} on this Mac`);
         }}
       />
     ) : null;
@@ -569,7 +586,7 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
       <div className="notes" aria-label="Notes on this page">
         {threads.length === 0 && (
           <p className="notes-empty">
-            Point at a paragraph and use its handle to ask Claude Code, request a change or leave a note.
+            Point at a paragraph and use its handle to ask {who}, request a change or leave a note.
           </p>
         )}
         {threads.map((thread) => (
