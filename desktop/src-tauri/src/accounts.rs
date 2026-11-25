@@ -129,7 +129,10 @@ pub fn claude_detail(json: &str) -> (bool, Option<String>) {
     let Ok(value) = serde_json::from_str::<Value>(json) else {
         return (false, None);
     };
-    let signed_in = value.get("loggedIn").and_then(Value::as_bool).unwrap_or(false);
+    let signed_in = value
+        .get("loggedIn")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     if !signed_in {
         return (false, None);
     }
@@ -137,7 +140,10 @@ pub fn claude_detail(json: &str) -> (bool, Option<String>) {
         .get("subscriptionType")
         .and_then(Value::as_str)
         .filter(|plan| !plan.is_empty());
-    let method = value.get("authMethod").and_then(Value::as_str).unwrap_or("");
+    let method = value
+        .get("authMethod")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let detail = match (plan, method) {
         (Some(plan), _) => {
             let mut letters = plan.chars();
@@ -223,7 +229,11 @@ fn applescript_quote(text: &str) -> String {
 pub fn sign_in(agent: Agent, search: &str) -> Result<(), String> {
     let path = find(search, agent.program())
         .ok_or_else(|| format!("{} is not installed", agent.name()))?;
-    let mut line = format!("export PATH={}; {}", shell_quote(search), shell_quote(&path.display().to_string()));
+    let mut line = format!(
+        "export PATH={}; {}",
+        shell_quote(search),
+        shell_quote(&path.display().to_string())
+    );
     for arg in agent.login_args() {
         line.push(' ');
         line.push_str(&shell_quote(arg));
@@ -262,7 +272,9 @@ mod tests {
 
     #[test]
     fn reads_claude_code_sign_in() {
-        let (yes, detail) = claude_detail(r#"{"loggedIn": true, "authMethod": "claude.ai", "subscriptionType": "max"}"#);
+        let (yes, detail) = claude_detail(
+            r#"{"loggedIn": true, "authMethod": "claude.ai", "subscriptionType": "max"}"#,
+        );
         assert!(yes);
         assert_eq!(detail.as_deref(), Some("Claude Max plan"));
         let (yes, detail) = claude_detail(r#"{"loggedIn": true, "authMethod": "apiKey"}"#);
@@ -290,6 +302,9 @@ mod tests {
     fn quotes_commands_for_terminal() {
         assert_eq!(shell_quote("a b"), "'a b'");
         assert_eq!(shell_quote("it's"), r"'it'\''s'");
-        assert_eq!(applescript_quote(r#"say "hi" \ now"#), r#""say \"hi\" \\ now""#);
+        assert_eq!(
+            applescript_quote(r#"say "hi" \ now"#),
+            r#""say \"hi\" \\ now""#
+        );
     }
 }

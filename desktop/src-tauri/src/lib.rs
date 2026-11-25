@@ -12,13 +12,13 @@ mod accounts;
 mod github;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -398,7 +398,10 @@ fn announce(app: &AppHandle, path: &str) {
 fn start_backend(app: &AppHandle, config: &RepoConfig) -> Result<(), String> {
     let state = app.state::<State>();
     {
-        let backends = state.backends.lock().map_err(|_| "app state is unavailable")?;
+        let backends = state
+            .backends
+            .lock()
+            .map_err(|_| "app state is unavailable")?;
         if let Some(backend) = backends.get(&config.path) {
             if matches!(backend.status, Status::Starting | Status::Ready) {
                 return Ok(());
@@ -435,7 +438,10 @@ fn start_backend(app: &AppHandle, config: &RepoConfig) -> Result<(), String> {
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     {
-        let mut backends = state.backends.lock().map_err(|_| "app state is unavailable")?;
+        let mut backends = state
+            .backends
+            .lock()
+            .map_err(|_| "app state is unavailable")?;
         let mut backend = Backend::stopped();
         backend.status = Status::Starting;
         backend.child = Some(child);
@@ -533,7 +539,9 @@ fn stop_backend(app: &AppHandle, path: &str) {
     let child = {
         let state = app.state::<State>();
         let mut backends = state.backends.lock().unwrap_or_else(|e| e.into_inner());
-        backends.remove(path).and_then(|mut backend| backend.child.take())
+        backends
+            .remove(path)
+            .and_then(|mut backend| backend.child.take())
     };
     if let Some(child) = child {
         stop(child);
@@ -581,7 +589,11 @@ async fn setup_status(app: AppHandle) -> Setup {
 #[tauri::command]
 fn repositories(app: AppHandle) -> Vec<RepoView> {
     let state = app.state::<State>();
-    let repos = state.repos.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let repos = state
+        .repos
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
     repos.iter().map(|repo| view(&state, repo)).collect()
 }
 
@@ -678,7 +690,10 @@ async fn api(
     }
     let (port, session) = {
         let state = app.state::<State>();
-        let backends = state.backends.lock().map_err(|_| "app state is unavailable")?;
+        let backends = state
+            .backends
+            .lock()
+            .map_err(|_| "app state is unavailable")?;
         match backends.get(&repo) {
             Some(backend) if backend.status == Status::Ready => {
                 (backend.api_port, backend.session.clone())
@@ -788,19 +803,27 @@ async fn github_device_start(app: AppHandle) -> Result<github::DeviceCode, Strin
     let code = tauri::async_runtime::spawn_blocking(github::device_start)
         .await
         .map_err(|e| e.to_string())??;
-    app.state::<State>().device_cancel.store(false, Ordering::SeqCst);
+    app.state::<State>()
+        .device_cancel
+        .store(false, Ordering::SeqCst);
     let _ = open_external(code.verification_uri.clone());
     Ok(code)
 }
 
 /// Wait until the person approves the code on github.com.
 #[tauri::command]
-async fn github_device_wait(app: AppHandle, code: github::DeviceCode) -> Result<github::Status, String> {
+async fn github_device_wait(
+    app: AppHandle,
+    code: github::DeviceCode,
+) -> Result<github::Status, String> {
     let device = code;
     let waiting = app.clone();
     let token = tauri::async_runtime::spawn_blocking(move || {
         github::device_wait(&device, || {
-            waiting.state::<State>().device_cancel.load(Ordering::SeqCst)
+            waiting
+                .state::<State>()
+                .device_cancel
+                .load(Ordering::SeqCst)
         })
     })
     .await
@@ -813,7 +836,9 @@ async fn github_device_wait(app: AppHandle, code: github::DeviceCode) -> Result<
 
 #[tauri::command]
 fn github_device_cancel(app: AppHandle) {
-    app.state::<State>().device_cancel.store(true, Ordering::SeqCst);
+    app.state::<State>()
+        .device_cancel
+        .store(true, Ordering::SeqCst);
 }
 
 /// The signed-in person's repositories, most recently pushed first.
@@ -843,10 +868,15 @@ struct Lookup {
 async fn github_lookup(app: AppHandle, input: String) -> Result<Lookup, String> {
     let slug = github::parse_slug(&input)
         .ok_or("Enter a GitHub repository as owner/repo or its github.com address")?;
-    let token = app.state::<State>().github.token(&search_path()).map(|(t, _)| t);
-    let repository = tauri::async_runtime::spawn_blocking(move || github::lookup(&slug, token.as_deref()))
-        .await
-        .map_err(|e| e.to_string())??;
+    let token = app
+        .state::<State>()
+        .github
+        .token(&search_path())
+        .map(|(t, _)| t);
+    let repository =
+        tauri::async_runtime::spawn_blocking(move || github::lookup(&slug, token.as_deref()))
+            .await
+            .map_err(|e| e.to_string())??;
     let destination = github::clone_destination(&repository.full_name)?;
     Ok(Lookup {
         present: destination.join(".git").is_dir(),
@@ -972,6 +1002,59 @@ pub fn run() {
         });
 }
 
+// Entry points for tests/live.rs, which runs against the real GitHub.
+#[doc(hidden)]
+pub fn github_session() -> github::Session {
+    github::Session::default()
+}
+
+#[doc(hidden)]
+pub fn github_status_for_test(session: &github::Session, search: &str) -> github::Status {
+    github::status(session, search)
+}
+
+#[doc(hidden)]
+pub fn github_lookup_for_test(input: &str, token: Option<&str>) -> Result<(String, bool), String> {
+    let slug = github::parse_slug(input).ok_or("not a repository")?;
+    github::lookup(&slug, token).map(|r| (r.full_name, r.private))
+}
+
+#[doc(hidden)]
+pub fn clone_for_test(
+    slug: &str,
+    destination: &Path,
+    token: Option<&str>,
+    search: &str,
+    progress: impl FnMut(String),
+) -> Result<(), String> {
+    github::clone(slug, destination, token, search, progress)
+}
+
+#[doc(hidden)]
+pub fn agents_for_test(search: &str) -> Vec<String> {
+    [accounts::Agent::ClaudeCode, accounts::Agent::Codex]
+        .into_iter()
+        .map(|agent| {
+            let s = accounts::status(agent, search);
+            format!(
+                "{}: installed={} signed_in={} detail={:?}",
+                s.name, s.installed, s.signed_in, s.detail
+            )
+        })
+        .collect()
+}
+
+#[doc(hidden)]
+pub fn github_token_for_test(session: &github::Session, search: &str) -> Option<String> {
+    session.token(search).map(|(token, _)| token)
+}
+
+#[doc(hidden)]
+pub fn github_repositories_for_test(token: &str) -> Result<Vec<(String, bool)>, String> {
+    github::repositories(token)
+        .map(|list| list.into_iter().map(|r| (r.full_name, r.private)).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1004,7 +1087,10 @@ mod tests {
             session_key("http://127.0.0.1:3190/repo?session=abc_DEF-1"),
             Some("abc_DEF-1")
         );
-        assert_eq!(session_key("http://127.0.0.1:3190/repo?x=1&session=k"), Some("k"));
+        assert_eq!(
+            session_key("http://127.0.0.1:3190/repo?x=1&session=k"),
+            Some("k")
+        );
         assert_eq!(session_key("http://127.0.0.1:3190/repo"), None);
         assert_eq!(session_key("http://127.0.0.1:3190/repo?session=a b"), None);
     }
@@ -1028,7 +1114,8 @@ mod tests {
 
     #[test]
     fn saved_repositories_default_to_building_analysis_tools() {
-        let repos: Vec<RepoConfig> = serde_json::from_str(r#"[{"path": "/Users/me/code/x"}]"#).unwrap();
+        let repos: Vec<RepoConfig> =
+            serde_json::from_str(r#"[{"path": "/Users/me/code/x"}]"#).unwrap();
         assert!(repos[0].analysis);
         assert!(!repos[0].generate);
     }

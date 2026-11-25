@@ -94,8 +94,9 @@ impl Session {
             }
         }
         let fresh = find_token(search);
-        *self.found.lock().unwrap_or_else(|e| e.into_inner()) =
-            fresh.clone().map(|(token, source)| (token, source, Instant::now()));
+        *self.found.lock().unwrap_or_else(|e| e.into_inner()) = fresh
+            .clone()
+            .map(|(token, source)| (token, source, Instant::now()));
         fresh
     }
 }
@@ -113,7 +114,10 @@ fn keychain() -> Option<keyring::Entry> {
 }
 
 pub fn saved_token() -> Option<String> {
-    keychain()?.get_password().ok().filter(|t| !t.trim().is_empty())
+    keychain()?
+        .get_password()
+        .ok()
+        .filter(|t| !t.trim().is_empty())
 }
 
 pub fn save_token(token: &str) -> Result<(), String> {
@@ -165,7 +169,9 @@ fn quick(mut command: Command, limit: Duration) -> Option<String> {
 fn gh_token(search: &str) -> Option<String> {
     let gh = find_program(search, "gh")?;
     let mut command = Command::new(gh);
-    command.args(["auth", "token", "--hostname", "github.com"]).env("PATH", search);
+    command
+        .args(["auth", "token", "--hostname", "github.com"])
+        .env("PATH", search);
     quick(command, Duration::from_secs(5)).filter(|t| !t.is_empty())
 }
 
@@ -187,7 +193,9 @@ fn git_token(search: &str) -> Option<String> {
     {
         use std::io::Write;
         let mut stdin = child.stdin.take()?;
-        stdin.write_all(b"protocol=https\nhost=github.com\n\n").ok()?;
+        stdin
+            .write_all(b"protocol=https\nhost=github.com\n\n")
+            .ok()?;
     }
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
@@ -243,7 +251,9 @@ fn get(path: &str, token: Option<&str>) -> Result<Value, (u16, String)> {
         request = request.set("Authorization", &format!("Bearer {token}"));
     }
     match request.call() {
-        Ok(response) => response.into_json::<Value>().map_err(|e| (0, e.to_string())),
+        Ok(response) => response
+            .into_json::<Value>()
+            .map_err(|e| (0, e.to_string())),
         Err(ureq::Error::Status(code, response)) => {
             let text = response.into_string().unwrap_or_default();
             let detail = serde_json::from_str::<Value>(&text)
@@ -306,9 +316,18 @@ fn repository(value: &Value) -> Option<Repository> {
             .get("description")
             .and_then(Value::as_str)
             .map(str::to_owned),
-        private: value.get("private").and_then(Value::as_bool).unwrap_or(false),
-        pushed_at: value.get("pushed_at").and_then(Value::as_str).map(str::to_owned),
-        language: value.get("language").and_then(Value::as_str).map(str::to_owned),
+        private: value
+            .get("private")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        pushed_at: value
+            .get("pushed_at")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        language: value
+            .get("language")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
     })
 }
 
@@ -328,12 +347,10 @@ pub fn repositories(token: &str) -> Result<Vec<Repository>, String> {
 /// One repository by name, public or one the token can read.
 pub fn lookup(slug: &str, token: Option<&str>) -> Result<Repository, String> {
     let value = get(&format!("/repos/{slug}"), token).map_err(|(code, detail)| match code {
-        404 if token.is_some() => format!(
-            "{slug} was not found, or your GitHub sign-in cannot read it"
-        ),
-        404 => format!(
-            "{slug} was not found. If it is private, sign in to GitHub first"
-        ),
+        404 if token.is_some() => {
+            format!("{slug} was not found, or your GitHub sign-in cannot read it")
+        }
+        404 => format!("{slug} was not found. If it is private, sign in to GitHub first"),
         403 if detail.contains("rate limit") => {
             "GitHub's limit for signed-out requests was reached; sign in to GitHub".to_owned()
         }
@@ -403,8 +420,16 @@ fn basic_auth(token: &str) -> String {
             | u32::from(*chunk.get(2).unwrap_or(&0));
         out.push(TABLE[(n >> 18) as usize & 63] as char);
         out.push(TABLE[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 { TABLE[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if chunk.len() > 2 { TABLE[n as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 1 {
+            TABLE[(n >> 6) as usize & 63] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[n as usize & 63] as char
+        } else {
+            '='
+        });
     }
     out
 }
@@ -433,10 +458,14 @@ pub fn clone(
             .map(|mut entries| entries.next().is_some())
             .unwrap_or(true)
     {
-        return Err(format!("{} already exists and is not empty", destination.display()));
+        return Err(format!(
+            "{} already exists and is not empty",
+            destination.display()
+        ));
     }
     if let Some(parent) = destination.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("could not create {}: {e}", parent.display()))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("could not create {}: {e}", parent.display()))?;
     }
     let git = find_program(search, "git").ok_or(
         "git is not installed. Install Apple's command-line tools with `xcode-select --install`",
@@ -457,7 +486,10 @@ pub fn clone(
         command
             .env("GIT_CONFIG_COUNT", "1")
             .env("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader")
-            .env("GIT_CONFIG_VALUE_0", format!("AUTHORIZATION: basic {}", basic_auth(token)));
+            .env(
+                "GIT_CONFIG_VALUE_0",
+                format!("AUTHORIZATION: basic {}", basic_auth(token)),
+            );
     }
     let mut child = command
         .spawn()
@@ -491,12 +523,18 @@ pub fn clone(
     }
     let _ = std::fs::remove_dir_all(destination);
     let said = tail.join(" ");
-    if said.contains("could not read Username") || said.contains("Authentication failed") || said.contains("not found") {
+    if said.contains("could not read Username")
+        || said.contains("Authentication failed")
+        || said.contains("not found")
+    {
         return Err(format!(
             "GitHub did not let CodeNib read {slug}. If it is private, sign in to GitHub with an account that can see it"
         ));
     }
-    Err(format!("git clone failed: {}", tail.last().cloned().unwrap_or_default()))
+    Err(format!(
+        "git clone failed: {}",
+        tail.last().cloned().unwrap_or_default()
+    ))
 }
 
 /// Start GitHub's device sign-in: the code the person types at github.com.
@@ -512,10 +550,14 @@ pub fn device_start() -> Result<DeviceCode, String> {
     let field = |name: &str| value.get(name).and_then(Value::as_str).map(str::to_owned);
     Ok(DeviceCode {
         user_code: field("user_code").ok_or("GitHub returned no code")?,
-        verification_uri: field("verification_uri").unwrap_or_else(|| "https://github.com/login/device".to_owned()),
+        verification_uri: field("verification_uri")
+            .unwrap_or_else(|| "https://github.com/login/device".to_owned()),
         device_code: field("device_code").ok_or("GitHub returned no device code")?,
         interval: value.get("interval").and_then(Value::as_u64).unwrap_or(5),
-        expires_in: value.get("expires_in").and_then(Value::as_u64).unwrap_or(900),
+        expires_in: value
+            .get("expires_in")
+            .and_then(Value::as_u64)
+            .unwrap_or(900),
     })
 }
 
@@ -572,9 +614,16 @@ mod tests {
             "ssh://git@github.com/psf/requests.git",
             "  psf/requests  ",
         ] {
-            assert_eq!(parse_slug(input).as_deref(), Some("psf/requests"), "{input}");
+            assert_eq!(
+                parse_slug(input).as_deref(),
+                Some("psf/requests"),
+                "{input}"
+            );
         }
-        assert_eq!(parse_slug("micropython/micropython.git").as_deref(), Some("micropython/micropython"));
+        assert_eq!(
+            parse_slug("micropython/micropython.git").as_deref(),
+            Some("micropython/micropython")
+        );
         assert_eq!(parse_slug("a-b/c_d.e").as_deref(), Some("a-b/c_d.e"));
     }
 
