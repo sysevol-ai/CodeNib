@@ -240,7 +240,7 @@ function PageCalls({ repo, pageId }: { repo: string; pageId: string }) {
                   )}
                 </span>
               </span>
-              <span className="impact-row-area">{areaOf(a.file).title}</span>
+              <span className="impact-row-area">{areaOf(a.file).label}</span>
             </li>
           );
         })}
@@ -581,7 +581,7 @@ export function ImpactView({ repo, pageId }: { repo: string; pageId: string }) {
                           </span>
                         )}
                       </span>
-                      <span className="impact-row-area">{areaOf(r.node.file).title}</span>
+                      <span className="impact-row-area">{areaOf(r.node.file).label}</span>
                     </li>
                   ))}
                 </ul>
@@ -609,7 +609,7 @@ export function ImpactView({ repo, pageId }: { repo: string; pageId: string }) {
                       </span>
                     )}
                   </span>
-                  <span className="impact-row-area">{areaOf(c.file).title}</span>
+                  <span className="impact-row-area">{areaOf(c.file).label}</span>
                 </li>
               );
             })}
@@ -740,7 +740,7 @@ export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string
                 <span className="walk-dot" style={{ "--hue": areaOf(s.node.file).hue } as CSSProperties} aria-hidden="true" />
                 <span className="walk-stop-text">
                   <Name text={shortName(s.node.name)} className="walk-stop-name" />
-                  <span className="walk-stop-area">{areaOf(s.node.file).title}</span>
+                  <span className="walk-stop-area">{areaOf(s.node.file).label}</span>
                 </span>
               </button>
             </li>
@@ -753,7 +753,7 @@ export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string
             </span>
             <span className="walk-area">
               <span className="area-mark" style={{ background: areaOf(step.node.file).hue }} aria-hidden="true" />
-              {areaOf(step.node.file).title}
+              {areaOf(step.node.file).name}
             </span>
             <SourceMark repo={repo} file={step.node.file} start={step.node.line} end={step.node.end_line ?? undefined} />
           </div>

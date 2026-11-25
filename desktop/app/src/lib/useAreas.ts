@@ -9,11 +9,17 @@ import { useStore } from "./store";
 
 export interface AreaOf {
   id: string;
+  /** The area's name, as a column head or a legend shows it. */
   title: string;
+  /** The area named in running text ("models.py area" when it is named after a file). */
+  name: string;
+  /** Where a piece of code lives, for a row: the folder area, or the file
+   *  itself when areas are named after files, so a name never misplaces code. */
+  label: string;
   hue: string;
 }
 
-const NONE: AreaOf = { id: "", title: "No area", hue: "var(--area-none)" };
+const NONE: AreaOf = { id: "", title: "No area", name: "No area", label: "", hue: "var(--area-none)" };
 
 export function useAreas(repo: string) {
   const { data } = useStore();
@@ -31,10 +37,15 @@ export function useAreas(repo: string) {
     const ofFile = (file: string): AreaOf => {
       if (derived) {
         const area = derived.areas.find((a) => a.id === derived.byFile[file]);
-        return area ? { id: area.id, title: area.title, hue: slotHue(area.slot) } : NONE;
+        const file_ = file.split("/").pop() ?? file;
+        return area
+          ? { id: area.id, title: area.title, name: /\.[A-Za-z0-9]+$/.test(area.title) ? `${area.title} area` : area.title, label: file_, hue: slotHue(area.slot) }
+          : { ...NONE, label: file_ };
       }
       const found = modules.find((m) => file === m.folder || file.startsWith(`${m.folder}/`));
-      return found ? { id: found.id, title: found.folder, hue: hueFor(found.id, outlineAreas) } : NONE;
+      return found
+        ? { id: found.id, title: found.folder, name: found.folder, label: found.folder, hue: hueFor(found.id, outlineAreas) }
+        : NONE;
     };
 
     /** A page's mark: its outline area, or the area most of its folder's files are in. */
