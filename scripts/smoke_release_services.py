@@ -13,6 +13,7 @@ import importlib.metadata
 import json
 import logging
 import os
+import re
 import shutil
 import signal
 import socket
@@ -96,6 +97,36 @@ def _wait_for_json(url: str, *, process: subprocess.Popen[Any], timeout: float) 
             last_error = exc
         time.sleep(0.5)
     raise RuntimeError(f"timed out waiting for {url}: {last_error}")
+
+
+def _post_json(url: str, payload: Any, *, headers: dict[str, str]) -> Any:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", **headers},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return json.loads(response.read())
+
+
+def _printed_session(
+    log_path: Path, *, process: subprocess.Popen[Any], timeout: float
+) -> str:
+    """Return the session key in the address the Wiki command printed."""
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        found = re.search(
+            r"[?&]session=([A-Za-z0-9_-]+)",
+            log_path.read_text(encoding="utf-8", errors="replace"),
+        )
+        if found:
+            return found.group(1)
+        if process.poll() is not None:
+            raise RuntimeError("Wiki command exited before printing its address")
+        time.sleep(0.5)
+    raise RuntimeError("Wiki command printed no address with a session key")
 
 
 def _wait_for_page(url: str, *, process: subprocess.Popen[Any], timeout: float) -> str:
@@ -249,6 +280,38 @@ def _assert_wiki(
             )
             if "CodeNib" not in frontend:
                 raise RuntimeError("Wiki frontend response did not identify CodeNib")
+
+            # A note saved from the printed address lands as a Markdown file in
+            # the repository, through the same proxy the browser uses.
+            session = _printed_session(log_path, process=process, timeout=30)
+            if (repo / ".codenib").exists():
+                raise RuntimeError("Wiki startup wrote .codenib/ into the repository")
+            note = _post_json(
+                f"{frontend_base}/api/repos/"
+                f"{urllib.parse.quote(repo_id)}/annotations",
+                {
+                    "kind": "note",
+                    "text": "release smoke note",
+                    "on": {"page": "overview", "quote": "Overview"},
+                },
+                headers={"X-CodeNib-Session": session},
+            )
+            note_file = repo / ".codenib" / "notes" / f"{note['id']}.md"
+            if "release smoke note" not in note_file.read_text(encoding="utf-8"):
+                raise RuntimeError(f"note was not saved to {note_file}")
+            listed_request = urllib.request.Request(
+                f"{frontend_base}/api/repos/"
+                f"{urllib.parse.quote(repo_id)}/annotations?page=overview",
+                headers={"X-CodeNib-Session": session},
+            )
+            with urllib.request.urlopen(listed_request, timeout=15) as response:
+                listed = json.loads(response.read())
+            if not any(
+                item.get("id") == note["id"] for item in listed.get("annotations", [])
+            ):
+                raise RuntimeError(f"saved note is not listed: {listed!r}")
+            # The note was this check's own write; startup must leave none.
+            shutil.rmtree(repo / ".codenib")
         except Exception:
             service_log.flush()
             details = log_path.read_text(encoding="utf-8", errors="replace")
