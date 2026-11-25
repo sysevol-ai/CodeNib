@@ -274,6 +274,7 @@ class LiteLLMChat:
     api_base: Optional[str] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     retry: RetryConfig = field(default_factory=RetryConfig)
+    usage_tracker: Optional[Any] = None
 
     def __post_init__(self) -> None:
         self.extra_kwargs = validate_model_options(
@@ -330,8 +331,9 @@ class LiteLLMChat:
           provided, the response's token usage and cost are recorded.
         - ``usage_turn``: turn index attached to the recorded usage entry.
         """
-        usage_tracker = overrides.pop("usage_tracker", None)
+        usage_tracker = overrides.pop("usage_tracker", self.usage_tracker)
         usage_turn = overrides.pop("usage_turn", None)
+        usage_page = overrides.pop("usage_page", None)
 
         # Anthropic prompt caching: cache the stable system+tools prefix and the
         # growing conversation so multi-turn agents stop re-billing the prefix.
@@ -355,7 +357,19 @@ class LiteLLMChat:
         kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
         start = time.monotonic()
-        response = self._completion_with_retry(kwargs)
+        try:
+            response = self._completion_with_retry(kwargs)
+        except Exception as exc:
+            duration_ms = (time.monotonic() - start) * 1000
+            if usage_tracker is not None:
+                usage_tracker.record_failure(
+                    model=self.model,
+                    duration_ms=duration_ms,
+                    turn=usage_turn,
+                    page=usage_page,
+                    error=str(exc),
+                )
+            raise
         duration_ms = (time.monotonic() - start) * 1000
 
         if usage_tracker is not None:
@@ -364,6 +378,7 @@ class LiteLLMChat:
                 model=self.model,
                 duration_ms=duration_ms,
                 turn=usage_turn,
+                page=usage_page,
             )
 
         return response

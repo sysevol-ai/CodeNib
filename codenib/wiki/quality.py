@@ -1456,11 +1456,17 @@ _BUSY_RETRIES = 2
 
 def _write_wiki_page(builder: Any, page_id: str) -> tuple[dict[str, Any], bool, float]:
     started = perf_counter()
-    for _attempt in range(_BUSY_RETRIES + 1):
-        detail, generated = _audit_wiki_page(builder, page_id)
-        if not str(detail.get("error") or "").startswith(_BUSY_ERROR_PREFIX):
-            break
-    return detail, generated, perf_counter() - started
+    from ..llm.usage import current_wiki_page_context
+
+    token = current_wiki_page_context.set(page_id)
+    try:
+        for _attempt in range(_BUSY_RETRIES + 1):
+            detail, generated = _audit_wiki_page(builder, page_id)
+            if not str(detail.get("error") or "").startswith(_BUSY_ERROR_PREFIX):
+                break
+        return detail, generated, perf_counter() - started
+    finally:
+        current_wiki_page_context.reset(token)
 
 
 def audit_wiki(
@@ -1552,6 +1558,7 @@ def audit_wiki(
         ),
         "fallbacks": sum(bool(item.get("fallback")) for item in details),
         "details": details,
+        "wall_clock_seconds": perf_counter() - started,
     }
 
 
