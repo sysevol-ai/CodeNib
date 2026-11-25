@@ -25,7 +25,7 @@ async function audit(page, label) {
     const issues = [];
     if (document.documentElement.scrollWidth > innerWidth + 1) issues.push("sideways scroll");
     const texts = [...document.querySelectorAll("h1,h2,h3,p,li,span,button,a,td,th,code")]
-      .filter((el) => el.offsetParent && el.getClientRects().length && el.children.length === 0 && el.textContent.trim());
+      .filter((el) => el.offsetParent && el.getClientRects().length && el.children.length === 0 && el.textContent.trim() && !el.closest(".sr-only"));
     for (const el of texts) {
       const cs = getComputedStyle(el);
       const fs = parseFloat(cs.fontSize);

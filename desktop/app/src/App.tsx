@@ -22,10 +22,12 @@ function PageScreen({ repo, page, mode }: { repo: string; page: string; mode: Mo
   const d = data[repo];
   if (!entry) return <Welcome />;
   if (entry.status !== "ready" || !d?.tree) {
-    if (entry.status === "ready" && d?.error) {
-      return <Opening repo={{ ...entry, status: "failed", error: d.error }} />;
-    }
-    return <Opening repo={entry} />;
+    return (
+      <>
+        <Toolbar parts={[entry.name]} />
+        <Opening repo={entry.status === "ready" && d?.error ? { ...entry, status: "failed", error: d.error } : entry} />
+      </>
+    );
   }
   const docs = d.tree.docs ?? [];
   const pages = flattenPages(d.tree.pages);
@@ -67,7 +69,13 @@ function ReviewScreen({ repo, task }: { repo: string; task: string }) {
   const { repos, data } = useStore();
   const entry = repos.find((r) => r.path === repo);
   if (!entry) return <Welcome />;
-  if (entry.status !== "ready" || !data[repo]?.notes) return <Opening repo={entry} />;
+  if (entry.status !== "ready" || !data[repo]?.notes)
+    return (
+      <>
+        <Toolbar parts={[entry.name]} />
+        <Opening repo={entry} />
+      </>
+    );
   return (
     <>
       <Toolbar parts={[entry.name, "Review the change"]} />
