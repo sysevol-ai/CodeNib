@@ -124,11 +124,8 @@ def test_source_selection_migrates_legacy_manifest_without_aliasing_policy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from codenib.compiler.manifest import (
-        LEGACY_MANIFEST_VERSION,
-        MANIFEST_FILENAME,
-        RepoManifest,
-    )
+    from codenib.compiler.manifest import (LEGACY_MANIFEST_VERSION,
+                                           MANIFEST_FILENAME, RepoManifest)
     from codenib.paths import repo_index_dir
 
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
@@ -2025,6 +2022,65 @@ def test_wiki_without_generate_suggests_claude_code(
     assert rejected != 0
 
 
+@pytest.mark.parametrize(
+    ("writer", "model", "said"),
+    [
+        ("claude-code", "claude-code/sonnet", "written by your Claude Code"),
+        ("codex", "codex/default", "written by your Codex"),
+    ],
+)
+def test_wiki_writer_picks_the_local_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    writer: str,
+    model: str,
+    said: str,
+) -> None:
+    manifest_path = _bm25_manifest(tmp_path)
+    captured: dict = {}
+    checked: list = []
+    monkeypatch.setattr(
+        cli, "_check_module", lambda module: checked.append(module) or True
+    )
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+    monkeypatch.setattr("codenib.llm.claude_code.available", lambda: True)
+    monkeypatch.setattr("codenib.llm.codex_cli.available", lambda: True)
+    monkeypatch.setattr(
+        "codenib.web.local.prepare_local_wiki",
+        lambda *_a, **kwargs: captured.update(kwargs) or SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "codenib.web.launcher.launch_local_wiki", lambda *_args, **_kwargs: 0
+    )
+
+    argv = ["wiki", str(tmp_path), "--no-index", "--writer", writer, "--no-open"]
+    assert cli.run(argv) == 0
+    assert captured["agent_wiki"] is True
+    assert captured["model"] == model
+    assert captured["api_key_env"] is None and captured["api_base"] is None
+    assert captured["prewarm"] is True
+    assert "litellm" not in checked
+    assert said in capsys.readouterr().out
+
+
+def test_wiki_writer_explains_a_missing_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest_path = _bm25_manifest(tmp_path)
+    monkeypatch.setattr(cli, "_check_module", lambda _module: True)
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+    monkeypatch.setattr("codenib.llm.codex_cli.available", lambda: False)
+
+    argv = ["wiki", str(tmp_path), "--no-index", "--writer", "codex", "--no-open"]
+    assert cli.run(argv) != 0
+    assert "codex login" in capsys.readouterr().err
+    both = argv + ["--model", "openai/gpt-5"]
+    assert cli.run(both) != 0
+
+
 def test_auto_graph_needs_the_graph_extra_and_a_graph_language(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2334,7 +2390,8 @@ def test_visual_failure_preserves_existing_bundle_and_explains_recovery(
     tmp_path,
     monkeypatch,
 ):
-    from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
+    from codenib.repository_source_selection import \
+        DEFAULT_REPOSITORY_SOURCE_SELECTION
 
     manifest_path = tmp_path / "repo_manifest.json"
     from codenib.compiler.manifest import IndexEntry

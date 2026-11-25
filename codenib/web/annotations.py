@@ -39,33 +39,16 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from ..annotations import AnnotationError, AnnotationStore, TaskStore
-from ..annotations.agents import agent_for, detect_agents
+from ..annotations.agents import AGENTS, agent_for, detect_agents
 from ..annotations.anchoring import context, follow, head_commit, locate
-from ..annotations.edits import (
-    apply_edit,
-    fold_into,
-    page_source,
-    revert_page,
-    save_page,
-)
+from ..annotations.edits import (apply_edit, fold_into, page_source,
+                                 revert_page, save_page)
 from ..annotations.model import HUMAN_KINDS
-from ..annotations.runner import (
-    accept,
-    dispatch,
-    kept_patch,
-    reject,
-    review,
-    run_task,
-)
-from ..annotations.sandbox import (
-    DEFAULT_BUDGET_USD,
-    SandboxedClaude,
-)
+from ..annotations.runner import (accept, dispatch, kept_patch, reject, review,
+                                  run_task)
+from ..annotations.sandbox import DEFAULT_BUDGET_USD, SandboxedClaude
 from ..annotations.sandbox import available as sandbox_available
-from ..annotations.sandbox import (
-    check_key,
-    provider_of,
-)
+from ..annotations.sandbox import check_key, provider_of
 
 log = logging.getLogger(__name__)
 
@@ -513,8 +496,11 @@ def _hosted_agent(request: Request) -> SandboxedClaude:
 async def create_task(repo_id: str, body: TaskIn, request: Request) -> dict:
     space = await _space(request, repo_id)
     repo = space.repo
-    if body.agent != "claude-code" and (
-        space.hosted or not os.environ.get("CODENIB_TASK_AGENT_COMMAND")
+    local_agent = body.agent in AGENTS and not space.hosted
+    if (
+        body.agent != "claude-code"
+        and not local_agent
+        and (space.hosted or not os.environ.get("CODENIB_TASK_AGENT_COMMAND"))
     ):
         raise HTTPException(
             status_code=400, detail=f"No adapter for {body.agent!r} yet"

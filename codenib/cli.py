@@ -22,16 +22,11 @@ from typing import Callable, Iterable, Iterator, Sequence
 
 from ._version import package_version
 from .parser_errors import ParserUnavailableError
-from .provider_routes import (
-    InferenceRoute,
-    normalize_provider,
-    resolve_embedding_artifact_route,
-    resolve_inference_route,
-)
-from .repository_source_selection import (
-    DEFAULT_REPOSITORY_SOURCE_SELECTION,
-    RepositorySourceSelection,
-)
+from .provider_routes import (InferenceRoute, normalize_provider,
+                              resolve_embedding_artifact_route,
+                              resolve_inference_route)
+from .repository_source_selection import (DEFAULT_REPOSITORY_SOURCE_SELECTION,
+                                          RepositorySourceSelection)
 from .web.ports import argparse_tcp_port, validate_local_wiki_ports
 
 _PRESET_VIEWS = {
@@ -98,10 +93,8 @@ def _optional_int(value: object, *, source: str) -> int | None:
 def _embedding_route_for_args(args: argparse.Namespace) -> InferenceRoute:
     """Resolve the secret-free embedding identity selected by CLI and env."""
 
-    from .index.embedding.model_policy import (
-        DEFAULT_EMBEDDING_DIMENSION,
-        DEFAULT_EMBEDDING_MODEL,
-    )
+    from .index.embedding.model_policy import (DEFAULT_EMBEDDING_DIMENSION,
+                                               DEFAULT_EMBEDDING_MODEL)
 
     raw_provider = (
         getattr(args, "embedding_provider", None)
@@ -642,12 +635,11 @@ def _prepare_index_compiler(
     from .toolchains import activate_managed_toolchain
 
     activate_managed_toolchain()
-    from .compiler.index_builders import IndexBuilderRegistry, register_default_builders
+    from .compiler.index_builders import (IndexBuilderRegistry,
+                                          register_default_builders)
     from .compiler.index_compiler import IndexCompiler, IndexCompilerConfig
-    from .index.embedding.model_policy import (
-        DEFAULT_EMBEDDING_DIMENSION,
-        DEFAULT_EMBEDDING_MODEL,
-    )
+    from .index.embedding.model_policy import (DEFAULT_EMBEDDING_DIMENSION,
+                                               DEFAULT_EMBEDDING_MODEL)
     from .paths import repo_index_dir
 
     registry = IndexBuilderRegistry()
@@ -872,7 +864,8 @@ def _run_mcp(args: argparse.Namespace) -> int:
 
         if resolve_ripgrep() is None:
             raise CLIError("Install codenib[grep,mcp] or ripgrep to use grep → Jev")
-        from .mcp.grep_jev import explore_repository  # noqa: F401 - import smoke
+        from .mcp.grep_jev import \
+            explore_repository  # noqa: F401 - import smoke
     else:
         _require_modules(("mcp",), extra="mcp", feature="the MCP server")
     from .mcp.server import main as mcp_main
@@ -1436,14 +1429,9 @@ def _run_artifact_mcp_config(args: argparse.Namespace) -> int:
 
 
 def _run_pages_init(args: argparse.Namespace) -> int:
-    from .web.pages_setup import (
-        WORKFLOW_PATH,
-        badge_markdown,
-        default_branch,
-        github_repository,
-        pages_url,
-        workflow_text,
-    )
+    from .web.pages_setup import (WORKFLOW_PATH, badge_markdown,
+                                  default_branch, github_repository, pages_url,
+                                  workflow_text)
 
     repo_path = resolve_repo_path(args.repo)
     ref = args.ref or f"v{package_version()}"
@@ -1702,11 +1690,9 @@ def _model_options_for_args(
 ) -> dict[str, object]:
     """Resolve provider options from environment and repeatable CLI flags."""
 
-    from .llm.options import (
-        merge_model_options,
-        parse_model_option_assignments,
-        parse_model_options_json,
-    )
+    from .llm.options import (merge_model_options,
+                              parse_model_option_assignments,
+                              parse_model_options_json)
 
     try:
         environment = parse_model_options_json(
@@ -1977,6 +1963,29 @@ def _run_wiki(args: argparse.Namespace) -> int:
     from .llm.claude_code import DEFAULT_MODEL as CLAUDE_CODE_MODEL
     from .llm.claude_code import available as claude_code_available
     from .llm.claude_code import is_claude_code_model
+    from .llm.codex_cli import DEFAULT_MODEL as CODEX_MODEL
+    from .llm.codex_cli import available as codex_available
+    from .llm.codex_cli import is_codex_model
+
+    writer = getattr(args, "writer", None)
+    if writer:
+        if args.model or args.model_provider:
+            raise CLIError("--writer chooses the model; drop --model/--model-provider")
+        args.agent_wiki = True
+        if writer == "codex":
+            if not codex_available():
+                raise CLIError(
+                    "--writer codex needs Codex: install it with "
+                    "`npm install -g @openai/codex` and sign in with `codex login`"
+                )
+            args.model = CODEX_MODEL
+        else:
+            if not claude_code_available():
+                raise CLIError(
+                    "--writer claude-code needs Claude Code: install it and sign "
+                    "in with `claude auth login`"
+                )
+            args.model = CLAUDE_CODE_MODEL
 
     named_model = (
         args.model
@@ -1992,10 +2001,12 @@ def _run_wiki(args: argparse.Namespace) -> int:
                 "pass --model with --api-key-env"
             )
         args.model = CLAUDE_CODE_MODEL
-    claude_pages = is_claude_code_model(args.model or named_model)
+    codex_pages = is_codex_model(args.model or named_model)
+    # Pages written by a coding agent on this machine, on its own sign-in.
+    claude_pages = is_claude_code_model(args.model or named_model) or codex_pages
     if claude_pages and (args.model_provider or args.api_base or args.api_key_env):
         raise CLIError(
-            "a claude-code/ model runs on the local Claude Code; it takes no "
+            "a claude-code/ or codex/ model runs on the local agent; it takes no "
             "--model-provider, --api-base or --api-key-env"
         )
     if not claude_pages and (
@@ -2125,7 +2136,12 @@ def _run_wiki(args: argparse.Namespace) -> int:
             f"{fact_count} artifact(s) -> {destination}"
         )
 
-    if claude_pages and (args.agent_wiki or audit):
+    if codex_pages and (args.agent_wiki or audit):
+        print(
+            f"Pages are written by your Codex ({args.model or named_model}) "
+            "on this machine, on your Codex sign-in; no API key is used."
+        )
+    elif claude_pages and (args.agent_wiki or audit):
         print(
             f"Pages are written by your Claude Code ({args.model or named_model}) "
             "on this machine, on your Claude Code plan; no API key is used."
@@ -2267,11 +2283,8 @@ def _doctor_model_config(
 def _doctor_rows(
     args: argparse.Namespace | None = None,
 ) -> dict[str, list[tuple[str, bool, str]]]:
-    from .web.launcher import (
-        find_frontend_dir,
-        is_prebuilt_frontend,
-        node_runtime_status,
-    )
+    from .web.launcher import (find_frontend_dir, is_prebuilt_frontend,
+                               node_runtime_status)
 
     py_ok = sys.version_info >= (3, 10)
     frontend = find_frontend_dir()
@@ -2777,12 +2790,10 @@ def _codegraph_error(exc: BaseException) -> CLIError:
 
 
 def _codegraph_spec_for_args(repo_path: Path, args: argparse.Namespace):
-    from .codegraph_onboarding import (
-        CodeGraphOnboardingError,
-        load_codegraph_receipt,
-        make_server_spec,
-        resolve_codenib_command,
-    )
+    from .codegraph_onboarding import (CodeGraphOnboardingError,
+                                       load_codegraph_receipt,
+                                       make_server_spec,
+                                       resolve_codenib_command)
 
     try:
         receipt = load_codegraph_receipt(repo_path)
@@ -2822,10 +2833,8 @@ def _codegraph_spec_for_args(repo_path: Path, args: argparse.Namespace):
 
 
 def _codegraph_clients_for_init(args: argparse.Namespace) -> tuple[str, ...]:
-    from .codegraph_onboarding import (
-        CodeGraphOnboardingError,
-        resolve_requested_clients,
-    )
+    from .codegraph_onboarding import (CodeGraphOnboardingError,
+                                       resolve_requested_clients)
 
     try:
         return resolve_requested_clients(args.agent)
@@ -2858,10 +2867,8 @@ def _codegraph_preflight_clients(
     server,
     receipt,
 ) -> dict[str, object]:
-    from .codegraph_onboarding import (
-        CodeGraphOnboardingError,
-        inspect_client_registration,
-    )
+    from .codegraph_onboarding import (CodeGraphOnboardingError,
+                                       inspect_client_registration)
 
     observed = {}
     try:
@@ -2902,7 +2909,8 @@ def _codegraph_plan_detail(plan) -> str:
 
 
 def _codegraph_checkout_snapshot(repo_path: Path) -> bytes:
-    from .codegraph_preparation import CodeGraphPreparationError, checkout_snapshot
+    from .codegraph_preparation import (CodeGraphPreparationError,
+                                        checkout_snapshot)
 
     try:
         return checkout_snapshot(repo_path)
@@ -2912,7 +2920,8 @@ def _codegraph_checkout_snapshot(repo_path: Path) -> bytes:
 
 @contextmanager
 def _codegraph_checkout_guard(repo_path: Path) -> Iterator[Callable[[str], None]]:
-    from .codegraph_preparation import CodeGraphPreparationError, checkout_guard
+    from .codegraph_preparation import (CodeGraphPreparationError,
+                                        checkout_guard)
 
     try:
         with checkout_guard(repo_path) as check_checkout:
@@ -2929,11 +2938,9 @@ def _codegraph_checkout_guard(repo_path: Path) -> Iterator[Callable[[str], None]
 
 
 def _run_codegraph_init(args: argparse.Namespace) -> int:
-    from .codegraph_onboarding import (
-        CodeGraphOnboardingError,
-        configure_client_registrations,
-        inspect_server_command,
-    )
+    from .codegraph_onboarding import (CodeGraphOnboardingError,
+                                       configure_client_registrations,
+                                       inspect_server_command)
     from .toolchains import install_requirements
 
     repo_path = resolve_repo_path(args.repo)
@@ -3364,13 +3371,11 @@ def _codegraph_toolchain_report(
 
 
 def _codegraph_status_report(repo_path: Path) -> dict[str, object]:
-    from .codegraph_onboarding import (
-        CodeGraphOnboardingError,
-        codegraph_receipt_path,
-        inspect_client_registration,
-        inspect_server_command,
-        load_codegraph_receipt,
-    )
+    from .codegraph_onboarding import (CodeGraphOnboardingError,
+                                       codegraph_receipt_path,
+                                       inspect_client_registration,
+                                       inspect_server_command,
+                                       load_codegraph_receipt)
 
     index = _codegraph_index_report(repo_path)
     toolchain = _codegraph_toolchain_report(
@@ -3557,15 +3562,13 @@ def _selected_uninstall_clients(
 def _run_codegraph_uninstall(args: argparse.Namespace) -> int:
     from contextlib import nullcontext
 
-    from .codegraph_onboarding import (
-        CodeGraphOnboardingError,
-        inspect_client_registration,
-        load_codegraph_receipt,
-        registration_lock,
-        remove_client_registration,
-        remove_codegraph_receipt,
-        write_codegraph_receipt,
-    )
+    from .codegraph_onboarding import (CodeGraphOnboardingError,
+                                       inspect_client_registration,
+                                       load_codegraph_receipt,
+                                       registration_lock,
+                                       remove_client_registration,
+                                       remove_codegraph_receipt,
+                                       write_codegraph_receipt)
 
     repo_path = resolve_repo_path(args.repo).resolve()
     route = getattr(args, "retrieval_route", "indexed")
@@ -3907,6 +3910,14 @@ def build_parser() -> argparse.ArgumentParser:
         dest="agent_wiki",
         action="store_true",
         help="generate conceptual, source-grounded pages with the configured LLM",
+    )
+    wiki_parser.add_argument(
+        "--writer",
+        choices=("claude-code", "codex"),
+        help=(
+            "write the pages with this local coding agent, on its own sign-in "
+            "and no API key; implies --generate"
+        ),
     )
     wiki_parser.add_argument(
         "--model",
