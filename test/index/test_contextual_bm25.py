@@ -454,7 +454,7 @@ def test_existing_chat_adapter_receives_bounds_and_retains_failed_usage(
         )
 
     monkeypatch.setattr(litellm_chat.LiteLLMChat, "_completion_with_retry", completion)
-    monkeypatch.setattr(usage, "_safe_completion_cost", lambda *_args: None)
+    monkeypatch.setattr(usage, "_safe_completion_cost", lambda *_args, **_kwargs: None)
     chat = litellm_chat.LiteLLMChat(
         model="fixture/model",
         api_base="https://fixture.invalid/v1",
@@ -498,7 +498,7 @@ def test_temperature_can_be_omitted_for_provider_compatibility(repository, monke
         )
 
     monkeypatch.setattr(litellm_chat.LiteLLMChat, "_completion_with_retry", completion)
-    monkeypatch.setattr(usage, "_safe_completion_cost", lambda *_args: None)
+    monkeypatch.setattr(usage, "_safe_completion_cost", lambda *_args, **_kwargs: None)
     chat = litellm_chat.LiteLLMChat(model="fixture/model", temperature=0.0)
     contextualizer = FileContextualizer(chat, ContextualizationConfig(temperature=None))
     chunks = CodeChunker(language="python").chunk_repository(str(root))
