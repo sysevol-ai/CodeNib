@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 import hashlib
 import json
 import os
@@ -26,7 +27,7 @@ import re
 import threading
 import weakref
 from collections.abc import Mapping
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager, nullcontext
 from functools import partial
 from html import escape
 from pathlib import Path, PurePosixPath
@@ -259,6 +260,8 @@ async def lifespan(app: FastAPI):
         app.state.wiki_store = None
         app.state.edge_labelers = {}
         app.state.commit_windows = {}
+        app.state.wiki_media_pages = {}
+        app.state.overview_visuals = {}
         # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
         # to templated text when no model/creds are available.
         app.state.narrator = _wiki_narrator(config)
@@ -281,7 +284,7 @@ async def lifespan(app: FastAPI):
         try:
             registry.close()
         finally:
-            for name in ("wiki_builders", "edge_labelers", "commit_windows"):
+            for name in _GENERATION_CACHES:
                 cache = getattr(app.state, name, None)
                 if isinstance(cache, dict):
                     cache.clear()
@@ -465,6 +468,61 @@ def _generation_cached(cache: dict, key: str, repo_id: str, bundle, factory):
     return value
 
 
+# Per-generation caches on app.state. Each value is (repo_id, bundle, helper)
+# and is dropped as soon as the registry publishes a newer bundle.
+_GENERATION_CACHES = (
+    "wiki_builders",
+    "edge_labelers",
+    "commit_windows",
+    "wiki_media_pages",
+    "overview_visuals",
+)
+_SINGLE_FLIGHT_GUARD = threading.Lock()
+_SINGLE_FLIGHT_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _single_flight_lock(key: str) -> threading.Lock:
+    with _SINGLE_FLIGHT_GUARD:
+        return _SINGLE_FLIGHT_LOCKS.setdefault(key, threading.Lock())
+
+
+def _generation_memo(name: str, key: str, repo_id: str, bundle, fingerprint, compute):
+    """Compute a value once per bundle generation and input fingerprint.
+
+    Browsers that open the same cold page together wait for the first one
+    instead of repeating its work. A failure is not stored, so the next
+    request tries again. Without the app.state cache (offline tools, tests
+    that skip the lifespan) every call computes.
+    """
+
+    cache = getattr(app.state, name, None)
+    if not isinstance(cache, dict):
+        return compute()
+
+    def stored():
+        cached = cache.get(key)
+        if (
+            isinstance(cached, tuple)
+            and len(cached) == 3
+            and cached[0] == repo_id
+            and cached[1] is bundle
+            and cached[2][0] == fingerprint
+        ):
+            return True, cached[2][1]
+        return False, None
+
+    found, value = stored()
+    if found:
+        return value
+    with _single_flight_lock(f"{name}\0{key}"):
+        found, value = stored()
+        if found:
+            return value
+        value = compute()
+        cache[key] = (repo_id, bundle, (fingerprint, value))
+        return value
+
+
 def _prune_retired_generation_caches(registry=None) -> None:
     """Drop helpers whose bundle is no longer the published generation."""
 
@@ -473,7 +531,7 @@ def _prune_retired_generation_caches(registry=None) -> None:
     get_bundle = getattr(registry, "get", None)
     if not callable(get_bundle):
         return
-    for name in ("wiki_builders", "edge_labelers", "commit_windows"):
+    for name in _GENERATION_CACHES:
         cache = getattr(app.state, name, None)
         if not isinstance(cache, dict):
             continue
@@ -690,20 +748,51 @@ def _wiki_media_evidence_builder(bundle, page: Mapping):
     )
 
 
+def _wiki_media_fingerprint(page: Mapping, generator, config, output_dir) -> str:
+    """Name everything a materialized page depends on besides the bundle."""
+
+    digest = hashlib.sha256()
+    for part in (
+        type(generator).__qualname__,
+        str(getattr(config, "wiki_media_model", "") or ""),
+        str(getattr(config, "wiki_media_api_base", "") or ""),
+        json.dumps(
+            getattr(config, "wiki_media_options", None) or {},
+            sort_keys=True,
+            default=str,
+        ),
+        str(output_dir),
+        json.dumps(page, sort_keys=True, default=str),
+    ):
+        digest.update(part.encode("utf-8", errors="surrogatepass"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 def _materialize_wiki_media(
     repo_id: str,
     page_id: str,
     page: dict,
     bundle=None,
 ) -> dict:
-    """Attach generated media assets when a wiki media provider is configured."""
+    """Attach generated media assets when a wiki media provider is configured.
+
+    The result is kept for the bundle generation: the evidence behind it is
+    read from that generation's pinned source, so the same page input always
+    yields the same assets. Without this every Overview view re-read its
+    evidence and re-checked the whole repository tree (12 s for micropython).
+    """
 
     public_page = redact_media_evidence_packs(page)
     config = load_config()
     generator = image_generator_from_config(config)
     if generator is None:
         return public_page
-    try:
+    output_dir = _wiki_media_dir(config, repo_id, page_id)
+
+    def materialize() -> dict:
+        source_reader = getattr(bundle, "source_reader", None)
+        read_session = getattr(source_reader, "read_session", None)
         asset_base = (
             f"api/repos/{quote(repo_id, safe='')}/wiki-media/"
             f"{quote(page_id, safe='')}"
@@ -711,12 +800,22 @@ def _materialize_wiki_media(
         return materialize_media_slots(
             page,
             generator=generator,
-            output_dir=_wiki_media_dir(config, repo_id, page_id),
+            output_dir=output_dir,
             asset_base_path=asset_base,
-            evidence_builder=_wiki_media_evidence_builder(
-                bundle if bundle is not None else _bundle(repo_id),
-                page,
-            ),
+            evidence_builder=_wiki_media_evidence_builder(bundle, page),
+            evidence_session=read_session if callable(read_session) else None,
+        )
+
+    try:
+        if bundle is None:
+            bundle = _bundle(repo_id)
+        materialized = _generation_memo(
+            "wiki_media_pages",
+            f"{repo_id}\0{page_id}",
+            repo_id,
+            bundle,
+            _wiki_media_fingerprint(page, generator, config, output_dir),
+            materialize,
         )
     except MemoryError:
         raise
@@ -729,6 +828,42 @@ def _materialize_wiki_media(
             exc_info=True,
         )
         return public_page
+    # Callers build on the page; the stored copy must stay as it was made.
+    return copy.deepcopy(materialized)
+
+
+# A README image larger than this is read again for each request instead of
+# being held in memory for the generation.
+_MAX_CACHED_VISUAL_BYTES = 4 * 1024 * 1024
+
+
+def _overview_visual(repo_id: str, bundle):
+    """Return the README visual for the Overview, found once per generation."""
+
+    entry = getattr(bundle, "entry", None)
+    repo_dir = getattr(entry, "repo_dir", None)
+    if not repo_dir:
+        return None
+    source_reader = getattr(bundle, "source_reader", None)
+    read_session = getattr(source_reader, "read_session", None)
+
+    def discover():
+        # The README and each candidate image share one tree check per side.
+        with read_session() if callable(read_session) else nullcontext():
+            return discover_overview_visual(
+                repo_dir,
+                repository=getattr(entry, "repo", None),
+                source_reader=source_reader,
+            )
+
+    visual = _generation_memo(
+        "overview_visuals", repo_id, repo_id, bundle, str(repo_dir), discover
+    )
+    if visual is not None and len(visual.payload) > _MAX_CACHED_VISUAL_BYTES:
+        cache = getattr(app.state, "overview_visuals", None)
+        if isinstance(cache, dict):
+            cache.pop(repo_id, None)
+    return visual
 
 
 def _attach_overview_repository_visual(
@@ -741,16 +876,8 @@ def _attach_overview_repository_visual(
 
     if page_id != "overview":
         return page
-    entry = getattr(bundle, "entry", None)
-    repo_dir = getattr(entry, "repo_dir", None)
-    if not repo_dir:
-        return page
     try:
-        visual = discover_overview_visual(
-            repo_dir,
-            repository=getattr(entry, "repo", None),
-            source_reader=getattr(bundle, "source_reader", None),
-        )
+        visual = _overview_visual(repo_id, bundle)
         if visual is None:
             return page
         uri = (
@@ -1453,12 +1580,7 @@ async def wiki_repository_visual_asset(repo_id: str, filename: str):
         if safe_path is None:
             raise HTTPException(status_code=404, detail="repository visual not found")
         try:
-            visual = await _run_pinned_thread(
-                discover_overview_visual,
-                repo_dir,
-                repository=getattr(entry, "repo", None),
-                source_reader=getattr(bundle, "source_reader", None),
-            )
+            visual = await _run_pinned_thread(_overview_visual, repo_id, bundle)
         except MemoryError:
             raise
         except Exception as exc:  # noqa: BLE001 - expose no repository details
