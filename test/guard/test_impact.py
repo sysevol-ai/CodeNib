@@ -16,6 +16,7 @@ from codenib.guard.impact import (
     pytest_id,
     symbol_id,
 )
+from codenib.guard.report import working_tree_diff
 
 PRICING = textwrap.dedent(
     """\
@@ -198,6 +199,40 @@ def test_base_changed_lines_uses_base_side_numbers():
     changed, added = base_changed_lines(diff)
     assert changed == {"shop/a.py": {3, 4, 10, 20}, "shop/gone.py": {1, 2, 3, 4}}
     assert added == ["shop/new.py"]
+
+
+def test_changed_lines_keep_paths_that_git_quotes(git_repo):
+    names = ["café.py", "with space.py"]
+    git_repo.commit({name: "def f():\n    return 1\n" for name in names})
+    for name in names:
+        (git_repo.root / name).write_text("def f():\n    return 2\n", encoding="utf-8")
+    diff, _ = working_tree_diff(git_repo.root, "HEAD")
+    changed, added = base_changed_lines(diff)
+    assert changed == {name: {2} for name in names}
+    assert added == []
+    assert base_rewritten_lines(diff) == {name: {2} for name in names}
+
+
+def test_base_changed_lines_unquotes_c_style_paths():
+    diff = textwrap.dedent(
+        """\
+        diff --git "a/say \\"hi\\".py" "b/say \\"hi\\".py"
+        --- "a/say \\"hi\\".py"
+        +++ "b/say \\"hi\\".py"
+        @@ -2 +2 @@ def f():
+        diff --git "a/tab\\there\\\\x.py" "b/tab\\there\\\\x.py"
+        --- "a/tab\\there\\\\x.py"
+        +++ "b/tab\\there\\\\x.py"
+        @@ -5 +5 @@ def g():
+        diff --git "a/new\\303\\251.py" "b/new\\303\\251.py"
+        --- /dev/null
+        +++ "b/new\\303\\251.py"
+        @@ -0,0 +1 @@
+        """
+    )
+    changed, added = base_changed_lines(diff)
+    assert changed == {'say "hi".py': {2}, "tab\there\\x.py": {5}}
+    assert added == ["newé.py"]
 
 
 def test_tests_that_call_in_come_before_edited_tests(tmp_path, make_graph, write_files):

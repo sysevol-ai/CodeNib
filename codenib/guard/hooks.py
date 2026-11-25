@@ -37,7 +37,6 @@ from ..paths import user_state_dir
 from .notes import NOTES_DIR
 from .report import change_digest, render_for_agent, run_guard, working_tree_diff
 from .snapshot import (
-    SnapshotError,
     build_in_background,
     cached_snapshot,
     failed_snapshot,
@@ -389,12 +388,15 @@ def session_start(agent: str, payload: Dict[str, object]) -> str:
 def run_hook(agent: str, event: str, stdin: str) -> int:
     """Entry point of ``codenib guard hook``. Always exits 0."""
 
+    repo: Optional[Path] = None
     try:
-        payload = json.loads(stdin or "{}")
-    except ValueError:
-        payload = {}
-    repo = _repo_root(str(payload.get("cwd") or os.getcwd()))
-    try:
+        try:
+            payload = json.loads(stdin or "{}")
+        except ValueError:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        repo = _repo_root(str(payload.get("cwd") or os.getcwd()))
         if event == "stop":
             out, reason = stop(agent, payload)
             if out:
@@ -403,7 +405,7 @@ def run_hook(agent: str, event: str, stdin: str) -> int:
             reason = session_start(agent, payload)
         if repo is not None:
             _log(repo, f"{agent} {event}: {reason}")
-    except (SnapshotError, OSError, ValueError, RuntimeError, Timeout) as exc:
+    except Exception as exc:  # the contract is exit 0: a hook must not fail the turn
         if repo is not None:
             _log(repo, f"{agent} {event}: error {exc}\n{traceback.format_exc()}")
     return 0

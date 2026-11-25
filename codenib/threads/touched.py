@@ -13,6 +13,7 @@ two diffs taken against different base commits still agree on what they touch.
 
 from __future__ import annotations
 
+import codecs
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -130,11 +131,13 @@ def parse_unified_diff(diff_text: str) -> list[FileChange]:
 
 
 def _diff_path(raw: str, prefix: str) -> str | None:
-    raw = raw.split("\t")[0].strip()
+    raw = raw.split("\t", 1)[0].strip()
     if raw == "/dev/null":
         return None
     if raw.startswith('"') and raw.endswith('"'):
-        raw = raw[1:-1]
+        raw = codecs.escape_decode(raw[1:-1].encode("utf-8"))[0].decode(
+            "utf-8", errors="surrogateescape"
+        )
     return raw[len(prefix) :] if raw.startswith(prefix) else raw
 
 
