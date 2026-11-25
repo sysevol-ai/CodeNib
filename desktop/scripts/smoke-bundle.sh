@@ -13,10 +13,15 @@ PY="$APP/Contents/Resources/python/bin/python3.12"
 WORK="$(mktemp -d)"
 LOG="$WORK/wiki.log"
 cleanup() {
-  # codenib wiki stops its own services on SIGINT, as Ctrl-C does.
-  [[ -n "${PID:-}" ]] && kill -INT "$PID" 2>/dev/null || true
-  sleep 3
-  [[ -n "${PID:-}" ]] && kill -KILL "$PID" 2>/dev/null || true
+  # codenib wiki stops its own services on SIGINT, as Ctrl-C does. Give it
+  # time, then stop its backend and frontend too: killing only the parent
+  # left them serving on these ports, and the next run talked to them.
+  if [[ -n "${PID:-}" ]]; then
+    kill -INT "$PID" 2>/dev/null || true
+    for _ in $(seq 1 20); do kill -0 "$PID" 2>/dev/null || break; sleep 0.5; done
+    pkill -KILL -P "$PID" 2>/dev/null || true
+    kill -KILL "$PID" 2>/dev/null || true
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -37,6 +42,12 @@ git -C "$REPO" -c user.name=smoke -c user.email=smoke@example.invalid commit --q
 
 PORT=38471
 API=38472
+for port in "$PORT" "$API"; do
+  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "port $port is already in use; stop what serves it and run again" >&2
+    exit 1
+  fi
+done
 (
   cd "$REPO"
   exec env -i HOME="$WORK/home" PATH="$APP/Contents/Resources/python/bin:/usr/bin:/bin" \
