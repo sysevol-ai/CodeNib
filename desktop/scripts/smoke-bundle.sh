@@ -8,7 +8,7 @@
 # and save a note through the printed session key.
 set -euo pipefail
 
-APP="${1:?usage: smoke-bundle.sh path/to/CodeNib.app}"
+APP="$(cd "${1:?usage: smoke-bundle.sh path/to/CodeNib.app}" && pwd)"
 PY="$APP/Contents/Resources/python/bin/python3.12"
 WORK="$(mktemp -d)"
 LOG="$WORK/wiki.log"
