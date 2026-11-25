@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "launcher",
-  "description": "The launcher window may call the app's commands and hear progress events. Wiki windows load http://127.0.0.1 and get no app access.",
-  "windows": ["launcher"],
-  "permissions": ["core:default"]
+  "identifier": "main",
+  "description": "The CodeNib window may call the app's commands, hear its events and be dragged by its title area. It never reaches a repository's service directly.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging"
+  ]
 }

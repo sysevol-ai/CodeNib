@@ -1,9 +1,12 @@
 //! CodeNib for macOS.
 //!
-//! The app opens a repository the person picks, runs `codenib wiki` for it in
-//! the background, and shows the Wiki that command serves in a window of its
-//! own. Closing the window stops that command. Nothing leaves the machine: the
-//! Wiki is served on 127.0.0.1 and tasks run on the person's own Claude Code.
+//! One window shows every repository the person added. For each repository
+//! the app runs `codenib wiki` in the background, started when the repository
+//! is first opened and stopped when the app quits. The window never talks to
+//! those services itself: the `api` command forwards its requests to the
+//! repository's service on 127.0.0.1 with the session key, so the key stays in
+//! this process and the page needs no cross-origin access. Nothing leaves the
+//! machine; tasks run on the person's own Claude Code.
 
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read};
@@ -12,32 +15,88 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{mpsc, Mutex};
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use serde::Serialize;
-use tauri::{
-    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
-};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tauri::{AppHandle, Emitter, Manager, RunEvent};
 use tauri_plugin_dialog::DialogExt;
 
 /// The line `codenib wiki` prints once both of its services answer.
 const READY: &str = "CodeNib Wiki is ready: ";
-const RECENT_LIMIT: usize = 8;
+/// How long one forwarded request may take; writing a page can be slow.
+const API_TIMEOUT: Duration = Duration::from_secs(300);
+/// The last lines of a starting service, kept to explain a failure.
+const TAIL: usize = 12;
 
-static NEXT_WINDOW: AtomicUsize = AtomicUsize::new(1);
-
-/// One running `codenib wiki` and the window that shows it.
-struct Wiki {
-    label: String,
-    child: Child,
+/// A repository the person added, as it is saved between launches.
+#[derive(Clone, Serialize, Deserialize)]
+struct RepoConfig {
+    path: String,
+    /// Build the symbol graph and map (`--preset graph`).
+    #[serde(default = "yes")]
+    analysis: bool,
+    /// Have Claude Code write the pages (`--generate`).
+    #[serde(default)]
+    generate: bool,
 }
 
-/// Running Wikis, keyed by the repository folder as the person picked it.
+fn yes() -> bool {
+    true
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Status {
+    Stopped,
+    Starting,
+    Ready,
+    Failed,
+}
+
+/// The service behind one repository.
+struct Backend {
+    status: Status,
+    child: Option<Child>,
+    api_port: u16,
+    session: String,
+    error: String,
+    lines: Vec<String>,
+}
+
+impl Backend {
+    fn stopped() -> Self {
+        Backend {
+            status: Status::Stopped,
+            child: None,
+            api_port: 0,
+            session: String::new(),
+            error: String::new(),
+            lines: Vec::new(),
+        }
+    }
+}
+
 #[derive(Default)]
-struct Wikis(Mutex<HashMap<String, Wiki>>);
+struct State {
+    repos: Mutex<Vec<RepoConfig>>,
+    backends: Mutex<HashMap<String, Backend>>,
+}
+
+/// What the window knows about one repository.
+#[derive(Clone, Serialize)]
+struct RepoView {
+    path: String,
+    name: String,
+    analysis: bool,
+    generate: bool,
+    status: Status,
+    error: String,
+    /// The latest line the service printed while starting.
+    line: String,
+}
 
 #[derive(Clone, Serialize)]
 struct Progress {
@@ -133,6 +192,28 @@ fn ready_url(line: &str) -> Option<&str> {
     local.then_some(url)
 }
 
+/// The session key in a ready address.
+fn session_key(url: &str) -> Option<&str> {
+    let query = url.split_once('?')?.1;
+    query
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("session="))
+        .filter(|key| {
+            !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        })
+}
+
+/// A request path the window may forward: CodeNib's API on one repository.
+fn forwardable(path: &str) -> bool {
+    path.starts_with("/api/")
+        && !path.contains("..")
+        && !path.contains("://")
+        && !path.chars().any(|c| c.is_whitespace() || c == '#')
+}
+
 /// The search path a terminal would have.
 ///
 /// An app opened from the Dock gets a minimal PATH, without the folders that
@@ -213,57 +294,223 @@ fn stop(mut child: Child) {
     let _ = child.wait();
 }
 
-/// Forward each output line to the launcher and report the ready address.
-fn pump<R: Read + Send + 'static>(
-    app: AppHandle,
-    repo: String,
-    stream: Option<R>,
-    ready: mpsc::Sender<String>,
-) {
+fn repo_name(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_owned())
+}
+
+fn config_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|folder| folder.join("repositories.json"))
+}
+
+fn load_repos(app: &AppHandle) -> Vec<RepoConfig> {
+    config_file(app)
+        .and_then(|file| std::fs::read(file).ok())
+        .and_then(|bytes| serde_json::from_slice::<Vec<RepoConfig>>(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn save_repos(app: &AppHandle, repos: &[RepoConfig]) {
+    if let Some(file) = config_file(app) {
+        if let Some(folder) = file.parent() {
+            let _ = std::fs::create_dir_all(folder);
+        }
+        if let Ok(bytes) = serde_json::to_vec_pretty(repos) {
+            let _ = std::fs::write(file, bytes);
+        }
+    }
+}
+
+fn view(state: &State, config: &RepoConfig) -> RepoView {
+    let backends = state.backends.lock().unwrap_or_else(|e| e.into_inner());
+    let backend = backends.get(&config.path);
+    RepoView {
+        path: config.path.clone(),
+        name: repo_name(&config.path),
+        analysis: config.analysis,
+        generate: config.generate,
+        status: backend.map_or(Status::Stopped, |b| b.status),
+        error: backend.map(|b| b.error.clone()).unwrap_or_default(),
+        line: backend
+            .and_then(|b| b.lines.last().cloned())
+            .unwrap_or_default(),
+    }
+}
+
+fn announce(app: &AppHandle, path: &str) {
+    let state = app.state::<State>();
+    let config = state
+        .repos
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|repo| repo.path == path)
+        .cloned();
+    if let Some(config) = config {
+        let _ = app.emit("codenib://status", view(&state, &config));
+    }
+}
+
+/// Start the repository's service unless it is running or starting.
+fn start_backend(app: &AppHandle, config: &RepoConfig) -> Result<(), String> {
+    let state = app.state::<State>();
+    {
+        let backends = state.backends.lock().map_err(|_| "app state is unavailable")?;
+        if let Some(backend) = backends.get(&config.path) {
+            if matches!(backend.status, Status::Starting | Status::Ready) {
+                return Ok(());
+            }
+        }
+    }
+    let repo = PathBuf::from(&config.path);
+    if !repo.is_dir() {
+        return Err(format!("{} is not a folder any more", config.path));
+    }
+    let search = search_path();
+    let runner = runner(app, &search).ok_or("CodeNib is not available in this app")?;
+    let (port, api_port) = (free_port()?, free_port()?);
+    let mut command = runner.command(&search);
+    command
+        .arg("wiki")
+        .arg(&repo)
+        .args(["--no-open", "--port", &port.to_string()])
+        .args(["--api-port", &api_port.to_string()]);
+    if config.analysis {
+        command.args(["--preset", "graph"]);
+    }
+    if config.generate {
+        command.arg("--generate");
+    }
+    let mut child = command
+        .current_dir(&repo)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .process_group(0)
+        .spawn()
+        .map_err(|error| format!("could not start CodeNib: {error}"))?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    {
+        let mut backends = state.backends.lock().map_err(|_| "app state is unavailable")?;
+        let mut backend = Backend::stopped();
+        backend.status = Status::Starting;
+        backend.child = Some(child);
+        backend.api_port = api_port;
+        backends.insert(config.path.clone(), backend);
+    }
+    announce(app, &config.path);
+    watch(app.clone(), config.path.clone(), stdout);
+    watch(app.clone(), config.path.clone(), stderr);
+    supervise(app.clone(), config.path.clone());
+    Ok(())
+}
+
+/// Read a service's output: progress lines while it starts, and its address.
+fn watch<R: Read + Send + 'static>(app: AppHandle, path: String, stream: Option<R>) {
     let Some(stream) = stream else { return };
     thread::spawn(move || {
         for line in BufReader::new(stream).lines().map_while(Result::ok) {
-            if let Some(url) = ready_url(&line) {
-                let _ = ready.send(url.to_owned());
+            let line = line.trim_end().to_owned();
+            if line.is_empty() {
+                continue;
             }
-            let _ = app.emit(
-                "codenib://progress",
-                Progress {
-                    repo: repo.clone(),
-                    line,
-                },
-            );
+            let mut became_ready = false;
+            {
+                let state = app.state::<State>();
+                let mut backends = state.backends.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(backend) = backends.get_mut(&path) {
+                    if let Some(key) = ready_url(&line).and_then(session_key) {
+                        if backend.status == Status::Starting {
+                            backend.session = key.to_owned();
+                            backend.status = Status::Ready;
+                            became_ready = true;
+                        }
+                    }
+                    if backend.status == Status::Starting {
+                        backend.lines.push(line.clone());
+                        let excess = backend.lines.len().saturating_sub(TAIL);
+                        backend.lines.drain(..excess);
+                    }
+                }
+            }
+            if became_ready {
+                announce(&app, &path);
+            } else {
+                let _ = app.emit(
+                    "codenib://progress",
+                    Progress {
+                        repo: path.clone(),
+                        line: line.clone(),
+                    },
+                );
+            }
         }
     });
 }
 
-fn recent_file(app: &AppHandle) -> Option<PathBuf> {
-    app.path()
-        .app_config_dir()
-        .ok()
-        .map(|folder| folder.join("recent.json"))
+/// Notice when a service stops on its own, and say why.
+fn supervise(app: AppHandle, path: String) {
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(500));
+        let ended = {
+            let state = app.state::<State>();
+            let mut backends = state.backends.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(backend) = backends.get_mut(&path) else {
+                return;
+            };
+            let Some(child) = backend.child.as_mut() else {
+                return;
+            };
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    backend.child = None;
+                    backend.status = Status::Failed;
+                    let tail = backend.lines.iter().rev().take(4).rev().cloned();
+                    let tail: Vec<String> = tail.collect();
+                    backend.error = if tail.is_empty() {
+                        format!("CodeNib stopped ({status})")
+                    } else {
+                        format!("CodeNib stopped ({status}): {}", tail.join(" · "))
+                    };
+                    true
+                }
+                Ok(None) => false,
+                Err(_) => false,
+            }
+        };
+        if ended {
+            announce(&app, &path);
+            return;
+        }
+    });
 }
 
-fn load_recent(app: &AppHandle) -> Vec<String> {
-    recent_file(app)
-        .and_then(|file| std::fs::read(file).ok())
-        .and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok())
-        .unwrap_or_default()
-}
-
-fn remember(app: &AppHandle, repo: &str) {
-    let mut recent = load_recent(app);
-    recent.retain(|known| known != repo);
-    recent.insert(0, repo.to_owned());
-    recent.truncate(RECENT_LIMIT);
-    if let Some(file) = recent_file(app) {
-        if let Some(folder) = file.parent() {
-            let _ = std::fs::create_dir_all(folder);
-        }
-        if let Ok(bytes) = serde_json::to_vec_pretty(&recent) {
-            let _ = std::fs::write(file, bytes);
-        }
+fn stop_backend(app: &AppHandle, path: &str) {
+    let child = {
+        let state = app.state::<State>();
+        let mut backends = state.backends.lock().unwrap_or_else(|e| e.into_inner());
+        backends.remove(path).and_then(|mut backend| backend.child.take())
+    };
+    if let Some(child) = child {
+        stop(child);
     }
+}
+
+fn find_repo(app: &AppHandle, path: &str) -> Result<RepoConfig, String> {
+    app.state::<State>()
+        .repos
+        .lock()
+        .map_err(|_| "app state is unavailable")?
+        .iter()
+        .find(|repo| repo.path == path)
+        .cloned()
+        .ok_or_else(|| format!("{path} is not in CodeNib"))
 }
 
 #[tauri::command]
@@ -294,155 +541,210 @@ async fn setup_status(app: AppHandle) -> Setup {
 }
 
 #[tauri::command]
-fn recent_repositories(app: AppHandle) -> Vec<String> {
-    load_recent(&app)
-        .into_iter()
-        .filter(|repo| Path::new(repo).is_dir())
-        .collect()
+fn repositories(app: AppHandle) -> Vec<RepoView> {
+    let state = app.state::<State>();
+    let repos = state.repos.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    repos.iter().map(|repo| view(&state, repo)).collect()
 }
 
 #[tauri::command]
-async fn pick_repository(app: AppHandle) -> Option<String> {
+async fn pick_folder(app: AppHandle) -> Option<String> {
     app.dialog()
         .file()
-        .set_title("Open a repository")
+        .set_title("Add a repository")
         .blocking_pick_folder()
         .and_then(|picked| picked.into_path().ok())
         .map(|path| path.display().to_string())
 }
 
 #[tauri::command]
-async fn open_repository(app: AppHandle, path: String) -> Result<(), String> {
-    let repo = PathBuf::from(&path);
-    if !repo.is_dir() {
+async fn add_repository(
+    app: AppHandle,
+    path: String,
+    analysis: bool,
+    generate: bool,
+) -> Result<RepoView, String> {
+    if !Path::new(&path).is_dir() {
         return Err(format!("{path} is not a folder"));
     }
-    // The same repository again brings its window forward.
-    {
-        let wikis = app.state::<Wikis>();
-        let running = wikis.0.lock().map_err(|_| "app state is unavailable")?;
-        if let Some(wiki) = running.get(&path) {
-            if let Some(window) = app.get_webview_window(&wiki.label) {
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-                return Ok(());
-            }
-        }
-    }
-
-    let search = search_path();
-    let runner = runner(&app, &search).ok_or("CodeNib is not installed on this Mac")?;
-    let (port, api_port) = (free_port()?, free_port()?);
-    let mut child = runner
-        .command(&search)
-        .arg("wiki")
-        .arg(&repo)
-        .args(["--no-open", "--port", &port.to_string()])
-        .args(["--api-port", &api_port.to_string()])
-        .current_dir(&repo)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0)
-        .spawn()
-        .map_err(|error| format!("could not start codenib: {error}"))?;
-
-    let (ready, address) = mpsc::channel();
-    pump(app.clone(), path.clone(), child.stdout.take(), ready.clone());
-    pump(app.clone(), path.clone(), child.stderr.take(), ready);
-    remember(&app, &path);
-
-    // Building a new index can take minutes; wait as long as the command runs.
-    let url = loop {
-        match address.recv_timeout(Duration::from_millis(250)) {
-            Ok(url) => break url,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                if let Ok(Some(status)) = child.try_wait() {
-                    return Err(format!(
-                        "codenib wiki stopped ({status}) before the Wiki was ready"
-                    ));
-                }
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                let status = child.wait().map_err(|error| error.to_string())?;
-                return Err(format!(
-                    "codenib wiki stopped ({status}) before the Wiki was ready"
-                ));
-            }
-        }
+    let config = RepoConfig {
+        path: path.clone(),
+        analysis,
+        generate,
     };
-
-    let label = format!("wiki-{}", NEXT_WINDOW.fetch_add(1, Ordering::SeqCst));
-    let title = repo
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.clone());
-    let address = url
-        .parse()
-        .map_err(|error| format!("unexpected Wiki address {url}: {error}"))?;
-    if let Err(error) = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(address))
-        .title(title)
-        .inner_size(1320.0, 880.0)
-        .min_inner_size(720.0, 480.0)
-        .build()
     {
-        stop(child);
-        return Err(format!("could not open the Wiki window: {error}"));
+        let state = app.state::<State>();
+        let mut repos = state.repos.lock().map_err(|_| "app state is unavailable")?;
+        repos.retain(|repo| repo.path != path);
+        repos.push(config.clone());
+        save_repos(&app, &repos);
     }
-    app.state::<Wikis>()
-        .0
-        .lock()
-        .map_err(|_| "app state is unavailable")?
-        .insert(path, Wiki { label, child });
+    // New options take effect on a fresh start.
+    stop_backend(&app, &path);
+    start_backend(&app, &config)?;
+    Ok(view(&app.state::<State>(), &config))
+}
+
+#[tauri::command]
+async fn remove_repository(app: AppHandle, path: String) -> Result<(), String> {
+    stop_backend(&app, &path);
+    let state = app.state::<State>();
+    let mut repos = state.repos.lock().map_err(|_| "app state is unavailable")?;
+    repos.retain(|repo| repo.path != path);
+    save_repos(&app, &repos);
     Ok(())
 }
 
-/// Stop the Wiki whose window just closed.
-fn window_closed(app: &AppHandle, label: &str) {
-    let wiki = {
-        let wikis = app.state::<Wikis>();
-        let Ok(mut running) = wikis.0.lock() else {
-            return;
-        };
-        let key = running
-            .iter()
-            .find(|(_, wiki)| wiki.label == label)
-            .map(|(key, _)| key.clone());
-        key.and_then(|key| running.remove(&key))
-    };
-    if let Some(wiki) = wiki {
-        thread::spawn(move || stop(wiki.child));
+#[tauri::command]
+async fn start_repository(app: AppHandle, path: String) -> Result<RepoView, String> {
+    let config = find_repo(&app, &path)?;
+    start_backend(&app, &config)?;
+    Ok(view(&app.state::<State>(), &config))
+}
+
+#[tauri::command]
+async fn restart_repository(app: AppHandle, path: String) -> Result<RepoView, String> {
+    let config = find_repo(&app, &path)?;
+    stop_backend(&app, &path);
+    start_backend(&app, &config)?;
+    Ok(view(&app.state::<State>(), &config))
+}
+
+/// Forward one request to a repository's service and return its JSON.
+#[tauri::command]
+async fn api(
+    app: AppHandle,
+    repo: String,
+    method: String,
+    path: String,
+    body: Option<Value>,
+) -> Result<Value, String> {
+    if !forwardable(&path) {
+        return Err(format!("not a CodeNib API path: {path}"));
     }
+    let method = method.to_ascii_uppercase();
+    if !matches!(method.as_str(), "GET" | "POST" | "PUT" | "PATCH" | "DELETE") {
+        return Err(format!("unsupported method {method}"));
+    }
+    let (port, session) = {
+        let state = app.state::<State>();
+        let backends = state.backends.lock().map_err(|_| "app state is unavailable")?;
+        match backends.get(&repo) {
+            Some(backend) if backend.status == Status::Ready => {
+                (backend.api_port, backend.session.clone())
+            }
+            Some(backend) if backend.status == Status::Starting => {
+                return Err("starting: CodeNib is still opening this repository".to_owned())
+            }
+            _ => return Err("stopped: this repository is not open".to_owned()),
+        }
+    };
+    let url = format!("http://127.0.0.1:{port}{path}");
+    tauri::async_runtime::spawn_blocking(move || {
+        let agent = ureq::AgentBuilder::new().timeout(API_TIMEOUT).build();
+        let request = agent
+            .request(&method, &url)
+            .set("X-CodeNib-Session", &session)
+            .set("Accept", "application/json");
+        let response = match body {
+            Some(body) => request.send_json(body),
+            None => request.call(),
+        };
+        match response {
+            Ok(response) => {
+                let text = response.into_string().map_err(|e| e.to_string())?;
+                if text.trim().is_empty() {
+                    return Ok(Value::Null);
+                }
+                serde_json::from_str(&text).or(Ok(Value::String(text)))
+            }
+            Err(ureq::Error::Status(code, response)) => {
+                let text = response.into_string().unwrap_or_default();
+                let detail = serde_json::from_str::<Value>(&text)
+                    .ok()
+                    .and_then(|value| value.get("detail").cloned())
+                    .map(|detail| match detail {
+                        Value::String(text) => text,
+                        other => other.to_string(),
+                    })
+                    .unwrap_or(text);
+                Err(format!("HTTP {code}: {detail}"))
+            }
+            Err(error) => Err(format!("CodeNib did not answer: {error}")),
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+/// Open a web address in the person's browser, never inside the app.
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("only web addresses open in the browser".to_owned());
+    }
+    Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+/// Show a repository folder in Finder.
+#[tauri::command]
+fn show_in_finder(path: String) -> Result<(), String> {
+    if !Path::new(&path).is_dir() {
+        return Err(format!("{path} is not a folder"));
+    }
+    Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(Wikis::default())
+        .manage(State::default())
+        .setup(|app| {
+            let repos = load_repos(app.handle());
+            *app.state::<State>()
+                .repos
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = repos;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             setup_status,
-            recent_repositories,
-            pick_repository,
-            open_repository
+            repositories,
+            pick_folder,
+            add_repository,
+            remove_repository,
+            start_repository,
+            restart_repository,
+            api,
+            open_external,
+            show_in_finder
         ])
-        .on_window_event(|window, event| {
-            if let WindowEvent::Destroyed = event {
-                window_closed(window.app_handle(), window.label());
-            }
-        })
         .build(tauri::generate_context!())
         .expect("CodeNib could not start")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                let running: Vec<Wiki> = app
-                    .state::<Wikis>()
-                    .0
+                let children: Vec<Child> = app
+                    .state::<State>()
+                    .backends
                     .lock()
-                    .map(|mut running| running.drain().map(|(_, wiki)| wiki).collect())
+                    .map(|mut backends| {
+                        backends
+                            .drain()
+                            .filter_map(|(_, mut backend)| backend.child.take())
+                            .collect()
+                    })
                     .unwrap_or_default();
-                for wiki in running {
-                    stop(wiki.child);
+                for child in children {
+                    stop(child);
                 }
             }
         });
@@ -475,9 +777,37 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_session_key() {
+        assert_eq!(
+            session_key("http://127.0.0.1:3190/repo?session=abc_DEF-1"),
+            Some("abc_DEF-1")
+        );
+        assert_eq!(session_key("http://127.0.0.1:3190/repo?x=1&session=k"), Some("k"));
+        assert_eq!(session_key("http://127.0.0.1:3190/repo"), None);
+        assert_eq!(session_key("http://127.0.0.1:3190/repo?session=a b"), None);
+    }
+
+    #[test]
+    fn forwards_only_codenib_api_paths() {
+        assert!(forwardable("/api/repos/requests/wiki/overview"));
+        assert!(forwardable("/api/repos/requests/annotations?page=overview"));
+        assert!(!forwardable("/repo"));
+        assert!(!forwardable("/api/../etc"));
+        assert!(!forwardable("http://example.com/api/x"));
+        assert!(!forwardable("/api/x y"));
+    }
+
+    #[test]
     fn a_free_port_can_be_bound() {
         let first = free_port().unwrap();
         assert!(first > 0);
         TcpListener::bind(("127.0.0.1", first)).unwrap();
+    }
+
+    #[test]
+    fn saved_repositories_default_to_building_analysis_tools() {
+        let repos: Vec<RepoConfig> = serde_json::from_str(r#"[{"path": "/Users/me/code/x"}]"#).unwrap();
+        assert!(repos[0].analysis);
+        assert!(!repos[0].generate);
     }
 }

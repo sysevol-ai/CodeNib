@@ -4,22 +4,27 @@
   "version": "0.1.0",
   "identifier": "ai.codenib.desktop",
   "build": {
-    "frontendDist": "../ui"
+    "frontendDist": "../app/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm --prefix app run dev",
+    "beforeBuildCommand": "npm --prefix app run build"
   },
   "app": {
     "withGlobalTauri": true,
     "windows": [
       {
-        "label": "launcher",
+        "label": "main",
         "title": "CodeNib",
-        "width": 760,
-        "height": 560,
-        "minWidth": 560,
-        "minHeight": 420
+        "width": 1320,
+        "height": 860,
+        "minWidth": 960,
+        "minHeight": 600,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; script-src 'self'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; script-src 'self'; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {
