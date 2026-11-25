@@ -1126,3 +1126,13 @@ button.sb-service:hover {
   height: 13px;
   vertical-align: -2px;
 }
+
+/* A long citation is marked by a bar in the margin, not a block of grey. */
+.src-pop-body.is-long-cite .code-row.is-hl {
+  background: transparent;
+  box-shadow: inset 3px 0 0 var(--nib-line);
+}
+
+.rail-actions {
+  margin-bottom: 6px;
+}

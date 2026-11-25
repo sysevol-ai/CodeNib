@@ -514,10 +514,82 @@ mark.anchor.is-focus {
   text-decoration-color: currentColor;
 }
 
+/* Fits the window: as wide as code needs up to 680px, and never taller than
+   the room the popover has, with its code scrolling inside. */
 .src-pop {
-  width: 560px;
+  width: min(680px, calc(100vw - 48px));
+  max-height: min(560px, var(--radix-popover-content-available-height, 560px));
   padding: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.src-pop-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.src-pop-file {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.src-pop-lines {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.src-pop-icon {
+  flex: none;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 5px;
+  color: var(--muted-ink);
+  cursor: pointer;
+}
+
+.src-pop-icon:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.src-pop-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.src-pop-more {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px;
+  border-bottom: 1px solid var(--line-soft, var(--line));
+  font-size: 12.5px;
+  color: var(--muted-ink);
+  background: var(--well);
+  cursor: pointer;
+}
+
+.src-pop-body + .src-pop-more {
+  border-top: 1px solid var(--line-soft, var(--line));
+  border-bottom: 0;
+}
+
+.src-pop-more:hover {
+  color: var(--ink);
+}
+
+.src-pop-more svg {
+  width: 13px;
+  height: 13px;
 }
 
 .src-pop-head,
