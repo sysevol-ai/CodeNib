@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Iterator, Sequence
 
 from ._version import package_version
+from .parser_errors import ParserUnavailableError
 from .provider_routes import (
     InferenceRoute,
     normalize_provider,
@@ -4643,6 +4644,9 @@ def run(argv: Sequence[str] | None = None) -> int:
         activate_managed_toolchain()
         return int(args.handler(args) or 0)
     except CLIError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except ParserUnavailableError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
