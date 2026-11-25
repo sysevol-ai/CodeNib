@@ -393,9 +393,25 @@ export function keepValidatedDiagrams(markdown: string, validated: boolean): str
     .trimEnd();
 }
 
+/** Ask about the page or leave a note on it; always at the top of the margin. */
+function RailActions({ who, onCompose }: { who: string; onCompose: (kind: Kind) => void }) {
+  return (
+    <section className="rail-group rail-actions" aria-label="Notes and questions">
+      <Button size="sm" onClick={() => onCompose("ask")}>
+        <MessageCircleQuestion />
+        Ask {who} about this page
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => onCompose("note")}>
+        <StickyNote />
+        Add a note
+      </Button>
+    </section>
+  );
+}
+
 /** The margin when a page has no notes yet: where you are on the page, the
  *  code it rests on, and how to start a note. */
-function PageRail({ repo, page, blocks, who }: { repo: string; page: Page; blocks: MdBlock[]; who: string }) {
+function PageRail({ repo, page, blocks }: { repo: string; page: Page; blocks: MdBlock[] }) {
   const sections = blocks
     .map((block, i) => ({ title: block.title, heading: block.heading, index: i + 1 }))
     .filter((b) => b.heading === 2 && b.title);
@@ -479,8 +495,8 @@ function PageRail({ repo, page, blocks, who }: { repo: string; page: Page; block
         </section>
       )}
       <p className="notes-empty">
-        Point at a paragraph and use its handle to ask {who}, request a change or leave a note. Notes stay beside the
-        words they are about.
+        To ask about one paragraph, or request a change to it, point at it and use the <GripVertical className="inline-grip" />{" "}
+        handle at its left. Notes stay beside the words they are about.
       </p>
     </div>
   );
@@ -639,7 +655,10 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
       .sort((a, b) => a.anchor!.getBoundingClientRect().top - b.anchor!.getBoundingClientRect().top);
     const tops: Record<string, number> = {};
     const paths: Layout["paths"] = [];
-    let floor = 0;
+    // Notes start below the Ask and Note buttons at the top of the margin, so
+    // a note anchored near the title never covers them.
+    const actions = notesEl.querySelector<HTMLElement>(".rail-actions");
+    let floor = actions ? actions.getBoundingClientRect().bottom - box.top + 16 : 0;
     for (const { t, anchor } of placed) {
       const note = noteRefs.current[t.root.id];
       if (!note || !anchor) continue;
@@ -794,7 +813,10 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
         ))}
       </svg>
       <div className="notes" aria-label="Notes on this page">
-        {threads.length === 0 && <PageRail repo={repo} page={page} blocks={blocks} who={who} />}
+        <RailActions who={who} onCompose={(kind) => setComposing({ block: 0, kind })} />
+        {threads.length === 0 && (
+          <PageRail repo={repo} page={page} blocks={blocks} />
+        )}
         {threads.map((thread) => (
           <aside
             key={thread.root.id}

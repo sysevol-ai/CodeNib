@@ -31,7 +31,7 @@ from contextlib import asynccontextmanager, contextmanager, nullcontext
 from functools import partial
 from html import escape
 from pathlib import Path, PurePosixPath
-from time import perf_counter
+from time import monotonic, perf_counter
 from urllib.parse import quote, unquote
 
 from fastapi import FastAPI, HTTPException, Request
@@ -44,20 +44,21 @@ from ..annotations.edits import apply_edit
 from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
+from ..source_fingerprint import RepositoryChangedError
 from ..wiki import WikiBuilder
-from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
+from ..wiki.flowchart import (drop_flow_duplicate_interactions,
+                              qualify_flow_caption)
 from ..wiki.media_context import visual_document_contexts
 from ..wiki.media_evidence import build_media_evidence_pack
-from ..wiki.media_generation import (
-    image_generator_from_config,
-    materialize_media_slots,
-    read_generated_media_asset,
-    redact_media_evidence_packs,
-)
+from ..wiki.media_generation import (image_generator_from_config,
+                                     materialize_media_slots,
+                                     read_generated_media_asset,
+                                     redact_media_evidence_packs)
 from ..wiki.media_storage import load_multimodal_knowledge_bundle
 from ..wiki.narrator import Narrator
 from ..wiki.repo_docs import doc_page, find_docs, is_doc_id
-from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
+from ..wiki.repository_visuals import (attach_repository_visual,
+                                       discover_overview_visual)
 from ..wiki.sqlite_store import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
@@ -70,28 +71,14 @@ from .experience import router as experience_router
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
-from .prerender import (
-    attr,
-    outline_pages,
-    page_body,
-    page_description,
-    page_route,
-    robots,
-    sitemap,
-    standalone_document,
-)
+from .prerender import (attr, outline_pages, page_body, page_description,
+                        page_route, robots, sitemap, standalone_document)
 from .repo_registry import RepoRegistry
 from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
-from .schemas import (
-    ChatRequest,
-    ChatResponse,
-    EdgeLabelRequest,
-    EdgeLabelResponse,
-    RepoIndexStatus,
-    RepoInfo,
-    agent_result_to_response,
-)
+from .schemas import (ChatRequest, ChatResponse, EdgeLabelRequest,
+                      EdgeLabelResponse, RepoIndexStatus, RepoInfo,
+                      agent_result_to_response)
 from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
@@ -292,6 +279,40 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
+
+_rebound_at: dict[str, float] = {}
+_REBIND_INTERVAL_SECONDS = 10.0
+
+
+@app.exception_handler(RepositoryChangedError)
+async def _rebind_changed_repository(request: Request, exc: RepositoryChangedError):
+    """Re-read a repository whose source binding no longer matches it.
+
+    A binding refuses every later read once it sees the repository differ
+    from what it pinned, so one stale binding used to fail Impact,
+    Walkthrough and citations until a restart. Publish a fresh generation
+    (at most every few seconds per repository) and ask the caller to retry.
+    """
+
+    match = re.match(r"^/api/repos/([^/]+)/", request.url.path)
+    repo_id = match.group(1) if match else ""
+    if repo_id:
+        now = monotonic()
+        if now - _rebound_at.get(repo_id, 0.0) >= _REBIND_INTERVAL_SECONDS:
+            _rebound_at[repo_id] = now
+            registry = getattr(app.state, "registry", None)
+            if registry is not None:
+                try:
+                    await asyncio.to_thread(registry.refresh, repo_id)
+                    logger.info("Re-read %s after its source changed: %s", repo_id, exc)
+                except Exception as refresh_error:  # noqa: BLE001 - still answer
+                    logger.warning("Could not re-read %s: %s", repo_id, refresh_error)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "The repository changed; CodeNib re-read it. Try again."},
+        headers={"Retry-After": "2"},
+    )
+
 
 app.include_router(visitor_wiki_router)
 app.include_router(experience_router)

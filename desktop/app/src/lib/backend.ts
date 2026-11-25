@@ -103,6 +103,21 @@ export interface CloneProgress {
   line: string;
 }
 
+/** One forwarded request. A 503 means CodeNib is re-reading a repository
+ *  whose files changed under it; wait a moment and ask again, four times at most,
+ *  so the person never sees the hiccup. */
+async function callApi<T>(repo: string, method: string, path: string, body?: unknown): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await invoke<T>("api", { repo, method, path, body: body ?? null });
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      if (attempt >= 4 || !text.startsWith("HTTP 503")) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+    }
+  }
+}
+
 export const backend = {
   setup: () => invoke<Setup>("setup_status"),
   repositories: () => invoke<RepoView[]>("repositories"),
@@ -112,8 +127,7 @@ export const backend = {
   remove: (path: string) => invoke<void>("remove_repository", { path }),
   start: (path: string) => invoke<RepoView>("start_repository", { path }),
   restart: (path: string) => invoke<RepoView>("restart_repository", { path }),
-  api: <T>(repo: string, method: string, path: string, body?: unknown) =>
-    invoke<T>("api", { repo, method, path, body: body ?? null }),
+  api: <T>(repo: string, method: string, path: string, body?: unknown) => callApi<T>(repo, method, path, body),
   openExternal: (url: string) => invoke<void>("open_external", { url }),
   showInFinder: (path: string) => invoke<void>("show_in_finder", { path }),
   agents: () => invoke<AgentStatus[]>("agents_status"),

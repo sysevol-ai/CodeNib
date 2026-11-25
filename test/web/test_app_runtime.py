@@ -2587,3 +2587,38 @@ def test_retrying_a_page_needs_a_local_session(monkeypatch) -> None:
     with pytest.raises(HTTPException) as hosted:
         _require_local_session(Req())
     assert hosted.value.status_code == 403
+
+
+def test_a_changed_repository_is_reread_and_the_caller_retries(monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from codenib.source_fingerprint import RepositoryChangedError
+    from codenib.web import app as web_app
+
+    refreshed = []
+
+    class Registry:
+        def refresh(self, repo_id):
+            refreshed.append(repo_id)
+
+    def stale():
+        raise RepositoryChangedError("repository source inventory changed")
+
+    web_app.app.add_api_route("/api/repos/{repo_id}/stale-test", stale)
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    web_app._rebound_at.clear()
+    try:
+        client = TestClient(web_app.app, raise_server_exceptions=False)
+        first = client.get("/api/repos/req/stale-test")
+        second = client.get("/api/repos/req/stale-test")
+    finally:
+        web_app.app.router.routes = [
+            r
+            for r in web_app.app.router.routes
+            if getattr(r, "path", "") != "/api/repos/{repo_id}/stale-test"
+        ]
+    assert first.status_code == 503 and first.headers["retry-after"] == "2"
+    assert "re-read" in first.json()["detail"]
+    # A second failure within the interval does not refresh again.
+    assert second.status_code == 503
+    assert refreshed == ["req"]

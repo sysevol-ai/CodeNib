@@ -1108,3 +1108,21 @@ button.sb-service:hover {
 .page-rail .notes-empty {
   margin: 0;
 }
+
+.rail-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.rail-actions [data-slot="button"] {
+  justify-content: flex-start;
+}
+
+.inline-grip {
+  display: inline;
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+}
