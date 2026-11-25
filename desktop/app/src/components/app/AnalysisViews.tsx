@@ -14,9 +14,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Kbd } from "@/components/ui/kbd";
 import { message } from "@/lib/backend";
-import { areaPages, hueFor } from "@/lib/areas";
+import { hueFor } from "@/lib/areas";
 import { flattenPages, type Source } from "@/lib/model";
 import { repoPath, useStore } from "@/lib/store";
+import { useAreas } from "@/lib/useAreas";
+import { BOX_H, routeMap, type MapBox, type MapColumn, type MapLink } from "@/lib/mapRoute";
 import { cn } from "@/lib/utils";
 import { CodeLines } from "./CodeLines";
 import { SourceMark } from "./SourceMark";
@@ -77,24 +79,9 @@ function useFetch<T>(repo: string, path: string | null) {
   return state;
 }
 
-/** Which area a file belongs to: the module page whose folder holds it. */
+/** Which area a file belongs to (see useAreas). */
 function useAreaOf(repo: string) {
-  const { data } = useStore();
-  const d = data[repo];
-  return useMemo(() => {
-    const pages = flattenPages(d?.tree?.pages ?? []);
-    const areas = areaPages(d?.tree?.pages ?? [], d?.mapAreas ?? null);
-    const modules = pages
-      .filter((p) => p.id.startsWith("mod__"))
-      .map((p) => ({ id: p.id, folder: p.title.replace(/\/$/, "") }))
-      .sort((a, b) => b.folder.length - a.folder.length);
-    return (file: string) => {
-      const found = modules.find((m) => file === m.folder || file.startsWith(`${m.folder}/`));
-      return found
-        ? { id: found.id, title: found.folder, hue: hueFor(found.id, areas) }
-        : { id: "", title: "No area", hue: "var(--area-none)" };
-    };
-  }, [d?.tree, d?.mapAreas]);
+  return useAreas(repo).ofFile;
 }
 
 /** A long code name may break after a dot or a slash, never through a word. */
@@ -127,115 +114,70 @@ function Empty({ title, children }: { title: string; children: React.ReactNode }
 
 // ---------------------------------------------------------------- Map
 
-interface MapNode {
-  id: string;
-  title: string;
-  meta: string;
-  hue: string;
-  page: string;
-  here: boolean;
-}
-
-interface MapLink {
-  source: string;
-  target: string;
-  calls: number;
-  example?: Anchor;
-  label?: string;
-}
-
-function MapCanvas({ nodes, links, onOpen }: { nodes: MapNode[]; links: MapLink[]; onOpen: (n: MapNode) => void }) {
+function AreaMap({ columns, links, onOpen }: { columns: MapColumn[]; links: MapLink[]; onOpen: (b: MapBox) => void }) {
   const wrap = useRef<HTMLDivElement>(null);
-  const [paths, setPaths] = useState<{ key: string; d: string; link: MapLink; hue: string }[]>([]);
+  const [available, setAvailable] = useState(1000);
   const [hover, setHover] = useState<MapLink | null>(null);
-  const columns = nodes.length <= 4 ? nodes.length : nodes.length <= 9 ? 3 : 4;
-  const max = Math.max(1, ...links.map((l) => l.calls));
-
   useLayoutEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const measure = () => {
-      const box = el.getBoundingClientRect();
-      const rect = (id: string) => el.querySelector<HTMLElement>(`[data-map="${CSS.escape(id)}"]`)?.getBoundingClientRect();
-      const next: typeof paths = [];
-      for (const link of links) {
-        const a = rect(link.source);
-        const b = rect(link.target);
-        if (!a || !b) continue;
-        const ax = a.left + a.width / 2 - box.left;
-        const ay = a.top + a.height / 2 - box.top;
-        const bx = b.left + b.width / 2 - box.left;
-        const by = b.top + b.height / 2 - box.top;
-        // Leave each box from its edge facing the other, and bow the line so
-        // a pair's two directions stay apart.
-        const dx = bx - ax;
-        const dy = by - ay;
-        const horizontal = Math.abs(dx) * a.height > Math.abs(dy) * a.width;
-        const x1 = horizontal ? ax + Math.sign(dx) * (a.width / 2) : ax;
-        const y1 = horizontal ? ay : ay + Math.sign(dy) * (a.height / 2);
-        const x2 = horizontal ? bx - Math.sign(dx) * (b.width / 2 + 6) : bx;
-        const y2 = horizontal ? by : by - Math.sign(dy) * (b.height / 2 + 6);
-        const mx = (x1 + x2) / 2 - dy * 0.06;
-        const my = (y1 + y2) / 2 + dx * 0.06;
-        const hue = el.querySelector<HTMLElement>(`[data-map="${CSS.escape(link.source)}"]`)?.style.getPropertyValue("--hue") ?? "";
-        next.push({ key: `${link.source}>${link.target}`, d: `M ${x1} ${y1} Q ${mx} ${my} ${x2} ${y2}`, link, hue });
-      }
-      setPaths(next);
-    };
+    const measure = () => setAvailable(Math.min(1100, el.clientWidth));
     measure();
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(measure);
-    });
+    const observer = new ResizeObserver(measure);
     observer.observe(el);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [nodes, links]);
+    return () => observer.disconnect();
+  }, []);
+  const map = useMemo(() => routeMap(columns, links, available), [columns, links, available]);
+  const title = (id: string) => map.placed.find((p) => p.box.id === id)?.box.title ?? id;
 
-  const title = (id: string) => nodes.find((n) => n.id === id)?.title ?? id;
   return (
-    <section className="map-section" aria-label="Areas and the calls between them">
-      <div className="map-grid" ref={wrap} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-        <svg className="map-links" aria-hidden="true">
-          {paths.map((p) => (
-            <path
-              key={p.key}
-              d={p.d}
-              className={cn("map-link", hover && hover !== p.link && "is-dim")}
-              style={{
-                stroke: p.hue,
-                strokeWidth: 1 + 4 * Math.sqrt(p.link.calls / max),
-                opacity: hover === p.link ? 1 : 0.35 + 0.55 * Math.sqrt(p.link.calls / max),
-              }}
+    <section className="map-section" aria-label="Areas and the calls between them" ref={wrap}>
+      <div className="area-map" style={{ width: map.width, height: map.height }}>
+        {columns.map((c, i) =>
+          c.head ? (
+            <div key={i} className="area-head" style={{ left: map.colX(i), width: map.boxW, height: map.head }}>
+              <span className="area-mark" style={{ background: c.head.hue }} aria-hidden="true" />
+              <span className="area-head-title">{c.head.title}</span>
+              <span className="area-head-meta">{c.head.meta}</span>
+            </div>
+          ) : null,
+        )}
+        <svg className="map-links" width={map.width} height={map.height} aria-hidden="true">
+          {map.routes.map((r) => (
+            <polyline
+              key={`${r.link.source}>${r.link.target}`}
+              className={cn("map-route", hover && hover !== r.link && "is-dim")}
+              data-from={r.link.source}
+              data-to={r.link.target}
+              points={r.points.map((p) => p.join(",")).join(" ")}
+              style={{ stroke: r.hue, strokeWidth: r.width }}
             />
           ))}
-          {paths.map((p) => (
-            <path
-              key={`${p.key}-hit`}
-              d={p.d}
+          {map.routes.map((r) => (
+            <polyline
+              key={`${r.link.source}>${r.link.target}-hit`}
               className="map-hit"
-              onMouseEnter={() => setHover(p.link)}
+              points={r.points.map((p) => p.join(",")).join(" ")}
+              onMouseEnter={() => setHover(r.link)}
               onMouseLeave={() => setHover(null)}
             />
           ))}
         </svg>
-        {nodes.map((n) => (
+        {map.placed.map(({ box, x, y }) => (
           <button
-            key={n.id}
+            key={box.id}
             type="button"
-            data-map={n.id}
-            className={cn("map-area", n.here && "is-here")}
-            style={{ "--hue": n.hue } as CSSProperties}
-            onClick={() => onOpen(n)}
+            data-map={box.id}
+            className={cn("map-area", box.here && "is-here")}
+            style={{ "--hue": box.hue, left: x, top: y, width: map.boxW, height: BOX_H } as CSSProperties}
+            onClick={() => onOpen(box)}
+            title={box.title}
           >
             <span className="map-area-title">
               <span className="area-mark" aria-hidden="true" />
-              <Name text={n.title} />
+              <span className="map-area-name">{box.title}</span>
             </span>
-            <span className="map-area-meta">{n.meta}</span>
+            <span className="map-area-meta">{box.meta}</span>
           </button>
         ))}
       </div>
@@ -311,73 +253,83 @@ export function MapView({ repo, pageId }: { repo: string; pageId: string }) {
   const { data, go, repos } = useStore();
   const d = data[repo];
   const name = repos.find((r) => r.path === repo)?.name ?? "";
-  const outline = useFetch<{ available: boolean; areas: { id: string; title: string; symbols: number; files: number }[]; links: { source: string; target: string; calls: number; example?: { anchor?: Anchor } }[] }>(
-    repo,
-    repoPath(d, "/wiki-map"),
-  );
-  const modules = useFetch<Graph & { total_modules?: number }>(
-    repo,
-    outline.loading || outline.value?.available ? null : repoPath(d, "/modulemap"),
-  );
-  const areaOf = useAreaOf(repo);
-  const areas = areaPages(d?.tree?.pages ?? [], d?.mapAreas ?? null);
-  const pageAreaFolder = flattenPages(d?.tree?.pages ?? []).find((p) => p.id === pageId)?.title;
+  const outline = useFetch<{
+    available: boolean;
+    areas: { id: string; title: string; symbols: number; files: number }[];
+    links: { source: string; target: string; calls: number; example?: { anchor?: Anchor } }[];
+  }>(repo, repoPath(d, "/wiki-map"));
+  const modules = useFetch<Graph>(repo, outline.loading || outline.value?.available ? null : repoPath(d, "/modulemap"));
+  const { ofFile, derived } = useAreas(repo);
+  const outlineIds = (outline.value?.areas ?? []).map((a) => a.id);
+  // A file box opens the module page whose folder holds the file.
+  const modulePages = flattenPages(d?.tree?.pages ?? [])
+    .filter((p) => p.id.startsWith("mod__"))
+    .sort((a, b) => b.title.length - a.title.length);
+  const pageOf = (file: string) => modulePages.find((p) => file.startsWith(`${p.title.replace(/\/$/, "")}/`))?.id ?? "";
 
   const view = useMemo(() => {
     if (outline.value?.available) {
+      const boxes = outline.value.areas.map<MapBox>((a) => ({
+        id: a.id,
+        title: a.title,
+        meta: `${a.symbols} symbols · ${a.files} files`,
+        hue: hueFor(a.id, outlineIds),
+        page: a.id,
+        here: a.id === pageId,
+      }));
+      // Two areas a column keeps names readable.
+      const columns: MapColumn[] = [];
+      for (let i = 0; i < boxes.length; i += 2) columns.push({ boxes: boxes.slice(i, i + 2) });
       return {
-        title: `${outline.value.areas.length} areas of ${name} and the calls between them.`,
+        title: `${boxes.length} areas of ${name} and the calls between them.`,
         note: "",
-        nodes: outline.value.areas.map<MapNode>((a) => ({
-          id: a.id,
-          title: a.title,
-          meta: `${a.symbols} symbols · ${a.files} files`,
-          hue: hueFor(a.id, areas),
-          page: a.id,
-          here: a.id === pageId,
-        })),
-        links: outline.value.links.map<MapLink>((l) => ({
-          source: l.source,
-          target: l.target,
-          calls: l.calls,
-          example: l.example?.anchor,
-        })),
+        columns,
+        links: outline.value.links.map<MapLink>((l) => ({ source: l.source, target: l.target, calls: l.calls, example: l.example?.anchor })),
       };
     }
     const graph = modules.value;
-    if (!graph?.available) return null;
+    if (!graph?.available || !derived) return null;
     const files = graph.nodes
       .filter((n) => !n.external && (n.kind ?? "file") === "file")
-      .sort((a, b) => (b.symbol_count ?? 0) - (a.symbol_count ?? 0))
+      .sort((a, b) => (b.symbol_count ?? 0) - (a.symbol_count ?? 0) || a.file.localeCompare(b.file))
       .slice(0, 12);
     const shown = new Set(files.map((f) => f.id));
+    const columns: MapColumn[] = derived.areas
+      .map((area) => {
+        const boxes = files
+          .filter((f) => derived.byFile[f.file] === area.id)
+          .map<MapBox>((f) => ({
+            id: f.id,
+            title: f.file.split("/").pop() ?? f.file,
+            meta: `${f.symbol_count ?? 0} symbols`,
+            hue: ofFile(f.file).hue,
+            page: pageOf(f.file),
+            here: false,
+          }));
+        return {
+          head: { title: area.title, meta: `${area.files.length} files`, hue: ofFile(area.files[0]).hue },
+          boxes,
+        };
+      })
+      .filter((c) => c.boxes.length);
     const between = graph.edges
       .filter((e) => shown.has(e.source) && shown.has(e.target) && e.source !== e.target)
       .sort((a, b) => (b.call_sites ?? b.weight ?? 1) - (a.call_sites ?? a.weight ?? 1));
     // Every link at once is a tangle; the busiest ones carry the shape.
     const kept = between.slice(0, 16);
     return {
-      title: `The ${files.length} largest files of ${name} and the calls between them.`,
+      title: `The ${files.length} largest files of ${name}, in ${columns.length} ${columns.length === 1 ? "area" : "areas"} of code that call each other.`,
       note: between.length > kept.length ? `The ${kept.length} busiest of ${between.length} links are drawn.` : "",
-      nodes: files.map<MapNode>((f) => {
-        const area = areaOf(f.file);
-        return {
-          id: f.id,
-          title: f.file.split("/").pop() ?? f.file,
-          meta: `${f.symbol_count ?? 0} symbols · ${area.id ? area.title : f.file.split("/").slice(0, -1).join("/") || "top level"}`,
-          hue: area.hue,
-          page: area.id,
-          here: !!pageAreaFolder && f.file.startsWith(`${pageAreaFolder}/`),
-        };
-      }),
+      columns,
       links: kept.map<MapLink>((e) => ({
-          source: e.source,
-          target: e.target,
-          calls: e.call_sites ?? e.weight ?? 1,
-          example: e.anchors?.[0],
-        })),
+        source: e.source,
+        target: e.target,
+        calls: e.call_sites ?? e.weight ?? 1,
+        example: e.anchors?.[0],
+      })),
     };
-  }, [outline.value, modules.value, name, areas, pageId, areaOf, pageAreaFolder]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outline.value, modules.value, derived, name, pageId, ofFile, outlineIds.join(","), modulePages.length]);
 
   if (outline.loading || (!outline.value?.available && modules.loading)) return <Empty title="Map.">Reading the index…</Empty>;
   if (!view)
@@ -392,13 +344,15 @@ export function MapView({ repo, pageId }: { repo: string; pageId: string }) {
         Map. <span className="two-tone">{view.title}</span>
       </h1>
       <p className="view-sub">
-        Read from the index{d?.info?.commit_short ? ` at ${d.info.commit_short}` : ""}. A line's width follows how
-        many calls it carries; its colour is the calling area.{view.note ? ` ${view.note}` : ""}
+        {outline.value?.available
+          ? "Areas from the Wiki's outline."
+          : "No outline yet, so areas are the groups of files that call each other most, each named after its most central file."}{" "}
+        A line's width follows how many calls it carries; its colour is the calling area.{view.note ? ` ${view.note}` : ""}
       </p>
-      <MapCanvas
-        nodes={view.nodes}
+      <AreaMap
+        columns={view.columns}
         links={view.links}
-        onOpen={(n) => n.page && go({ kind: "page", repo, page: n.page })}
+        onOpen={(box) => box.page && go({ kind: "page", repo, page: box.page })}
       />
       <PageCalls repo={repo} pageId={pageId} />
     </div>

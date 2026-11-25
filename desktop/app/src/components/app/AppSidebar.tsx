@@ -26,7 +26,7 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { backend, message, type RepoView } from "@/lib/backend";
-import { areaPages, hueFor } from "@/lib/areas";
+import { useAreas } from "@/lib/useAreas";
 import { flattenPages, taskNeed, taskTitle, type Task } from "@/lib/model";
 import { useStore } from "@/lib/store";
 import { NibMark } from "./NibMark";
@@ -81,7 +81,7 @@ function RepoTree({ repo }: { repo: RepoView }) {
   const annotations = d?.notes?.annotations ?? [];
   const needs = tasks.filter((t) => taskNeed(t, annotations) === "needs").length;
   const pages = flattenPages(d?.tree?.pages ?? []);
-  const areas = areaPages(d?.tree?.pages ?? [], d?.mapAreas ?? null);
+  const { ofPage } = useAreas(repo.path);
   const currentPage = view.kind === "page" && isHere ? view.page : null;
   const shownTasks = [...tasks].sort((a, b) => (a.created < b.created ? 1 : -1)).slice(0, 6);
 
@@ -149,7 +149,7 @@ function RepoTree({ repo }: { repo: RepoView }) {
                   style={{ paddingLeft: 8 + p.depth * 14 }}
                 >
                   <span className="sb-page-pad" aria-hidden="true">
-                    <span className="area-mark" style={{ background: hueFor(p.id, areas) }} />
+                    <span className="area-mark" style={{ background: ofPage(p.id) }} />
                   </span>
                   <span>{p.title}</span>
                 </SidebarMenuSubButton>

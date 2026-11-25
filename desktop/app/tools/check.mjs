@@ -38,6 +38,31 @@ async function audit(page, label) {
     for (let i = 0; i < notes.length; i++)
       for (let j = i + 1; j < notes.length; j++)
         if (notes[i].bottom > notes[j].top && notes[j].bottom > notes[i].top) issues.push("overlapping notes");
+    // A map line may touch only the two boxes it connects.
+    for (const route of document.querySelectorAll("polyline.map-route")) {
+      const svg = route.ownerSVGElement.getBoundingClientRect();
+      const points = route.getAttribute("points").trim().split(/\s+/).map((p) => p.split(",").map(Number));
+      const ends = new Set([route.dataset.from, route.dataset.to]);
+      const boxes = [...document.querySelectorAll(".area-map [data-map]")].filter((b) => !ends.has(b.dataset.map));
+      for (let i = 1; i < points.length; i++) {
+        const [x1, y1] = points[i - 1];
+        const [x2, y2] = points[i];
+        const seg = { left: svg.left + Math.min(x1, x2), right: svg.left + Math.max(x1, x2), top: svg.top + Math.min(y1, y2), bottom: svg.top + Math.max(y1, y2) };
+        for (const box of boxes) {
+          const r = box.getBoundingClientRect();
+          if (seg.left < r.right - 1 && seg.right > r.left + 1 && seg.top < r.bottom - 1 && seg.bottom > r.top + 1)
+            issues.push(`map line ${route.dataset.from}>${route.dataset.to} crosses box ${box.dataset.map}`);
+        }
+      }
+    }
+    // Boxes must not overlap one another either.
+    const placed = [...document.querySelectorAll(".area-map [data-map]")].map((b) => [b.dataset.map, b.getBoundingClientRect()]);
+    for (let i = 0; i < placed.length; i++)
+      for (let j = i + 1; j < placed.length; j++) {
+        const [, a] = placed[i];
+        const [, b] = placed[j];
+        if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) issues.push(`map boxes ${placed[i][0]} and ${placed[j][0]} overlap`);
+      }
     return issues;
   });
   return report.map((r) => `${label}: ${r}`);

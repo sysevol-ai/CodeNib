@@ -4,7 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { backend, listen, message, type Progress, type RepoView, type Setup } from "./backend";
-import type { MapArea } from "./areas";
+import { deriveFileAreas, type FileAreas, type FileEdge, type FileNode, type MapArea } from "./areas";
 import type { NotesState, RepoInfo, Tree } from "./model";
 
 export type View =
@@ -19,6 +19,8 @@ export interface RepoData {
   tree?: Tree;
   notes?: NotesState;
   mapAreas?: MapArea[] | null;
+  /** Without an outline: areas derived from the file call graph. */
+  fileAreas?: FileAreas | null;
   error?: string;
   loadedAt?: number;
 }
@@ -133,11 +135,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .api<{ available: boolean; areas: MapArea[] }>(path, "GET", `${base}/wiki-map`)
             .catch(() => ({ available: false, areas: [] })),
         ]);
+        let fileAreas: FileAreas | null = null;
+        if (!map.available) {
+          const modules = await backend
+            .api<{ available: boolean; nodes: FileNode[]; edges: FileEdge[] }>(path, "GET", `${base}/modulemap`)
+            .catch(() => null);
+          if (modules?.available) fileAreas = deriveFileAreas(modules.nodes, modules.edges);
+        }
         patchData(path, {
           info,
           tree,
           notes,
           mapAreas: map.available ? map.areas : null,
+          fileAreas,
           error: undefined,
           loadedAt: Date.now(),
         });

@@ -454,3 +454,74 @@ body {
   margin-top: 40px;
   max-width: 1040px;
 }
+
+/* ---------- routed area map ---------- */
+.area-map {
+  position: relative;
+  margin-top: 8px;
+}
+
+.area-head {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.area-head-title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.area-head-meta {
+  color: var(--muted-ink);
+  white-space: nowrap;
+}
+
+.area-map .map-links {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.map-route {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
+  transition: opacity 140ms ease;
+}
+
+.map-route.is-dim {
+  opacity: 0.12;
+}
+
+.area-map .map-area {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+}
+
+.map-area-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.area-map .map-area-title {
+  min-width: 0;
+  max-width: 100%;
+}
