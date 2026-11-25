@@ -585,6 +585,16 @@ def _selected_views(preset: str, explicit: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(views))
 
 
+def _auto_graph_available(languages: Iterable[str]) -> bool:
+    """True when the graph extra is installed and a language has a backend."""
+
+    from .languages import graph_indexer_path
+
+    if not _check_module("igraph"):
+        return False
+    return any(graph_indexer_path(language) is not None for language in languages)
+
+
 def _selected_views_for_args(args: argparse.Namespace) -> list[str]:
     explicit = _split_values(args.view)
     if explicit or args.preset != "auto":
@@ -1949,6 +1959,18 @@ def _run_wiki(args: argparse.Namespace) -> int:
         print("Auto preset: reuse manifest capabilities")
     else:
         views = _selected_views_for_args(args)
+    # Views the auto preset chose on its own are extras: if one cannot be
+    # built here, the Wiki still opens without it. The Wiki's Map and Impact
+    # read the symbol graph, so it is built by default when the graph extra
+    # is installed and a detected language has a graph backend.
+    optional_views: set[str] = set()
+    if not args.no_index and args.preset == "auto" and not _split_values(args.view):
+        if not _embedding_identity_is_configured(args):
+            optional_views.update(view for view in views if view != "bm25")
+        if "symbol_graph" not in views and _auto_graph_available(languages):
+            views.append("symbol_graph")
+            optional_views.add("symbol_graph")
+            print("Auto preset: adding the symbol graph (graph extra available)")
     audit = bool(args.audit or args.audit_json)
     model_options = _model_options_for_args(args)
     visual_facts_backend = _visual_facts_backend_for_args(args)
@@ -2031,6 +2053,20 @@ def _run_wiki(args: argparse.Namespace) -> int:
             )
         manifest, failed = index_repository(repo_path, **index_kwargs)
         _print_index_summary(manifest, views)
+        skipped = [view for view in failed if view in optional_views]
+        if skipped:
+            # Open the Wiki without the extras rather than not at all.
+            failed = [view for view in failed if view not in optional_views]
+            views = [view for view in views if view not in skipped]
+            labels = {
+                "symbol_graph": "the symbol graph (Map and Impact)",
+                "vector": "semantic search",
+            }
+            print(
+                "The Wiki opens without "
+                + " and ".join(labels.get(view, view) for view in skipped)
+                + ": it could not be built here. Run `codenib doctor` for details."
+            )
         if failed:
             raise CLIError(
                 "the Wiki was not started because requested views failed: "
