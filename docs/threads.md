@@ -386,6 +386,73 @@ reading the whole thread each time (151 issues, a median of 6 returns each).
     - Reproduce with `scripts/benchmark_threads_context.py`; `--agent` selects
       Codex or Claude Code.
 
+### How well the agent works
+
+With its memory, the [always-on agent](#keep-an-agent-on-the-repository)
+costs half as much as the same agent without it and files fewer than half the
+drafts, and it raises about a fifth fewer of the points reviewers later make.
+The agent was replayed over the life of 76 merged pull requests from five
+repositories. It was compared with an agent woken by the same news that reads
+the whole thread every time and keeps no notes. Both ran Claude Sonnet 5.5
+with the same tools and instructions, and nothing was posted.
+
+| Over 76 pull requests | With memory | Without | Ratio, 95% interval |
+|---|---:|---:|---:|
+| Cost | $11.08 | $21.52 | 0.52 [0.47, 0.56] |
+| Drafts for a maintainer | 102 | 249 | 0.41 [0.36, 0.47] |
+| Reviewer points raised first | 36.5 | 47 | 0.78 [0.60, 0.97] |
+
+- **It rereads less code.** On the same later wakes in `astral-sh/ruff`, the
+  agent's input was 9,000 tokens against 24,600: without a note, it opens the
+  diff and the code again to rebuild what it knew.
+- **It says things once.** Without memory, the agent wrote a new review on 31%
+  of the later wakes in `ruff`, against 4% with it.
+- **Code decides when to wake.** 42% of the passes with a change had nothing
+  that asked for a response, and woke no model.
+- **The price is coverage.** Six in ten reviewer points are about design and
+  idiom: where code belongs, which helper to use. The agent without memory
+  raised more of them, mostly by reviewing the same pull request again.
+- **Two changes did not help.** Reviewing new commits on their own cost 29%
+  more and raised no more points, on 32 other `ruff` pull requests. Telling
+  the agent to look for reuse and placement raised 1.5 points more
+  [−6.5, +10.0] at the same cost. Neither is in the agent.
+- **More samples at the first look are promising.** On 25 further pull
+  requests, three independent first reviews merged into one draft raised 2.75
+  points more than one review [−0.5, +6.5], at about four times the cost of
+  the first look. The agent does not do this yet.
+
+??? note "Method and evidence"
+    - Pull requests: merged October 1 to November 18, 2026, from
+      `astral-sh/ruff` (36), `pandas-dev/pandas`, `prometheus/prometheus`,
+      `vitejs/vite` and `tokio-rs/tokio` (10 each). Each changed at most 30
+      files and 1,500 lines, was open at most 14 days, and had an inline
+      review from someone other than its author. Candidates were drawn in a
+      seeded random order. Only pull requests never force-pushed, stacked or
+      rebased were kept, so committer dates tell what each held at every
+      moment.
+    - Replay: one pass per 15 minutes from opening to merge. Before each pass
+      the store holds only the events that existed then; the agent reads a
+      snapshot of the base without history and the three-dot diff of the head
+      at that time.
+    - Raised first: a judge model, blind to the agent, decides whether a draft
+      made before a reviewer's comment raised the same point. Judged twice, it
+      agreed with itself on 140 of 142 pairs. Points were sorted into kinds by
+      the same model.
+    - Run to run: the same agent run twice raised 24 and 21 points on the four
+      newer repositories, and 12 and 10 on 32 November `ruff` pull requests.
+      The agent with memory was run twice on the four repositories, and its
+      figures there are the mean.
+    - Intervals are 95% bootstrap intervals over pull requests, resampled
+      within each repository. Costs are as Claude Code reported them.
+    - The reviewers' points are what they chose to write: a correct point no
+      reviewer made scores nothing.
+    - Rows and summary: [per pull request](assets/threads_agent_replay.csv),
+      [first-look reviews](assets/threads_agent_first_look.csv),
+      [reviewer points](assets/threads_agent_review_points.csv),
+      [summary](assets/threads_agent_replay_summary.json). Reproduce with
+      `scripts/benchmark_threads_agent.py` (`select`, `refine`, `fetch`,
+      `replay`, `judge`, `label`) and `scripts/summarize_threads_agent_replay.py`.
+
 ## Reference
 
 | Command | Does |
