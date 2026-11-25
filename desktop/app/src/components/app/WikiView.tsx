@@ -12,7 +12,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Textarea } from "@/components/ui/textarea";
 import { message, type AgentStatus, type WriterId } from "@/lib/backend";
 import { agentName, ago, taskNeed, type Anchor, type Annotation, type Page, type Task } from "@/lib/model";
-import { repoPath, useStore } from "@/lib/store";
+import { repoPath, stillWriting, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Markdown, splitBlocks } from "./markdown";
 import { SourceMark } from "./SourceMark";
@@ -382,6 +382,43 @@ function anchorBlock(root: HTMLElement, on: Anchor): HTMLElement | null {
   return blocks[0] ?? null;
 }
 
+/** Waiting for a page; says when an agent is writing it, and for how long. */
+function PageWait({ repo, pageId }: { repo: string; pageId: string }) {
+  const { data, repos } = useStore();
+  const d = data[repo];
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    setSeconds(0);
+    const timer = window.setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [pageId]);
+  const writer = repos.find((r) => r.path === repo)?.writer;
+  const writing = stillWriting(d?.progress) && !d!.progress!.written.includes(pageId);
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  if (!writing || !writer) {
+    return (
+      <div className="empty-state">
+        <p className="empty-wait">{d?.notes ? "Opening the page…" : "Opening the repository…"}</p>
+      </div>
+    );
+  }
+  const { written, pages } = d!.progress!;
+  return (
+    <div className="empty-state page-wait" aria-live="polite">
+      <h2>
+        <StatusMark status="working" /> {agentName(writer)} is writing this page
+      </h2>
+      <p>
+        It reads the code behind the page and checks every claim against it, which usually takes one to three
+        minutes. Pages already written open at once.
+      </p>
+      <p className="page-wait-meta">
+        Waiting {clock} · {written.length} of {pages.length} pages written
+      </p>
+    </div>
+  );
+}
+
 export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: string; onReview: (task: string) => void }) {
   const { data, call, go, palette, setPalette, taskAgent } = useStore();
   const who = agentName(taskAgent);
@@ -493,11 +530,7 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
     );
   }
   if (!page) {
-    return (
-      <div className="empty-state">
-        <p className="empty-wait">{d?.notes ? "Opening the page…" : "Opening the repository…"}</p>
-      </div>
-    );
+    return <PageWait repo={repo} pageId={pageId} />;
   }
 
   const isDoc = pageId.startsWith("doc--");

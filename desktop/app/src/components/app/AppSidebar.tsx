@@ -28,7 +28,7 @@ import {
 import { backend, message, type RepoView } from "@/lib/backend";
 import { useAreas } from "@/lib/useAreas";
 import { agentName, flattenPages, taskNeed, taskTitle, type Task } from "@/lib/model";
-import { useStore } from "@/lib/store";
+import { stillWriting, useStore } from "@/lib/store";
 import { NibMark } from "./NibMark";
 import { StatusMark } from "./StatusMark";
 
@@ -130,6 +130,11 @@ function RepoTree({ repo }: { repo: RepoView }) {
               </li>
             )}
             {d?.error && <li className="sb-note is-failed">{d.error}</li>}
+            {stillWriting(d?.progress) && (
+              <li className="sb-note" aria-live="polite">
+                {agentName(repo.writer)} is writing pages · {d!.progress!.written.length} of {d!.progress!.pages.length}
+              </li>
+            )}
             {(d?.tree?.docs ?? []).map((doc) => (
               <SidebarMenuSubItem key={doc.id}>
                 <SidebarMenuSubButton
@@ -147,6 +152,14 @@ function RepoTree({ repo }: { repo: RepoView }) {
                   isActive={currentPage === p.id}
                   onClick={() => go({ kind: "page", repo: repo.path, page: p.id })}
                   style={{ paddingLeft: 8 + p.depth * 14 }}
+                  data-unwritten={
+                    stillWriting(d?.progress) && !d!.progress!.written.includes(p.id) ? "yes" : undefined
+                  }
+                  title={
+                    stillWriting(d?.progress) && !d!.progress!.written.includes(p.id)
+                      ? `Not written yet; ${agentName(repo.writer)} writes it when you open it`
+                      : undefined
+                  }
                 >
                   <span className="sb-page-pad" aria-hidden="true">
                     <span className="area-mark" style={{ background: ofPage(p.id) }} />

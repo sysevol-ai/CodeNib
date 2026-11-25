@@ -2534,3 +2534,40 @@ def test_wiki_page_boundary_reports_missing_graph(monkeypatch):
         assert exc.status_code == 404
     else:  # pragma: no cover - the endpoint must reject unknown pages
         raise AssertionError("unknown page should 404")
+
+
+def test_written_pages_reads_only_the_cache() -> None:
+    from codenib.web.app import _written_pages
+
+    class Builder:
+        def __init__(self):
+            self.asked = []
+
+        def cached_page_tree(self):
+            return [
+                {"id": "overview", "children": []},
+                {"id": "a", "children": [{"id": "a-1"}, {"id": "a-2"}]},
+            ]
+
+        def cached_page(self, page_id):
+            self.asked.append(page_id)
+            if page_id == "a-2":
+                raise ValueError("unreadable")
+            return {"id": page_id} if page_id in {"overview", "a-1"} else None
+
+        def page(self, page_id):  # pragma: no cover - must never be called
+            raise AssertionError("progress must not generate pages")
+
+    builder = Builder()
+    assert _written_pages(builder) == {
+        "writing": True,
+        "pages": ["overview", "a", "a-1", "a-2"],
+        "written": ["overview", "a-1"],
+    }
+    assert builder.asked == ["overview", "a", "a-1", "a-2"]
+
+
+def test_written_pages_without_a_writer() -> None:
+    from codenib.web.app import _written_pages
+
+    assert _written_pages(object()) == {"writing": False, "pages": [], "written": []}

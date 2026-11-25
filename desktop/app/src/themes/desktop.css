@@ -877,3 +877,34 @@ button.sb-service:hover {
   flex-wrap: wrap;
   gap: 10px;
 }
+
+/* ---------- pages an agent has not written yet ---------- */
+[data-unwritten="yes"] {
+  color: var(--muted-ink);
+}
+
+[data-unwritten="yes"] .area-mark {
+  opacity: 0.45;
+}
+
+.page-wait h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.page-wait p {
+  margin: 0;
+  max-width: 520px;
+  color: var(--ink-2);
+  line-height: 24px;
+}
+
+.page-wait .page-wait-meta {
+  font-size: 13px;
+  color: var(--muted-ink);
+  font-variant-numeric: tabular-nums;
+}

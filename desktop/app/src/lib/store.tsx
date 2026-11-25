@@ -24,6 +24,17 @@ export type View =
   | { kind: "review"; repo: string; task: string }
   | { kind: "map" | "impact" | "walkthrough"; repo: string; page: string };
 
+export interface WikiProgress {
+  writing: boolean;
+  pages: string[];
+  written: string[];
+}
+
+/** True while an agent is still writing some of a repository's pages. */
+export function stillWriting(progress: WikiProgress | undefined): boolean {
+  return !!progress?.writing && progress.written.length < progress.pages.length;
+}
+
 export interface RepoData {
   info?: RepoInfo;
   tree?: Tree;
@@ -31,6 +42,9 @@ export interface RepoData {
   mapAreas?: MapArea[] | null;
   /** Without an outline: areas derived from the file call graph. */
   fileAreas?: FileAreas | null;
+  /** Which pages a writing agent has finished. */
+  progress?: WikiProgress;
+  progressAt?: number;
   error?: string;
   loadedAt?: number;
 }
@@ -177,12 +191,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const info = infos[0];
         if (!info) throw new Error("CodeNib found no repository in this folder");
         const base = `/api/repos/${encodeURIComponent(info.id)}`;
-        const [tree, notes, map] = await Promise.all([
+        const [tree, notes, map, progress] = await Promise.all([
           backend.api<Tree>(path, "GET", `${base}/wiki`),
           backend.api<NotesState>(path, "GET", `${base}/annotations`).catch(() => undefined),
           backend
             .api<{ available: boolean; areas: MapArea[] }>(path, "GET", `${base}/wiki-map`)
             .catch(() => ({ available: false, areas: [] })),
+          backend.api<WikiProgress>(path, "GET", `${base}/wiki-progress`).catch(() => undefined),
         ]);
         let fileAreas: FileAreas | null = null;
         if (!map.available) {
@@ -197,6 +212,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           notes,
           mapAreas: map.available ? map.areas : null,
           fileAreas,
+          progress,
+          progressAt: Date.now(),
           error: undefined,
           loadedAt: Date.now(),
         });
@@ -276,6 +293,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (busy || age > 15000) {
           patchData(repo.path, { loadedAt: Date.now() });
           void refreshNotes(repo.path);
+        }
+        // While an agent writes pages, check every few seconds which are done.
+        const progressPath = repoPath(d, "/wiki-progress");
+        if (progressPath && stillWriting(d.progress) && Date.now() - (d.progressAt ?? 0) > 8000) {
+          patchData(repo.path, { progressAt: Date.now() });
+          void backend
+            .api<WikiProgress>(repo.path, "GET", progressPath)
+            .then((progress) => patchData(repo.path, { progress }))
+            .catch(() => undefined);
         }
       }
     }, 2500);

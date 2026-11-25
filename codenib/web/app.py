@@ -45,19 +45,19 @@ from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
 from ..wiki import WikiBuilder
-from ..wiki.flowchart import (drop_flow_duplicate_interactions,
-                              qualify_flow_caption)
+from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
 from ..wiki.media_context import visual_document_contexts
 from ..wiki.media_evidence import build_media_evidence_pack
-from ..wiki.media_generation import (image_generator_from_config,
-                                     materialize_media_slots,
-                                     read_generated_media_asset,
-                                     redact_media_evidence_packs)
+from ..wiki.media_generation import (
+    image_generator_from_config,
+    materialize_media_slots,
+    read_generated_media_asset,
+    redact_media_evidence_packs,
+)
 from ..wiki.media_storage import load_multimodal_knowledge_bundle
 from ..wiki.narrator import Narrator
 from ..wiki.repo_docs import doc_page, find_docs, is_doc_id
-from ..wiki.repository_visuals import (attach_repository_visual,
-                                       discover_overview_visual)
+from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.sqlite_store import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
@@ -69,14 +69,28 @@ from .experience import router as experience_router
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
-from .prerender import (attr, outline_pages, page_body, page_description,
-                        page_route, robots, sitemap, standalone_document)
+from .prerender import (
+    attr,
+    outline_pages,
+    page_body,
+    page_description,
+    page_route,
+    robots,
+    sitemap,
+    standalone_document,
+)
 from .repo_registry import RepoRegistry
 from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
-from .schemas import (ChatRequest, ChatResponse, EdgeLabelRequest,
-                      EdgeLabelResponse, RepoIndexStatus, RepoInfo,
-                      agent_result_to_response)
+from .schemas import (
+    ChatRequest,
+    ChatResponse,
+    EdgeLabelRequest,
+    EdgeLabelResponse,
+    RepoIndexStatus,
+    RepoInfo,
+    agent_result_to_response,
+)
 from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
@@ -1328,6 +1342,42 @@ async def wiki_tree(repo_id: str, cached_only: bool = False) -> dict:
             docs = await _run_pinned_thread(find_docs, Path(bundle.entry.repo_dir))
             tree["docs"] = [doc.to_json() for doc in docs]
         return tree
+
+
+def _written_pages(builder) -> dict:
+    """Which pages a writing agent has finished, read from the cache only.
+
+    A page that is not written yet is written when it is first opened, which
+    can take minutes with a local coding agent; the window uses this to say so
+    and to show progress. Nothing here generates or refreshes a page.
+    """
+
+    cached_page_tree = getattr(builder, "cached_page_tree", None)
+    cached_page = getattr(builder, "cached_page", None)
+    if not callable(cached_page_tree) or not callable(cached_page):
+        return {"writing": False, "pages": [], "written": []}
+
+    def flatten(pages):
+        for page in pages or []:
+            yield page["id"]
+            yield from flatten(page.get("children"))
+
+    ids = list(flatten(cached_page_tree() or []))
+    written = []
+    for page_id in ids:
+        try:
+            if cached_page(page_id) is not None:
+                written.append(page_id)
+        except Exception:  # noqa: BLE001 - an unreadable entry is unwritten
+            continue
+    return {"writing": True, "pages": ids, "written": written}
+
+
+@app.get("/api/repos/{repo_id}/wiki-progress")
+async def wiki_progress(repo_id: str) -> dict:
+    with _pinned_bundle(repo_id) as bundle:
+        builder = await _run_pinned_thread(_wiki, repo_id, bundle)
+        return await _run_pinned_thread(_written_pages, builder)
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}")
