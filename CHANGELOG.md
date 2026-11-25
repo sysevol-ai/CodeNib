@@ -24,6 +24,30 @@ All notable user-facing changes are recorded here. CodeNib follows
   and tasks are files under `.codenib/notes/` and `.codenib/tasks/`.
   `codenib wiki` prints the address with a session key that annotating
   needs, and the Claude Code plugin's `/codenib:wiki` hands it over.
+- A local Wiki shows the repository's README and the Markdown files under
+  `docs/` as pages under **Repository docs**, in `mkdocs.yml` order when
+  there is one.
+- `codenib wiki --generate` writes a local Wiki's pages with your own Claude
+  Code, on your Claude Code plan and with no API key: the Overview first, the
+  rest in the background.
+- Lines of code in the source panel can be annotated like words on a page,
+  and annotated lines are marked in its gutter.
+- A change is reviewed hunk by hunk: apply or discard each one (`a`, `x`), or
+  the rest at once.
+- **Edit page** saves your edit of a page as `.codenib/wiki/<page>.md`, which
+  writing the Wiki again never overwrites, and **Add to page** puts an answer
+  into the page under its question. Editing a repository document saves the
+  file itself.
+- Annotations follow what they sit on: they move with code that moves, follow
+  the closest match when it is edited and say so, and keep their last place
+  when it is deleted.
+- The Wiki can be installed as an app from the browser, with its own window,
+  icon and an offline page.
+- A Wiki served for others can let each visitor annotate it
+  (`CODENIB_HOSTED_ANNOTATIONS=1`). Every browser's annotations are kept
+  apart, tasks run Claude Code in a container on the visitor's own OpenRouter
+  or Anthropic key, a change comes back as a patch to download, and page
+  edits stay local-only.
 - Codex installs the CodeNib plugin with `codex plugin marketplace add` and
   `codex plugin add codenib@codenib`: the five skills plus the MCP server,
   which indexes and serves the checkout Codex opens.
@@ -59,6 +83,15 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Changed
 
+- A local Wiki follows the working tree: it updates its index within a few
+  seconds of a file change, and a page whose code changed is written again
+  the next time it is opened.
+- An Overview with generated figures builds them once for each index and then
+  opens at once; it used to rebuild them on every visit, which took over 20
+  seconds on a repository the size of Babel.
+- Each release is checked on macOS, where `pip` installs the source
+  distribution: the install runs the Wiki, saves a note and builds the
+  Dependency Map.
 - `codenib guard` reaches Python code that no call names: the special methods
   an operator runs (`__eq__` for `==`) from code that uses the class, and the
   methods a call on a value of unknown type may run (`node.as_sql()`), when at
@@ -93,6 +126,9 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Guard notes hash anchors in files that start with a byte-order mark and
   reject malformed anchor lists.
 - `codenib export` says why it cannot prepare an output directory.
+- On a phone, the Wiki header keeps the Notes button whole and uncovered.
+- A Wiki served for others never offers **Edit page**, including while its
+  notes are still loading.
 
 ### Removed
 
