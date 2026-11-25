@@ -661,6 +661,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "service-smoke",
         "agent-smoke",
         "graph-smoke",
+        "macos-smoke",
     }
     sdist_job = verification["jobs"]["build-sdist"]
     sdist_steps = {step["name"]: step for step in sdist_job["steps"]}
@@ -952,6 +953,25 @@ def test_registry_publishers_use_separate_workflows() -> None:
             expected_gate += " || github.event_name == 'pull_request'"
         assert verification["jobs"][job_name]["if"] == expected_gate
     assert not any(name.startswith("publish-") for name in verification["jobs"])
+
+    # PyPI has no macOS wheel: a Mac installs the source distribution, and that
+    # install must run the Wiki, save notes and build the graph before release.
+    macos = verification["jobs"]["macos-smoke"]
+    assert macos["needs"] == "build"
+    assert macos["runs-on"] == "macos-15"
+    assert macos["if"] == "inputs.full || github.event_name == 'pull_request'"
+    macos_steps = {step["name"]: step for step in macos["steps"]}
+    macos_install = macos_steps["Install the source distribution"]["run"]
+    assert 'SDIST="$(ls dist/*.tar.gz)"' in macos_install
+    assert '"${SDIST}[mcp]"' in macos_install
+    assert '"${SDIST}[graph,mcp]"' in macos_install
+    assert "--print-compatible-wheel" not in macos_install
+    for step_name, script in (
+        ("Exercise the installed CLI", "scripts/smoke_release_install.py"),
+        ("Exercise the Wiki, notes and MCP services", "smoke_release_services.py"),
+        ("Exercise the graph and Dependency Map", "scripts/smoke_release_graph.py"),
+    ):
+        assert script in macos_steps[step_name]["run"]
 
     for workflow in (production, test, verification):
         for job in workflow["jobs"].values():
