@@ -21,47 +21,40 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Iterator, Mapping, TypeVar
 
-from ._contained_source import (
-    SECURE_CONTAINED_SYMLINKS,
-    _arm_or_reuse_descriptor_close_cookie,
-    _attach_source_cleanup_owner,
-    _binding_identity,
-    _descriptor_has_close_cookie,
-    _descriptor_ownership_identity,
-    _discard_descriptor_close_cookie,
-    _identity_is_reliable,
-    _inherit_source_cleanup_owner,
-    _open_windows_pinned_repository_root,
-    _resolved_repository_file_at,
-    _resolved_windows_repository_file_at,
-    _SourceCleanupSlot,
-    _verify_windows_pinned_repository_root,
-    _version_identity,
-    _windows_binding_identity,
-    _windows_entry_is_reparse,
-    _windows_find_child,
-    _windows_identity_is_reliable,
-    _windows_link_target_text,
-    _windows_metadata_is_reparse,
-    _windows_open_child,
-    _windows_version_identity,
-)
-from ._windows_fs_authority import (
-    IO_REPARSE_TAG_SYMLINK as _WINDOWS_IO_REPARSE_TAG_SYMLINK,
-)
-from ._windows_fs_authority import WindowsDirectoryEntry as _WindowsDirectoryEntry
-from ._windows_fs_authority import WindowsHandleMetadata as _WindowsHandleMetadata
+from ._contained_source import (SECURE_CONTAINED_SYMLINKS,
+                                _arm_or_reuse_descriptor_close_cookie,
+                                _attach_source_cleanup_owner,
+                                _binding_identity,
+                                _descriptor_has_close_cookie,
+                                _descriptor_ownership_identity,
+                                _discard_descriptor_close_cookie,
+                                _identity_is_reliable,
+                                _inherit_source_cleanup_owner,
+                                _open_windows_pinned_repository_root,
+                                _resolved_repository_file_at,
+                                _resolved_windows_repository_file_at,
+                                _SourceCleanupSlot,
+                                _verify_windows_pinned_repository_root,
+                                _version_identity, _windows_binding_identity,
+                                _windows_entry_is_reparse, _windows_find_child,
+                                _windows_identity_is_reliable,
+                                _windows_link_target_text,
+                                _windows_metadata_is_reparse,
+                                _windows_open_child, _windows_version_identity)
+from ._system_links import follow_system_links
+from ._windows_fs_authority import \
+    IO_REPARSE_TAG_SYMLINK as _WINDOWS_IO_REPARSE_TAG_SYMLINK
+from ._windows_fs_authority import \
+    WindowsDirectoryEntry as _WindowsDirectoryEntry
+from ._windows_fs_authority import \
+    WindowsHandleMetadata as _WindowsHandleMetadata
 from ._windows_fs_authority import WindowsKernelApi as _WindowsKernelApi
 from ._windows_fs_authority import WindowsReparsePoint as _WindowsReparsePoint
 from ._windows_fs_authority import _WindowsHandleCleanup
-from .repository_filters import (
-    REPOSITORY_FILTER_POLICY_VERSION,
-    repository_path_is_visible,
-)
-from .repository_source_selection import (
-    DEFAULT_REPOSITORY_SOURCE_SELECTION,
-    RepositorySourceSelection,
-)
+from .repository_filters import (REPOSITORY_FILTER_POLICY_VERSION,
+                                 repository_path_is_visible)
+from .repository_source_selection import (DEFAULT_REPOSITORY_SOURCE_SELECTION,
+                                          RepositorySourceSelection)
 
 SOURCE_FINGERPRINT_VERSION = 2
 
@@ -2003,9 +1996,17 @@ def is_legacy_source_fingerprint_v1(value: object) -> bool:
 
 
 def lexical_repository_path(value: str | Path) -> Path:
-    """Return an absolute repository path without following replaceable links."""
+    """Return an absolute repository path without following replaceable links.
 
-    return Path(os.path.abspath(os.path.expanduser(os.fspath(value))))
+    Links that only the system administrator can replace are followed (see
+    ``follow_system_links``); every other link stays in the path, where
+    pinning the repository root refuses it.
+    """
+
+    path = Path(os.path.abspath(os.path.expanduser(os.fspath(value))))
+    if os.name != "posix":
+        return path
+    return follow_system_links(path)
 
 
 def _lexical_windows_repository_path(value: str | Path) -> Path:

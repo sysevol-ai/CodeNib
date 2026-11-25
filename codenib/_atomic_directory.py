@@ -21,20 +21,12 @@ from functools import partial
 from pathlib import Path, PurePosixPath
 from threading import RLock, get_ident
 from types import GeneratorType
-from typing import (
-    Callable,
-    ContextManager,
-    Iterable,
-    Iterator,
-    Literal,
-    Protocol,
-    Sequence,
-    TypeVar,
-    final,
-)
+from typing import (Callable, ContextManager, Iterable, Iterator, Literal,
+                    Protocol, Sequence, TypeVar, final)
 
 from . import _windows_fs_authority as _windows_fs
 from . import _workspace_owner as _native_workspace_owner
+from ._system_links import follow_system_links
 
 _WINDOWS_DELETE = _windows_fs.DELETE
 _WINDOWS_FILE_ATTRIBUTE_DIRECTORY = _windows_fs.FILE_ATTRIBUTE_DIRECTORY
@@ -3736,12 +3728,16 @@ class _PreviousOutputIdentityLost(RuntimeError):
 
 
 def lexical_directory_path(path: Path) -> Path:
-    """Return one absolute lexical path without following any component."""
+    """Return one absolute path without following a replaceable component."""
 
     candidate = path.expanduser()
     if candidate.name in {"", ".", ".."}:
         raise ValueError(f"directory path has no safe final component: {path}")
-    return Path(os.path.abspath(os.fspath(candidate)))
+    absolute = Path(os.path.abspath(os.fspath(candidate)))
+    if os.name != "posix":
+        return absolute
+    # Links only root can replace, such as macOS's /var and /tmp, are followed.
+    return follow_system_links(absolute)
 
 
 def _open_posix_publication_authority(
