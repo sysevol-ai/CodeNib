@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Follow the path links that only the system administrator can replace.
+"""Follow the top-level links that only the system administrator can replace.
 
 CodeNib pins repository roots and publication folders by walking from ``/``
 and refuses any link on the way, because a link can be swapped to point
@@ -10,7 +10,8 @@ somewhere else between the check and the use. macOS ships ``/var``, ``/tmp``
 and ``/etc`` as root-owned links into ``/private``, so every temporary
 directory and ``$TMPDIR`` lies behind one. Whoever can replace such a link
 already controls the machine, so following it widens nothing a replaceable
-link could redirect. Every other link stays in the path and is still refused.
+link could redirect. Only links directly under ``/`` are followed; every
+other link stays in the path and is still refused.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import stat
 from pathlib import Path
 from typing import Callable
 
-# A system link that leads to another system link is followed this many times.
+# A top-level link that leads to another is followed this many times.
 _MAX_SYSTEM_LINK_HOPS = 8
 
 
@@ -41,46 +42,30 @@ def follow_system_links(
     lstat: Callable[[str], os.stat_result] = os.lstat,
     readlink: Callable[[str], str] = os.readlink,
 ) -> Path:
-    """Follow the ancestor links that only root can replace.
+    """Follow a link directly under ``/`` when only root can replace it.
 
-    macOS ships ``/var``, ``/tmp`` and ``/etc`` as root-owned links into
+    macOS ships ``/var``, ``/tmp`` and ``/etc`` as such links into
     ``/private``, so every temporary directory and ``$TMPDIR`` lies behind
-    one. Whoever can replace such a link already controls the machine, so
-    following it widens nothing a replaceable link could redirect. The walk
-    stops at the first link anyone else could replace, and at a missing
-    component; the rest of the path is kept as written.
+    one. Whoever can replace them already controls the machine, so following
+    them widens nothing a replaceable link could redirect. Deeper links are
+    never followed, including root-owned ones such as Linux's ``/proc/self``
+    whose target depends on who reads it; neither is a missing component.
     """
 
-    parts = path.parts
-    current = Path(parts[0])
-    index = 1
-    hops = 0
-    while index < len(parts):
-        candidate = current / parts[index]
+    for _ in range(_MAX_SYSTEM_LINK_HOPS):
+        parts = path.parts
+        if len(parts) < 2:
+            return path
+        top = Path(parts[0], parts[1])
         try:
-            metadata = lstat(os.fspath(candidate))
+            metadata = lstat(os.fspath(top))
+            if not stat.S_ISLNK(metadata.st_mode):
+                return path
+            if not replaceable_only_by_root(metadata, lstat(parts[0])):
+                return path
+            target = readlink(os.fspath(top))
         except OSError:
-            break
-        if not stat.S_ISLNK(metadata.st_mode):
-            current = candidate
-            index += 1
-            continue
-        try:
-            parent = lstat(os.fspath(current))
-        except OSError:
-            break
-        if hops >= _MAX_SYSTEM_LINK_HOPS or not replaceable_only_by_root(
-            metadata, parent
-        ):
-            break
-        try:
-            target = readlink(os.fspath(candidate))
-        except OSError:
-            break
-        hops += 1
-        # ``current`` holds no links, so ".." in the target is lexical here.
-        resolved = Path(os.path.normpath(os.path.join(current, target)))
-        parts = resolved.parts + parts[index + 1 :]
-        current = Path(parts[0])
-        index = 1
-    return Path(current, *parts[index:])
+            return path
+        # The parent is "/", so ".." in the target is lexical here.
+        path = Path(os.path.normpath(os.path.join(parts[0], target)), *parts[2:])
+    return path

@@ -6329,6 +6329,21 @@ def test_repository_path_keeps_links_others_could_replace() -> None:
     )
 
 
+def test_repository_path_follows_only_links_directly_under_root() -> None:
+    # Linux's /proc/self is root-owned, but its target depends on the reader;
+    # anchored writer paths such as /proc/self/fd/7 must stay as written.
+    tree = _FakeTree(
+        {
+            "/": _ROOT_DIR,
+            "/proc": (stat.S_IFDIR | 0o555, 0),
+            "/proc/self": _ROOT_LINK,
+        },
+        {"/proc/self": "4242"},
+    )
+
+    assert _follow(tree, "/proc/self/fd/7") == Path("/proc/self/fd/7")
+
+
 def test_repository_path_stops_following_a_system_link_loop() -> None:
     tree = _FakeTree(
         {"/": _ROOT_DIR, "/a": _ROOT_LINK, "/b": _ROOT_LINK},
