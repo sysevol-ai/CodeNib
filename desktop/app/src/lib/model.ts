@@ -35,11 +35,28 @@ export interface Citation {
   type?: string;
 }
 
+/** What a claim on a page rests on: E# is code, R# a recorded call. */
+export interface EvidenceItem {
+  id: string;
+  file: string;
+  start_line: number;
+  end_line: number;
+  symbol?: string;
+}
+
+export interface EvidenceRelation {
+  id: string;
+  source: string;
+  target: string;
+  anchors: string[];
+}
+
 export interface Page {
   id: string;
   title: string;
   markdown: string;
   citations?: Citation[];
+  evidence?: { items?: EvidenceItem[]; relations?: EvidenceRelation[] };
   generation?: { mode?: string; model?: string | null; renderer?: string | null };
 }
 

@@ -604,7 +604,7 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
               onCompose={(kind) => setComposing(kind ? { block: index, kind } : null)}
               composing={composerFor(index, block.text.replace(/^#+\s*/, ""), sectionTitle)}
             >
-              <Markdown text={block.text} onPage={onPage} />
+              <Markdown text={block.text} onPage={onPage} repo={repo} evidence={page.evidence} />
             </Block>
           );
         })}

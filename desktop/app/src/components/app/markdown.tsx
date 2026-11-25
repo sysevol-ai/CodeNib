@@ -3,6 +3,8 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { backend } from "@/lib/backend";
 import { highlightLines } from "@/lib/highlight";
+import type { Page } from "@/lib/model";
+import { SourceMark } from "./SourceMark";
 
 // Mermaid is large; it loads the first time a page draws a diagram.
 const Mermaid = lazy(() => import("./Mermaid"));
@@ -94,18 +96,56 @@ function fenceLanguage(node: ReactNode): string {
   return /language-([\w#+.-]+)/.exec(node.props.className ?? "")?.[1]?.toLowerCase() ?? "";
 }
 
+/** The code an [E1](#evidence-E1) or [R2](#evidence-R2) citation names. */
+function citedCode(evidence: Page["evidence"], id: string): { file: string; start: number; end: number; what: string } | null {
+  const item = evidence?.items?.find((e) => e.id === id);
+  if (item?.file && item.start_line) {
+    const name = (item.symbol ?? "").split(":").pop() ?? "";
+    return { file: item.file, start: item.start_line, end: item.end_line, what: name || item.file };
+  }
+  const relation = evidence?.relations?.find((r) => r.id === id);
+  const anchor = relation?.anchors?.[0];
+  const at = anchor ? /^(.*):(\d+)$/.exec(anchor) : null;
+  if (relation && at) {
+    const short = (s: string) => (s.split(":").pop() ?? s).replace(/\(\)$/, "");
+    return { file: at[1], start: Number(at[2]), end: Number(at[2]), what: `${short(relation.source)} calls ${short(relation.target)}` };
+  }
+  return null;
+}
+
 export function Markdown({
   text,
   onPage,
+  repo,
+  evidence,
 }: {
   text: string;
   /** Open another page of the same Wiki. */
   onPage?: (page: string) => void;
+  /** With the page's evidence, citations open the code they name. */
+  repo?: string;
+  evidence?: Page["evidence"];
 }) {
   const components: Components = {
     h1: ({ children }) => <h2>{children}</h2>,
     a: ({ href, children }) => {
       const target = href ?? "";
+      const cited = /^#evidence-([ER]\d+)$/.exec(target)?.[1];
+      if (cited) {
+        const code = repo ? citedCode(evidence, cited) : null;
+        if (!code) return <span className="cite is-plain">{cited}</span>;
+        return (
+          <SourceMark
+            repo={repo!}
+            file={code.file}
+            start={code.start}
+            end={code.end}
+            label={cited}
+            className="cite"
+            title={`${code.what} · ${code.file.split("/").pop()}:${code.start}`}
+          />
+        );
+      }
       const page = /^\?p=([^&#]+)/.exec(target)?.[1];
       if (page && onPage) {
         return (

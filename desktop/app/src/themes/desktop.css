@@ -908,3 +908,29 @@ button.sb-service:hover {
   color: var(--muted-ink);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- citations: [E1](#evidence-E1) opens the code it names ---------- */
+.src-mark.cite,
+.cite.is-plain {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 1px;
+  padding: 0 5px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--well);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--muted-ink);
+  vertical-align: 1px;
+  text-decoration: none;
+}
+
+.src-mark.cite:hover,
+.src-mark.cite[data-state="open"] {
+  border-color: var(--nib-line);
+  background: var(--nib-soft);
+  color: var(--nib);
+}

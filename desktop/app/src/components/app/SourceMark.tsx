@@ -15,6 +15,7 @@ export function SourceMark({
   end,
   label,
   className,
+  title,
 }: {
   repo: string;
   file: string;
@@ -22,6 +23,8 @@ export function SourceMark({
   end?: number;
   label?: string;
   className?: string;
+  /** Hover text; defaults to the file and line. */
+  title?: string;
 }) {
   const { data, call } = useStore();
   const [source, setSource] = useState<Source | null>(null);
@@ -45,7 +48,8 @@ export function SourceMark({
   return (
     <Popover onOpenChange={load}>
       <PopoverTrigger asChild>
-        <button type="button" className={cn("src-mark", className)} aria-label={`Show the code at ${file}:${start}`}>
+        <button type="button" className={cn("src-mark", className)} aria-label={`Show the code at ${file}:${start}`}
+          title={title ?? `${file}:${start}`}>
           {text}
         </button>
       </PopoverTrigger>
