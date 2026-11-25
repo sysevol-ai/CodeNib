@@ -64,7 +64,7 @@ from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
 from ..wiki.visual_ir import page_visual_contract_report
 from . import annotations as wiki_annotations
-from . import walk_narration
+from . import walk_narration, wiki_revise
 from .card_summary import card_summary
 from .config import load_config
 from .experience import router as experience_router
@@ -319,6 +319,7 @@ app.include_router(experience_router)
 app.include_router(share_router)
 app.include_router(wiki_annotations.router)
 app.include_router(walk_narration.router)
+app.include_router(wiki_revise.router)
 
 app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(
