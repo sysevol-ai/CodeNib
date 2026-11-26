@@ -514,9 +514,16 @@ Cards are rendered ahead of time from the running frontend into
 prepared repository. Re-render after rebuilding an index, because the card
 shows that index's map.
 
+A walkthrough link (`?walk=<id>`) gets the walkthrough's title, the calls it
+follows as its description, and its own card when one was rendered: the
+question beside the recorded calls, each in its map area's colour. Add
+`--walks` to render those as `<repo_id>--walk-<walk_id>.png`; without one, the
+link shows the repository's card. A walkthrough built from another commit
+than the indexed one is not previewed, just as the Wiki does not show it.
+
 ```bash
 cd web
-node scripts/render-share-cards.mjs http://127.0.0.1:3000 <data_dir>/share_cards
+node scripts/render-share-cards.mjs http://127.0.0.1:3000 <data_dir>/share_cards --walks
 ```
 
 The ingress sends only link-preview agents, and never `/api/*`, to the tags

@@ -72,3 +72,89 @@ def test_card_images_are_served_and_names_are_checked(client):
     assert ok.status_code == 200 and ok.headers["content-type"] == "image/png"
     assert client.get("/api/share-cards/missing.png").status_code == 404
     assert client.get("/api/share-cards/..%2Fsecret.png").status_code == 404
+
+
+def _walks(tmp_path, monkeypatch, commit="f361ead0"):
+    import json
+
+    monkeypatch.setattr(
+        share, "load_config", lambda: SimpleNamespace(data_dir=str(tmp_path))
+    )
+    folder = tmp_path / "walkthroughs"
+    folder.mkdir(exist_ok=True)
+    walk = {
+        "id": "main",
+        "title": "How requests.get() sends and returns a response",
+        "stops": [
+            ["", "requests.get(url)", None, None, True],
+            ["", "get()", "api.py:74–87", ""],
+            ["Session", ".send()", "sessions.py:752–829", ""],
+        ],
+        "steps": [{"title": "t", "lead": "l", "at": 1, "runs": [0]}],
+    }
+    (folder / "psf__requests.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "repo": {"id": "psf__requests", "commit": commit},
+                "walks": [walk],
+                "source": {},
+                "wiki": {},
+            }
+        )
+    )
+
+
+def test_a_walkthrough_link_gets_its_title_calls_and_card(
+    client, tmp_path, monkeypatch
+):
+    _walks(tmp_path, monkeypatch)
+    (tmp_path / "psf__requests--walk-main.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    html = client.get(
+        "/api/share-page",
+        params={"path": "/psf__requests", "walk": "main", "step": "2"},
+    ).text
+    assert (
+        "<title>How requests.get() sends and returns a response · psf/requests</title>"
+        in html
+    )
+    assert "2 recorded calls in psf/requests" in html
+    assert "get() → Session.send()" in html
+    assert "share-cards/psf__requests--walk-main.png" in html
+    assert 'content="https://demo.example/psf__requests?walk=main&amp;step=2"' in html
+
+
+def test_a_walkthrough_without_its_own_card_keeps_the_repository_card(
+    client, tmp_path, monkeypatch
+):
+    _walks(tmp_path, monkeypatch)
+    html = client.get(
+        "/api/share-page", params={"path": "/psf__requests", "walk": "main"}
+    ).text
+    assert "How requests.get() sends" in html
+    assert "share-cards/psf__requests.png" in html
+
+
+@pytest.mark.parametrize("walk", ["nope", "../etc", "a b"])
+def test_an_unknown_or_malformed_walkthrough_is_the_repository_page(
+    client, tmp_path, monkeypatch, walk
+):
+    _walks(tmp_path, monkeypatch)
+    html = client.get(
+        "/api/share-page", params={"path": "/psf__requests", "walk": walk}
+    ).text
+    assert "<title>psf/requests · CodeNib Wiki</title>" in html
+
+
+def test_a_walkthrough_built_from_another_commit_is_not_previewed(
+    client, tmp_path, monkeypatch
+):
+    _walks(tmp_path, monkeypatch, commit="0000000000")
+    registry = client.app.state.registry
+    info = registry.list_infos()[0]
+    info.base_commit = "f361ead047be5cb873174218582f7d8b9fcd9f49"
+    monkeypatch.setattr(registry, "list_infos", lambda: [info])
+    html = client.get(
+        "/api/share-page", params={"path": "/psf__requests", "walk": "main"}
+    ).text
+    assert "<title>psf/requests · CodeNib Wiki</title>" in html
