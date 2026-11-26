@@ -169,7 +169,8 @@ code.jump-name {
 }
 /* Key hints mean nothing on a touch screen or a phone-sized window. */
 @media (hover: none), (max-width: 600px) {
-  .jump-foot {
+  .jump-foot,
+  .jump-esc {
     display: none;
   }
 }
