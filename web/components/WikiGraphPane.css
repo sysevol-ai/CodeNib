@@ -73,7 +73,7 @@
 .wiki-graph-stats {
   margin: 0;
   color: var(--wg-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 /* With many links only the current page's stand out at full strength. */
 .wiki-graph.is-dense {
@@ -190,7 +190,7 @@
 .wiki-graph-controls button {
   padding: 5px 10px;
   color: var(--wg-soft);
-  font-size: 12px;
+  font-size: 13px;
   background: rgba(14, 15, 17, 0.8);
   border: 1px solid var(--wg-line);
   border-radius: 6px;
@@ -217,17 +217,67 @@
   min-height: 44px;
   padding: 10px 16px;
   color: var(--wg-muted);
-  font-size: 12px;
+  font-size: 13px;
   background: linear-gradient(to top, var(--wg-bg) 62%, transparent);
   pointer-events: none;
 }
+/* Words a narrow map can do without, so its status stays on one line. */
+.wiki-graph-foot {
+  container-type: inline-size;
+}
+@container (max-width: 560px) {
+  .wg-status-more {
+    display: none;
+  }
+}
+@container (max-width: 760px) {
+  .wg-status-extra {
+    display: none;
+  }
+}
+.wg-status-short {
+  display: none;
+}
+@container (max-width: 440px) {
+  .wg-status-full {
+    display: none;
+  }
+  .wg-status-short {
+    display: inline;
+  }
+}
+/* The status line has its own row, so the legend never moves as it changes. */
 .wiki-graph-foot p {
+  flex-basis: 100%;
   margin: 0;
   min-width: 0;
+}
+.wiki-graph-foot .is-code {
+  overflow-wrap: anywhere;
+}
+/* A file and line read as one: never split "format-inl.h:1274". */
+.wiki-graph-foot .wg-place {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+/* Pointing at an area tells its facts; the path's marks step aside meanwhile. */
+.wiki-graph.is-pointing .wg-route-stop,
+.wiki-graph.is-pointing .wg-route-label,
+.wiki-graph.is-pointing .wg-route-token {
+  visibility: hidden;
+}
+.wiki-graph.is-pointing .wg-route-line {
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 .wiki-graph-foot b {
   color: var(--wg-text);
   font-weight: 600;
+}
+.wiki-graph-foot b.is-code,
+.wiki-graph-foot .is-code {
+  font-family: var(--font-geist-mono, "Geist Mono"), ui-monospace, monospace;
+  font-weight: 500;
 }
 .wiki-graph-note {
   flex-basis: 100%;
@@ -235,7 +285,7 @@
 .wiki-graph-note button {
   padding: 2px 8px;
   color: var(--wg-hot);
-  font-size: 12px;
+  font-size: 13px;
   background: transparent;
   border: 1px solid var(--wg-line);
   border-radius: 6px;
@@ -273,6 +323,127 @@
 }
 .wiki-graph-legend dt.is-contains {
   border-top: 1px solid rgba(232, 234, 237, 0.26);
+}
+/* The route takes each area's own colour; the legend shows that as a run of them. */
+.wiki-graph-legend dt.is-route {
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
+}
+
+/* --- The main path, replayed one recorded call at a time --- */
+/* While it plays, the other references step back so the route reads first. */
+.wiki-graph.is-routing .wg-edge.is-references:not(.is-hot) .wg-edge-line {
+  stroke: rgba(232, 234, 237, 0.13);
+}
+.wiki-graph.is-routing .wg-edge.is-references:not(.is-hot) .wg-arrow {
+  fill: rgba(232, 234, 237, 0.13);
+}
+.wg-route-line {
+  fill: none;
+  stroke-width: 2.75;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.92;
+}
+.wg-route-line.is-newest {
+  stroke-dasharray: 1;
+}
+.wg-route-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  cursor: pointer;
+}
+.wg-route-token {
+  pointer-events: none;
+}
+/* A light core in the destination's colour ring: it reads as something moving,
+   not as another page on the map. */
+.wg-route-token circle {
+  fill: #fff;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+.wg-route-stop {
+  pointer-events: none;
+}
+.wg-route-ring {
+  fill: none;
+  stroke: var(--node);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.wg-route-ripple {
+  fill: none;
+  stroke: var(--node);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.wg-route-stop.is-moving .wg-route-ring {
+  animation: wg-route-appear 0.24s ease-out var(--arrive) both;
+}
+.wg-route-stop.is-moving .wg-route-ripple {
+  animation: wg-route-ripple 0.9s cubic-bezier(0.2, 0.7, 0.3, 1) var(--arrive) both;
+}
+.wg-route-name,
+.wg-route-name-halo {
+  font-family: var(--font-geist-mono, "Geist Mono"), ui-monospace, monospace;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.wg-route-name {
+  fill: #fff;
+}
+.wg-route-name-halo {
+  fill: var(--wg-bg);
+  stroke: var(--wg-bg);
+  stroke-linejoin: round;
+}
+.wg-route-label {
+  pointer-events: none;
+}
+.wg-route-label.is-link {
+  cursor: pointer;
+  pointer-events: auto;
+}
+.wg-route-label.is-link:hover .wg-route-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* Names switch on at once: a fading name reads as a ghosted one. */
+.wg-route-label.is-moving {
+  animation: wg-route-appear 0s linear var(--arrive) both;
+}
+@keyframes wg-route-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes wg-route-ripple {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wg-route-stop.is-moving .wg-route-ring,
+  .wg-route-label.is-moving {
+    animation: none;
+  }
+  .wg-route-stop.is-moving .wg-route-ripple {
+    display: none;
+  }
 }
 
 .wiki-graph-splitter {
@@ -556,3 +727,4 @@
     stroke-dashoffset: 0;
   }
 }
+

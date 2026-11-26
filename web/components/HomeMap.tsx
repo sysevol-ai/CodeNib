@@ -14,6 +14,7 @@ import {
   type WikiAreaMap,
   type WikiPageRef,
 } from "@/lib/api";
+import { routeFromJourney, type MapRoute } from "@/lib/mapRoute";
 import { extractJourney, splitWikiMarkdown, type Journey } from "@/lib/wikiPresentation";
 
 /** Repositories whose traced path lands in a named area at every step, one
@@ -32,17 +33,31 @@ export interface Loaded {
   journey: Journey | null;
 }
 
-type LoadedGraph = Pick<Loaded, "id" | "map" | "pages">;
+type LoadedGraph = Pick<Loaded, "id" | "map" | "pages"> & { route: MapRoute | null };
 
 const graphCache = new Map<string, Promise<LoadedGraph>>();
 
-/** What the home map draws: the areas and the page tree, nothing per page. */
+/** What the home map draws: the areas, the page tree and the Overview's main
+ *  path. A missing Overview only leaves the path out. */
 function loadRepoGraph(id: string): Promise<LoadedGraph> {
   let pending = graphCache.get(id);
   if (!pending) {
-    pending = Promise.all([fetchWikiAreaMap(id), fetchWikiTree(id, { cachedOnly: true })]).then(
-      ([map, tree]) => ({ id, map, pages: tree.pages }),
-    );
+    pending = Promise.all([
+      fetchWikiAreaMap(id),
+      fetchWikiTree(id, { cachedOnly: true }),
+      fetchWikiPage(id, "overview", { materializeMedia: false }).catch(() => null),
+    ]).then(([map, tree, overview]) => ({
+      id,
+      map,
+      pages: tree.pages,
+      route: overview
+        ? routeFromJourney(
+            extractJourney(splitWikiMarkdown(overview.markdown || "").body).journey,
+            overview.citations,
+            map.areas.map((area) => area.id),
+          )
+        : null,
+    }));
     pending.catch(() => graphCache.delete(id));
     graphCache.set(id, pending);
   }
@@ -148,6 +163,7 @@ export default function HomeMap({ repos }: { repos: RepoInfo[] }) {
           repoName={repo?.repo ?? showing.id.replace("__", "/")}
           pages={showing.pages}
           map={showing.map}
+          route={showing.route}
           wikiHref={`/${encodeURIComponent(showing.id)}`}
           onPick={(page) => navigate(`/${encodeURIComponent(showing.id)}?p=${encodeURIComponent(page)}`)}
         />
