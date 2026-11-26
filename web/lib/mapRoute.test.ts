@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { callLabel, plainTitle, routeFromJourney, stopPlace } from "@/lib/mapRoute";
+import { callLabel, plainTitle, routeFromJourney, routeHeading, stopPlace } from "@/lib/mapRoute";
 import { extractJourney } from "@/lib/wikiPresentation";
 
 const OVERVIEW = `# Overview
@@ -44,6 +44,12 @@ describe("routeFromJourney", () => {
   it("leaves out stages in no area or an area the map does not draw", () => {
     const route = routeFromJourney(journey, CITATIONS, ["request-lifecycle", "session-orchestration"]);
     expect(route?.stops.some((stop) => stop.symbol === "serve()")).toBe(false);
+  });
+
+  it("names the shown steps when some are off the map", () => {
+    const route = routeFromJourney(journey, CITATIONS, ["request-lifecycle", "session-orchestration"])!;
+    expect(routeHeading(route)).toBe("From `get()` to `HTTPAdapter.send()`");
+    expect(routeHeading({ ...route, total: route.stops.length, title: "Overview's own" })).toBe("Overview's own");
   });
 
   it("returns nothing for a path that never leaves one area", () => {

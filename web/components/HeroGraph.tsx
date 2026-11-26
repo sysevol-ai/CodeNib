@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import WikiGraphPane, { type MapStatus } from "@/components/WikiGraphPane";
 import type { WikiAreaMap, WikiPageRef } from "@/lib/api";
-import { plainTitle, stopPlace, type MapRoute } from "@/lib/mapRoute";
+import { routeHeading, stopPlace, type MapRoute } from "@/lib/mapRoute";
 import { buildWikiGraph } from "@/lib/wikiGraph";
 
 const TOUR_MS = 2800;
@@ -45,7 +45,8 @@ export default function HeroGraph({
   const tour = useMemo(
     () =>
       graph.nodes
-        .filter((node) => node.kind === "area")
+        // A catch-all group ("Other") has nothing of its own to show.
+        .filter((node) => node.kind === "area" && node.id !== "other")
         .sort((a, b) => b.radius - a.radius)
         .slice(0, 6)
         .map((node) => node.id),
@@ -96,14 +97,15 @@ export default function HeroGraph({
   if (route && hasRoute && phase.kind === "route") {
     // The ring on the map already names the area; the line keeps to the step
     // and the place in the file, so it stays one line on a phone.
-    const stop = stops[Math.min(phase.at, stops.length - 1)];
+    const at = Math.min(phase.at, stops.length - 1);
+    const stop = stops[at];
     const place = stopPlace(stop);
     idle = {
       title: stop.label,
       code: true,
       detail: (
         <>
-          Step {stop.index} of {route.total}
+          Step {at + 1} of {stops.length}
           {place && (
             <>
               {" · "}
@@ -114,9 +116,18 @@ export default function HeroGraph({
       ),
     };
   } else if (route && hasRoute && phase.kind === "hold") {
+    // Code names in the heading stay in the code face, as in the steps.
     idle = {
-      title: plainTitle(route.title),
-      detail: `${route.total} steps traced in the code index · click the path to read it`,
+      title: routeHeading({ ...route, stops }).split(/`([^`]+)`/).map((part, index) =>
+        index % 2 ? (
+          <span key={index} className="is-code">
+            {part}
+          </span>
+        ) : (
+          part
+        ),
+      ),
+      detail: `${stops.length} steps traced in the code index`,
     };
   } else if (title) {
     idle = { title, detail: `${number.format(references)} recorded references with other areas` };

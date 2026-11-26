@@ -12,7 +12,7 @@ import "./WikiGraphPane.css";
 
 /** The status line under a map: what is named, and what to know about it. */
 export interface MapStatus {
-  title: string;
+  title: ReactNode;
   detail: ReactNode;
   /** The title is a name from the code. */
   code?: boolean;
@@ -265,6 +265,16 @@ export default function WikiGraphPane({
   // status, so a wrapped legend never covers the lowest label.
   const legendRef = useRef<HTMLDListElement>(null);
   const [legendHeight, setLegendHeight] = useState(0);
+  const headRef = useRef<HTMLDivElement>(null);
+  const [headHeight, setHeadHeight] = useState(0);
+  useLayoutEffect(() => {
+    const headElement = headRef.current;
+    if (!headElement) return undefined;
+    setHeadHeight(headElement.offsetHeight);
+    const observer = new ResizeObserver(() => setHeadHeight(headElement.offsetHeight));
+    observer.observe(headElement);
+    return () => observer.disconnect();
+  }, []);
   useLayoutEffect(() => {
     const legendElement = legendRef.current;
     if (!legendElement) return undefined;
@@ -390,13 +400,14 @@ export default function WikiGraphPane({
     const taken: Box[] = [
       ...labels.map(({ box }) => ({ left: box.left - 5, right: box.right + 5, top: box.top - 2, bottom: box.bottom + 2 })),
       ...graph.nodes
-        .filter((other) => other.kind === "area" && other.id !== node.id)
+        .filter((other) => other.id !== node.id)
         .map((other) => {
           const p = points.get(other.id)!;
           const ox = p.x * view.k + view.x;
           const oy = p.y * view.k + view.y;
-          // Arrowheads land just outside a mark, so keep clear of them too.
-          const or = other.radius * view.k + 9;
+          // Arrowheads land just outside an area's mark, so keep clear of
+          // them too; a page's small dot needs only its own room.
+          const or = other.radius * view.k + (other.kind === "area" ? 9 : 2);
           return { left: ox - or, right: ox + or, top: oy - or, bottom: oy + or };
         }),
       // The route's own lines, sampled along each crossing.
@@ -412,7 +423,7 @@ export default function WikiGraphPane({
     // Nearest first: straight above or below the mark, then its corners, then
     // a step further out. A name with no free place stays in the status line.
     const candidates: { anchor: "start" | "middle" | "end"; dx: number; dy: number }[] = [];
-    for (const out of [0, 14, 30]) {
+    for (const out of [0, 14, 30, 48]) {
       candidates.push(
         { anchor: "middle", dx: 0, dy: -(r + 13 + out) },
         { anchor: "middle", dx: 0, dy: r + 23 + out },
@@ -424,8 +435,10 @@ export default function WikiGraphPane({
         { anchor: "end", dx: -(r + 10 + out), dy: 5 },
       );
     }
-    const top = header ? HEADER_PX + 6 : 6;
-    const bottom = size.height - 58;
+    // Keep clear of the header (which wraps to two lines on a phone) and of
+    // the status line with its legend.
+    const top = (header ? Math.max(HEADER_PX, headHeight + 14) : 0) + 6;
+    const bottom = size.height - Math.max(58, legendHeight + 2 * 19 + 24);
     const boxOf = (spot: (typeof candidates)[number]) => {
       const left = sx + spot.dx - (spot.anchor === "middle" ? width / 2 : spot.anchor === "end" ? width : 0);
       return { left: left - 3, right: left + width + 3, top: sy + spot.dy - 13, bottom: sy + spot.dy + 5 };
@@ -443,7 +456,7 @@ export default function WikiGraphPane({
       visited: new Set(stops.slice(0, at + 1).map((stop) => stop.areaId)),
       label: spot ? { ...spot, x: point.x + spot.dx / view.k, y: point.y + spot.dy / view.k } : null,
     };
-  }, [route, view, points, byId, labels, graph, header, size]);
+  }, [route, view, points, byId, labels, graph, header, size, headHeight, legendHeight]);
   const newestHop = routeView?.hops.find((hop) => hop.newest) ?? null;
   const animateRoute = !!route?.animate;
 
@@ -479,7 +492,8 @@ export default function WikiGraphPane({
   }, [newestHop?.id, newestHop?.d, animateRoute]);
 
   // What an area is, for a reader pointing at it: its size and the areas it
-  // shares the most recorded references with. The status line keeps the action.
+  // shares the most recorded references with. Told in the status line, which
+  // has its own room, so nothing on the map is covered.
   const card = useMemo(() => {
     const node = hoverNode ? byId.get(hoverNode) : null;
     if (!node || node.kind !== "area" || !view || drag.current?.moved) return null;
@@ -498,31 +512,13 @@ export default function WikiGraphPane({
       else row.in += edge.link.weight;
       exchange.set(other.id, row);
     }
-    const rows = [...exchange.values()].sort((a, b) => b.out + b.in - (a.out + a.in)).slice(0, 3);
+    const rows = [...exchange.values()].sort((a, b) => b.out + b.in - (a.out + a.in)).slice(0, 2);
     return {
       node,
       rows,
       at: { x: point.x * view.k + view.x, y: point.y * view.k + view.y },
     };
   }, [hoverNode, byId, view, points, graph]);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  // Docked in the corner farthest from the area it describes, so it never
-  // covers that area, its name or the status line.
-  useLayoutEffect(() => {
-    const element = cardRef.current;
-    if (!card || !element) return;
-    const { x, y } = card.at;
-    const w = element.offsetWidth;
-    const h = element.offsetHeight;
-    const top = (header ? HEADER_PX : 0) + 10;
-    const foot = paneRef.current?.querySelector<HTMLElement>(".wiki-graph-foot")?.offsetHeight ?? 56;
-    const left = x > size.width / 2 ? 12 : Math.max(12, size.width - w - 12);
-    const below = Math.max(top, size.height - foot - h - 10);
-    element.style.left = `${left}px`;
-    element.style.top = `${y < size.height / 2 ? below : top}px`;
-    element.style.visibility = "visible";
-  }, [card, size]);
 
   const activityLegend = useMemo(() => {
     const marks = Object.entries(activity ?? {}).filter(([id]) => byId.has(id));
@@ -532,7 +528,7 @@ export default function WikiGraphPane({
     };
   }, [activity, byId]);
 
-  const status = useMemo(() => {
+  const status = useMemo((): MapStatus | null => {
     if (hoverEdge?.link) {
       const { link } = hoverEdge;
       const anchor = link.example.anchor;
@@ -546,15 +542,49 @@ export default function WikiGraphPane({
     const node = hoverNode ? byId.get(hoverNode) : null;
     if (node) {
       const summary = activity?.[node.id] ? markSummary(activity[node.id]) : "";
-      return (
-        describe?.(node) ?? {
+      const described = describe?.(node);
+      if (described) return described;
+      if (card && card.node.id === node.id && (card.node.symbols != null || card.rows.length)) {
+        const size =
+          card.node.symbols != null
+            ? `${number.format(card.node.symbols)} ${card.node.symbols === 1 ? "symbol" : "symbols"}${
+                card.node.files != null ? ` · ${number.format(card.node.files)} ${card.node.files === 1 ? "file" : "files"}` : ""
+              }`
+            : "";
+        return {
           title: node.title,
-          detail: summary ? `${summary} · Click to read this page` : "Click to read this page",
-        }
-      );
+          detail: (
+            <>
+              {size}
+              {card.rows.length > 0 && (
+                <>
+                  {size && " · "}most references with{" "}
+                  {card.rows.map((row, index) => (
+                    <span key={row.id} className="wg-status-area">
+                      {index > 0 && ", "}
+                      <i style={{ background: row.color }} aria-hidden="true" />
+                      {row.title}{" "}
+                      <span className="wg-status-count">
+                        ({[row.out && `${number.format(row.out)} out`, row.in && `${number.format(row.in)} in`]
+                          .filter(Boolean)
+                          .join(", ")})
+                      </span>
+                    </span>
+                  ))}
+                </>
+              )}
+              {summary && ` · ${summary}`}
+            </>
+          ),
+        };
+      }
+      return {
+        title: node.title,
+        detail: summary ? `${summary} · Click to read this page` : "Click to read this page",
+      };
     }
     return idle ?? null;
-  }, [hoverEdge, hoverNode, byId, idle, describe, activity]);
+  }, [hoverEdge, hoverNode, byId, idle, describe, activity, card]);
 
   return (
     <section
@@ -608,7 +638,11 @@ export default function WikiGraphPane({
               const pa = points.get(edge.source);
               const pb = points.get(edge.target);
               if (!a || !b || !pa || !pb) return null;
-              const hot = edge === hoverEdge || (!readonly && (edge.source === activeId || edge.target === activeId));
+              const hoveredArea = hoverNode && byId.get(hoverNode)?.kind === "area" ? hoverNode : null;
+              const hot =
+                edge === hoverEdge ||
+                (!readonly && (edge.source === activeId || edge.target === activeId)) ||
+                (!!hoveredArea && edge.kind === "references" && (edge.source === hoveredArea || edge.target === hoveredArea));
               const isReference = edge.kind === "references";
               const d = edgePath(pa, pb, a.radius, b.radius, isReference);
               return (
@@ -794,39 +828,11 @@ export default function WikiGraphPane({
         )}
       </svg>
 
-      {card && (
-        <div className="wg-card" ref={cardRef} style={{ visibility: "hidden" }} aria-hidden="true">
-          <p className="wg-card-title">
-            <span className="wg-card-dot" style={{ background: card.node.color }} />
-            {card.node.title}
-          </p>
-          {card.node.symbols != null && (
-            <p className="wg-card-size">
-              {number.format(card.node.symbols)} {card.node.symbols === 1 ? "symbol" : "symbols"}
-              {card.node.files != null && ` · ${number.format(card.node.files)} ${card.node.files === 1 ? "file" : "files"}`}
-            </p>
-          )}
-          {card.rows.length > 0 && (
-            <dl className="wg-card-links">
-              {card.rows.map((row) => (
-                <div key={row.id}>
-                  <dt>
-                    <span className="wg-card-dot" style={{ background: row.color }} />
-                    <span className="wg-card-name">{row.title}</span>
-                  </dt>
-                  <dd>
-                    {[row.out && `${number.format(row.out)} out`, row.in && `${number.format(row.in)} in`]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          <p className="wg-card-hint">Recorded references · click to read this page</p>
+      {header && (
+        <div className="wiki-graph-head" ref={headRef}>
+          {header}
         </div>
       )}
-      {header && <div className="wiki-graph-head">{header}</div>}
       {!embedded && (
         <div className="wiki-graph-controls">
           <button type="button" onClick={() => setMovedView(null)}>

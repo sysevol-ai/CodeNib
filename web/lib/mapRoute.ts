@@ -75,6 +75,18 @@ export function stopPlace(stop: RouteStop): string | null {
   return stop.line != null ? `${name}:${stop.line}` : name;
 }
 
+/**
+ * The route's heading as the map tells it: the Overview's own when every
+ * stage is on the map, otherwise from the first to the last stop shown, so
+ * the count and the heading describe the same steps.
+ */
+export function routeHeading(route: MapRoute): string {
+  if (route.stops.length === route.total) return route.title;
+  const first = route.stops[0];
+  const last = route.stops[route.stops.length - 1];
+  return `From \`${first.label}\` to \`${last.label}\``;
+}
+
 /** The heading without its Markdown code marks. */
 export function plainTitle(title: string): string {
   return title.replace(/`([^`]+)`/g, (_, code: string) => displaySymbol(code, { short: true }));
