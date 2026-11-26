@@ -43,7 +43,7 @@
   grid-area: title;
   margin: 0 0 12px;
   font-size: 44px;
-  font-weight: 650;
+  font-weight: 540;
   line-height: 1.04;
   letter-spacing: -0.035em;
   color: #fff;
@@ -51,7 +51,7 @@
 }
 .poster-owner {
   color: var(--p-dim);
-  font-weight: 500;
+  font-weight: 400;
 }
 .poster-lead {
   grid-area: lead;
@@ -544,7 +544,7 @@
     padding: 22px 18px 4px;
   }
   .poster-title {
-    font-size: 32px;
+    font-size: clamp(30px, 8cqi, 44px);
   }
   .poster-canvas {
     padding: 4px 8px 0;
@@ -604,4 +604,37 @@
 }
 .repo-poster.is-card .poster-brand {
   display: inline;
+}
+
+/* In a Wiki the main path below tells the steps; the poster keeps its
+   heading and Play, and its exported image keeps the numbered steps. */
+.wiki-main .repo-poster:not(.is-exporting) .poster-steps {
+  display: none;
+}
+
+/* In a Wiki the poster's heading is the main path's own, just below; it keeps
+   its label and Play here, and the exported image keeps the heading. */
+.wiki-main .repo-poster:not(.is-exporting) .poster-trace-title {
+  display: none;
+}
+/* Read on the page, the poster's text meets the reading column's floor. */
+.wiki-main .repo-poster:not(.is-exporting) :is(
+    .poster-play,
+    .poster-isolated-label,
+    .poster-chip,
+    .poster-cell-share,
+    .poster-foot,
+    .poster-link,
+    .poster-callout-meta,
+    .poster-callout-label,
+    .poster-code-head
+  ) {
+  font-size: 13px;
+}
+.wiki-main .repo-poster:not(.is-exporting) :is(.poster-chip span, .poster-callout-example code, .poster-code pre) {
+  font-size: 13px;
+}
+.poster-link-arrow {
+  margin-left: 4px;
+  vertical-align: -1px;
 }

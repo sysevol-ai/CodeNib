@@ -13,6 +13,7 @@ import {
   type RefObject,
 } from "react";
 
+import "./ChapterCards.css";
 import "./Walkthrough.css";
 import {
   areaColor,
@@ -907,52 +908,78 @@ function SourceIndex({
   );
 }
 
-/** The walkthroughs on a Wiki's Overview: one row each, opening it. */
+/** The walkthroughs on a Wiki's Overview: one card each, opening it. */
 export function WalkthroughList({
   set,
   colors,
   onOpen,
+  hrefFor,
 }: {
   set: WalkthroughSet;
   colors?: Map<string, string>;
   onOpen: (walkId: string) => void;
+  /** The walkthrough's own address, so a card opens in a new tab as a link does. */
+  hrefFor?: (walkId: string) => string;
 }) {
   return (
-    <nav className="wiki-read-next walk-list" aria-label="Walkthroughs">
+    <nav className="walk-cards" aria-label="Walkthroughs">
       <h2>Walkthroughs</h2>
       <ul>
         {set.walks.map((walk) => {
           const first = walk.areas[0] ?? null;
           const functions = walk.stops.filter((stop) => !stop[4]).length;
+          // The areas the walk passes through, in order, drawn as its route
+          // crosses the map: one dot per area, joined.
+          const route = walk.areas.slice(0, 6);
           return (
             <li key={walk.id}>
-              <button
-                type="button"
-                onClick={() => onOpen(walk.id)}
+              <a
+                href={hrefFor?.(walk.id) ?? `?walk=${encodeURIComponent(walk.id)}`}
+                className="chapter-card walk-card"
+                onClick={(event) => {
+                  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  onOpen(walk.id);
+                }}
                 style={{ "--area": areaColor(set, first, colors) } as CSSProperties}
               >
-                <span className="wiki-read-next-dot" aria-hidden="true" />
-                <span className="wiki-read-next-title">
-                  {walk.question}
-                  <span className="walk-list-meta">
+                {route.length > 0 && (
+                  <svg
+                    className="walk-route"
+                    width={14 + (route.length - 1) * 22}
+                    height="14"
+                    viewBox={`0 0 ${14 + (route.length - 1) * 22} 14`}
+                    aria-hidden="true"
+                  >
+                    {route.slice(1).map((_, index) => (
+                      <line key={`l${index}`} x1={7 + index * 22} y1="7" x2={7 + (index + 1) * 22} y2="7" />
+                    ))}
+                    {route.map((area, index) => (
+                      <circle key={`c${index}`} cx={7 + index * 22} cy="7" r="5" fill={areaColor(set, area, colors)} />
+                    ))}
+                  </svg>
+                )}
+                <span className="chapter-title">{walk.question}</span>
+                <span className="chapter-meta">
+                  <span>
                     {walk.steps.length} steps through {functions} functions
                   </span>
+                  <svg
+                    className="chapter-arrow"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
                 </span>
-                <svg
-                  className="wiki-read-next-arrow"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M5 12h14M13 6l6 6-6 6" />
-                </svg>
-              </button>
+              </a>
             </li>
           );
         })}

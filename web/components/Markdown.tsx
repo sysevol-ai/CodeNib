@@ -366,6 +366,25 @@ export default function Markdown({
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeSlug]}
         components={{
+          h1({ node: _node, children, ...props }) {
+            // A repository's own name, "owner/name", heads its Overview: the
+            // owner steps back, as on the home page and the phone poster.
+            const text =
+              typeof children === "string"
+                ? children
+                : Array.isArray(children) && children.length === 1 && typeof children[0] === "string"
+                  ? children[0]
+                  : null;
+            const slug = text ? /^([\w.-]+\/)([\w.-]+)$/.exec(text.trim()) : null;
+            if (!slug) return <h1 {...props}>{children}</h1>;
+            return (
+              <h1 {...props} className="is-repo-title">
+                <span className="title-owner">{slug[1]}</span>
+                <wbr />
+                {slug[2]}
+              </h1>
+            );
+          },
           img({ alt, ...props }) {
             // Exported illustrations are shown through validated media slots.
             // Markdown from a cached page must not load a remote/live image.

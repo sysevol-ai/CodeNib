@@ -20,6 +20,7 @@ export default function AskBar({
   inline = false,
   browserTrial = false,
   compact = false,
+  docked = false,
 }: {
   repoId: string;
   repo: string;
@@ -31,6 +32,8 @@ export default function AskBar({
   browserTrial?: boolean;
   /** Collapse to an icon; for pages whose content runs under the corner. */
   compact?: boolean;
+  /** Sit at the foot of the page list rather than over the reading column. */
+  docked?: boolean;
 }) {
   const [q, setQ] = useState(defaultValue);
   const [expanded, setExpanded] = useState(!collapsible);
@@ -65,7 +68,7 @@ export default function AskBar({
 
   if (collapsible && !expanded) {
     return (
-      <div className={`askbar askbar-collapsed${compact ? " askbar-compact" : ""}`}>
+      <div className={`askbar askbar-collapsed${compact ? " askbar-compact" : ""}${docked ? " askbar-docked" : ""}`}>
         <button
           className="askbar-trigger"
           type="button"

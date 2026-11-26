@@ -29,6 +29,10 @@
   --bg-muted: #f8f9fa;
   --border-subtle: #dadce0;    /* the 1px hairline that separates sections */
   --border-strong: #bdc1c6;
+  /* Framed surfaces in the reader (the main path, chapter cards). */
+  --panel-bg: #fbfbfc;
+  --panel-bg-hover: #f4f5f6;
+  --panel-line: #dfe1e5;
 
   /* Text: three greys, all readable on white. */
   --text-primary: #1f1f1f;     /* 16.5:1 */
@@ -116,6 +120,9 @@
 [data-theme="dark"] {
   --bg-page: #121315;
   --bg-surface: #1a1b1e;
+  --panel-bg: #16171a;
+  --panel-bg-hover: #1b1c20;
+  --panel-line: rgba(232, 234, 237, 0.1);
   --bg-subtle: #1f2023;
   --bg-muted: #17181b;
   --border-subtle: #2a2b2f;
@@ -271,7 +278,7 @@ pre {
 }
 .site-header .brand .brand-logo {
   display: block;
-  height: 32px;
+  height: 40px;
   width: auto;
 }
 .site-header .brand .brand-logo.for-dark,
@@ -281,9 +288,14 @@ pre {
 [data-theme="dark"] .site-header .brand .brand-logo.for-dark {
   display: block;
 }
+@media (max-width: 1180px) {
+  .site-header .brand .brand-logo {
+    height: 36px;
+  }
+}
 @media (max-width: 540px) {
   .site-header .brand .brand-logo {
-    height: 28px;
+    height: 30px;
   }
 }
 .site-header .brand .brand-mark {
@@ -291,14 +303,15 @@ pre {
   height: 28px;
   width: auto;
 }
-/* On a phone the wordmark takes the room the Notes and menu buttons need. */
+/* On a phone, a Wiki's header gives the wordmark's room to the Notes and
+   menu buttons; the home page has room and keeps it. */
 @media (max-width: 480px) {
-  .site-header .brand .brand-logo.for-light,
-  .site-header .brand .brand-logo.for-dark,
-  [data-theme="dark"] .site-header .brand .brand-logo.for-dark {
+  .wiki-reading .site-header .brand .brand-logo.for-light,
+  .wiki-reading .site-header .brand .brand-logo.for-dark,
+  [data-theme="dark"] .wiki-reading .site-header .brand .brand-logo.for-dark {
     display: none;
   }
-  .site-header .brand .brand-mark {
+  .wiki-reading .site-header .brand .brand-mark {
     display: block;
   }
 }
@@ -868,177 +881,479 @@ pre {
   font-size: var(--fs-caption);
 }
 .wiki-disclosure {
-  margin: 20px 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  margin: 28px 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
 }
-.wiki-disclosure > summary {
-  padding: 10px 14px;
-  color: var(--muted);
+.wiki-disclosure > summary,
+.evidence-ledger > summary {
+  position: relative;
+  display: block;
+  padding: 12px 28px 12px 0;
+  color: var(--text-secondary);
   font-size: var(--fs-small);
+  list-style: none;
   cursor: pointer;
+}
+.wiki-disclosure > summary::-webkit-details-marker,
+.evidence-ledger > summary::-webkit-details-marker {
+  display: none;
+}
+/* A drawn chevron at the row's end, turned down when the row is open. */
+.wiki-disclosure > summary::after,
+.evidence-ledger > summary::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-70%) rotate(45deg);
+  transition: transform 0.2s ease;
+}
+.wiki-disclosure:not([open]) > summary::after,
+.evidence-ledger:not([open]) > summary::after {
+  transform: translateY(-50%) rotate(-45deg);
+}
+.wiki-disclosure > summary:hover,
+.evidence-ledger > summary:hover {
+  color: var(--text-primary);
+}
+.wiki-disclosure > summary:focus-visible,
+.evidence-ledger > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wiki-disclosure > summary::after,
+  .evidence-ledger > summary::after {
+    transition: none;
+  }
 }
 .wiki-disclosure[open] > summary {
   border-bottom: 1px solid var(--border-subtle);
 }
 .wiki-disclosure .page-boundary,
-.wiki-disclosure .wiki-media {
+.wiki-disclosure .wiki-media,
+.wiki-disclosure .wiki-story-map,
+.wiki-disclosure .wiki-story-map-frame {
   margin: 0;
   border: none;
+  border-radius: 0;
+  background: none;
   box-shadow: none;
 }
+.wiki-disclosure .page-boundary {
+  padding: 4px 0 18px;
+}
 .main-path {
-  margin: 40px 0 28px;
+  margin: 56px 0 36px;
 }
 .main-path-head {
-  margin-bottom: 16px;
+  margin-bottom: 26px;
 }
 .main-path-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 22px;
-  font-weight: var(--fw-strong);
-  line-height: 1.3;
-  letter-spacing: -0.012em;
+  font-size: clamp(26px, 5cqi, 32px);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -0.028em;
   text-wrap: balance;
 }
+/* A call in the heading stays whole, held to the word before it; the line
+   breaks between "From get()" and "to HTTPAdapter.send()". */
 .main-path-title code {
-  font-size: 0.9em;
-  overflow-wrap: anywhere;
+  font-size: 0.84em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.main-path-title-unit {
+  white-space: nowrap;
 }
 .main-path-note {
-  margin: 6px 0 0;
+  max-width: 62ch;
+  margin: 10px 0 0;
   color: var(--text-muted);
-  font-size: var(--fs-caption);
+  font-size: var(--fs-small);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+/* A call's owner steps back; its own name stands forward. */
+.main-path-owner {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.main-path-name {
+  color: var(--text-primary);
+}
+/* The path as a cascade: each call a step right of its caller, joined to it
+   by an elbow; where the path drops into another area, twice as far. */
+/* The stair is sized by the column it sits in, not the window: at most
+   216 px, and about a fifth of the column. */
+.main-path {
+  container-type: inline-size;
 }
 .main-path-steps {
+  --unit: min(var(--cascade, 36px), calc(min(216px, 21cqi) / var(--units, 5)));
+  --line: var(--border-strong);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 .main-path-step {
+  --shift: calc(var(--move, 1) * var(--unit));
   position: relative;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 12px;
-  padding-bottom: 16px;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 14px;
+  margin-left: calc(var(--offset, 0) * var(--unit));
+  padding-bottom: 24px;
 }
+.main-path-step:last-child {
+  padding-bottom: 0;
+}
+/* Down from this step's ring towards the call it makes, in this step's
+   colour: the call leaves from here. */
 .main-path-step:not(:last-child)::before {
   content: "";
   position: absolute;
-  left: 13.5px;
-  top: 32px;
-  bottom: 4px;
+  left: 12.5px;
+  top: 30px;
+  bottom: 0;
   width: 1px;
-  background: var(--border-strong);
+  background: color-mix(in srgb, var(--down, var(--line)) 75%, transparent);
+  transform-origin: top;
+}
+/* And across into this step, in the colour of where the call lands. */
+.main-path-step:not(:first-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(12.5px - var(--shift));
+  top: 0;
+  width: calc(var(--shift) - 12.5px);
+  min-width: 2px;
+  height: 14px;
+  border-left: 1px solid color-mix(in srgb, var(--area, var(--line)) 75%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--area, var(--line)) 75%, transparent);
+  border-bottom-left-radius: 9px;
+}
+/* Where the path drops into another area, the area is named in the drop,
+   over the call it lands on, and the elbow falls through that room. */
+.main-path-step.is-entry {
+  padding-top: 26px;
+}
+.main-path-step.is-entry:not(:first-child)::after {
+  height: 40px;
+  border-bottom-left-radius: 12px;
+}
+.main-path-step.is-entry:not(:last-child)::before {
+  top: 56px;
+}
+.main-path-step > .main-path-area {
+  position: absolute;
+  top: 2px;
+  left: 0;
 }
 .main-path-index {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .main-path-body {
   min-width: 0;
-  padding-top: 2px;
+  padding-top: 1px;
 }
+/* The call, the area it enters, and where it is defined at the row's end;
+   where the row is too narrow for the call, the place moves to the next line
+   rather than break the call's name. */
 .main-path-symbol-row {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 2px 16px;
+}
+.main-path-source {
+  margin-left: auto;
 }
 .main-path-symbol {
-  color: var(--text-primary);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 26px;
+  white-space: nowrap;
+}
+.main-path-name {
   font-weight: 600;
+}
+/* Where a file:line would fall onto a line of its own, every step sets it
+   under its call. */
+.main-path-steps.is-stacked .main-path-symbol-row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.main-path-steps.is-stacked .main-path-source {
+  margin-left: 0;
+}
+/* A long call breaks after its owner, never inside a name. */
+.main-path-owner,
+.main-path-name {
   overflow-wrap: anywhere;
 }
-/* The area a step's code lives in. Its map colour is on the step's ring and
-   on the line that reaches the step; the name itself is a quiet link. */
+/* The area a step's code lives in: its map colour as a dot, the name a quiet
+   link beside the call. */
 .main-path-area {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
   border: none;
   background: none;
   padding: 0;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font: inherit;
   font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+}
+.main-path-area::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--area, var(--border-strong));
+  transform: translateY(-1px);
+}
+.main-path-area:hover,
+.main-path-area:focus-visible,
+.main-path-source:hover,
+.main-path-source:focus-visible {
+  color: var(--text-primary);
   text-decoration: underline;
   text-decoration-color: var(--border-strong);
   text-underline-offset: 3px;
-  cursor: pointer;
 }
-.main-path-area:hover,
-.main-path-area:focus-visible {
-  color: var(--accent);
-  text-decoration-color: currentColor;
-}
-.main-path-area:focus-visible {
+.main-path-area:focus-visible,
+.main-path-source:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
   border-radius: 2px;
 }
+/* Where the call is defined, at the row's far end, as a stack frame names it. */
+.main-path-source {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.main-path-source-line {
+  color: var(--text-muted);
+}
+/* A step that names its source on its row does not repeat it after its sentence. */
+.main-path-step.has-source .main-path-text .cite-group[data-single] {
+  display: none;
+}
 /* A step whose code is in no area of the map: a quiet ring, no colour. */
 .main-path-steps.is-coloured .main-path-step:not(.has-area) .main-path-index {
-  background: var(--bg-surface);
+  background: var(--bg-page);
   box-shadow: inset 0 0 0 1.5px var(--border-strong);
   color: var(--text-secondary);
 }
 .main-path-step.has-area .main-path-index {
-  background: var(--bg-surface);
+  background: var(--bg-page);
   box-shadow: inset 0 0 0 1.5px var(--area);
   color: var(--text-primary);
 }
-.main-path-step.has-next:not(:last-child)::before {
-  background: color-mix(in srgb, var(--next) 70%, transparent);
+.main-path-text {
+  max-width: 62ch;
 }
 .main-path-text > * {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
 }
 .main-path-text .markdown {
-  font-size: var(--fs-small);
+  font-size: 15px;
+  line-height: 1.6;
+}
+/* Each step's lines draw as the step comes into view: down from its
+   caller, then across into its ring, which lights as the line arrives.
+   Armed only by script, so without it everything is simply drawn. */
+.main-path-steps.is-armed .main-path-step:not(.is-drawn)::before {
+  transform: scaleY(0);
+}
+.main-path-steps.is-armed .main-path-step:not(.is-drawn)::after {
+  clip-path: inset(0 100% 100% 0);
+}
+
+.main-path-steps.is-armed .main-path-step.is-drawn::after {
+  animation: main-path-turn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--draw-delay, 0s);
+}
+
+.main-path-steps.is-armed .main-path-step.is-drawn::before {
+  animation: main-path-down 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--draw-delay, 0s) + 0.3s);
+}
+/* On white the lines take the area colour whole, to stay seen. */
+[data-theme="light"] .main-path-step:not(:last-child)::before {
+  background: var(--down, var(--line));
+}
+[data-theme="light"] .main-path-step:not(:first-child)::after {
+  border-color: var(--area, var(--line));
+}
+/* A wide column keeps every step at least 30 px right of its caller, so the
+   stair reads as a fall, not an indent; tight rows set file:line under. */
+@container (min-width: 520px) {
+  .main-path-steps {
+    --unit: min(var(--cascade, 36px), max(30px, calc(min(216px, 21cqi) / var(--units, 5))));
+  }
+}
+@keyframes main-path-down {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes main-path-turn {
+  from { clip-path: inset(0 100% 100% 0); }
+  60% { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@keyframes main-path-arrive {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .main-path-steps .main-path-step::before,
+  .main-path-steps .main-path-step::after,
+  .main-path-steps .main-path-index {
+    animation: none !important;
+    transform: none !important;
+    clip-path: none !important;
+    opacity: 1 !important;
+  }
+}
+@media (max-width: 600px) {
+  /* A phone keeps the whole stair within about 90 px. */
+  .main-path-steps {
+    --unit: min(var(--cascade, 36px), 20px, calc(88px / var(--units, 5)));
+  }
+  .main-path-symbol {
+    font-size: 15px;
+    white-space: normal;
+  }
+  /* A phone's heading may break a long call after its owner. */
+  .main-path-title-unit {
+    white-space: normal;
+  }
+  .main-path-title .main-path-owner::after {
+    content: "\200B";
+  }
+  .main-path-step {
+    gap: 10px;
+  }
+  /* A phone's column is too narrow to keep the source beside the call. */
+  .main-path-symbol-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .main-path-source {
+    margin-left: 0;
+  }
 }
 .call-path {
   margin: 0;
   padding: 16px 18px;
 }
+/* A call path is drawn on the page itself, as the Overview's is: the story
+   card around it steps away. */
+.wiki-story-map:has(> .wiki-story-map-frame > .call-path) {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.wiki-story-map-frame > .call-path {
+  padding: 8px 0 4px;
+}
+/* A chapter's call path, drawn as the Overview's is: each call a step right
+   of its caller, joined by an elbow. */
 .call-path-steps {
   list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 8px;
   margin: 0;
   padding: 0;
 }
 .call-path-step {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
+  position: relative;
+  margin-left: calc(var(--depth, 0) * 28px);
+  padding: 0 0 10px 18px;
 }
-.call-path-arrow::before {
-  content: "→";
-  color: var(--accent);
+.call-path-step:last-child {
+  padding-bottom: 0;
+}
+.call-path-step::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.call-path-step:not(:first-child)::after {
+  content: "";
+  position: absolute;
+  left: -24.5px;
+  top: -6px;
+  width: 22px;
+  height: 18px;
+  border-left: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  border-bottom-left-radius: 8px;
+}
+.call-path-arrow {
+  display: none;
 }
 .call-path-symbol {
-  padding: 6px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
+  padding: 0;
+  background: none;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+}
+.call-path-symbol .main-path-owner,
+.call-path-symbol .main-path-name {
   overflow-wrap: anywhere;
 }
 .call-path-caption {
-  margin-top: 10px;
-  color: var(--muted);
+  margin-top: 12px;
+  color: var(--text-muted);
   font-size: var(--fs-caption);
+}
+@media (max-width: 600px) {
+  .call-path-step {
+    margin-left: calc(var(--depth, 0) * 16px);
+  }
+  .call-path-step:not(:first-child)::after {
+    left: -12.5px;
+    width: 10px;
+  }
 }
 .wiki-go-deeper {
   margin-top: 36px;
@@ -1364,17 +1679,30 @@ pre {
   scroll-margin-bottom: var(--askbar-h);
 }
 .markdown h1 {
-  font-size: clamp(28px, 2.5vw, 34px);
-  line-height: 1.15;
-  font-weight: var(--fw-strong);
-  letter-spacing: -0.022em;
+  font-size: clamp(30px, 2.7vw, 38px);
+  line-height: 1.1;
+  font-weight: 550;
+  letter-spacing: -0.03em;
   text-wrap: balance;
-  margin: 0 0 14px;
+  margin: 0 0 16px;
+}
+/* A repository's own name heads its Overview: display size, the owner a step
+   back, as on the home page and the phone poster. */
+.markdown h1.is-repo-title {
+  font-size: clamp(36px, 3.5vw, 54px);
+  line-height: 1.02;
+  font-weight: 520;
+  letter-spacing: -0.04em;
+  margin-bottom: 20px;
+}
+.markdown h1 .title-owner {
+  color: var(--text-muted);
+  font-weight: 400;
 }
 /* The sentence under the title is the page's claim. */
 .markdown h1 + p {
-  color: var(--text-primary);
-  font-size: 18px;
+  color: color-mix(in srgb, var(--text-primary) 82%, var(--text-secondary));
+  font-size: 19px;
   line-height: 1.6;
 }
 /* The index's counts under the Overview's claim: one line of facts, the
@@ -1382,9 +1710,9 @@ pre {
 .wiki-repo-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 20px;
-  margin: 14px 0 0;
-  font-size: var(--fs-caption);
+  gap: 6px 24px;
+  margin: 20px 0 0;
+  font-size: var(--fs-small);
 }
 .wiki-repo-facts > div {
   display: flex;
@@ -1395,7 +1723,6 @@ pre {
 }
 .wiki-repo-facts dd {
   margin: 0;
-  font-family: var(--font-mono);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
@@ -1404,12 +1731,12 @@ pre {
   color: var(--text-muted);
 }
 .markdown h2 {
-  font-size: 22px;
-  line-height: 1.3;
-  font-weight: var(--fw-strong);
-  letter-spacing: -0.012em;
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: -0.022em;
   text-wrap: balance;
-  margin: 44px 0 10px;
+  margin: 56px 0 12px;
 }
 .markdown h3 {
   font-size: 17px;
@@ -1461,7 +1788,7 @@ pre {
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   border-radius: var(--radius-sm);
   padding: 0.1em 0.36em;
-  font-size: 0.86em;
+  font-size: max(13px, 0.875em);
   color: var(--text-primary);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
@@ -1639,7 +1966,7 @@ pre {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   padding: 2px 8px;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   color: var(--muted);
   cursor: pointer;
 }
@@ -1993,6 +2320,23 @@ pre {
 .askbar-trigger:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+/* With the map open, the launcher sits at the foot of the page list, clear
+   of the reading column and its file and line references. */
+.askbar-collapsed.askbar-docked {
+  left: var(--dock-left, var(--wiki-gutter));
+  right: auto;
+}
+.wiki-reading:has(.wiki-grid.is-workspace) .askbar-docked {
+  --dock-left: 18px;
+}
+/* With the map open the page runs edge to edge; the header's brand and
+   buttons line up with the page list and the reading column's edge. */
+.wiki-reading:has(.wiki-grid.is-workspace) .site-header {
+  padding-inline: 18px;
+}
+.wiki-grid.is-workspace .wiki-toc {
+  padding-bottom: 84px;
 }
 /* On the Overview the content runs under the corner, so the launcher shrinks
    to its icon; the label stays for screen readers and the tooltip. */
@@ -2574,10 +2918,10 @@ pre {
   margin-left: 10px;
   font-size: var(--fs-caption);
   font-family: inherit;
-  padding: 3px 9px;
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-pill);
-  background: var(--accent-soft);
+  padding: 3px 2px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
   color: var(--accent);
   cursor: pointer;
   white-space: nowrap;
@@ -2586,12 +2930,12 @@ pre {
   gap: 5px;
 }
 .codegraph-launch:hover {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--accent-border));
+  text-decoration: underline;
+  text-underline-offset: 3px;
   box-shadow: none;
 }
 .codegraph-launch.unavailable {
-  border-color: var(--border);
-  background: var(--bg-subtle);
+  background: none;
   color: var(--text-secondary);
 }
 
@@ -2850,7 +3194,7 @@ pre {
   margin-right: 8px;
   border-radius: 50%;
   vertical-align: 0.1em;
-  background: #188038;
+  background: var(--text-muted);
 }
 .page-provenance.needs-review .provenance-state::before {
   background: #b06000;
@@ -2905,7 +3249,7 @@ button.evidence-row:hover {
   padding: 8px 2px;
   border-bottom: 1px solid var(--border);
   color: var(--text-secondary);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   text-decoration: none;
   scroll-margin-top: calc(var(--top-h) + 12px);
 }
@@ -3717,7 +4061,7 @@ a.evidence-row:hover {
   padding: 3px 6px;
   color: var(--muted);
   background: var(--bg-subtle);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   text-decoration: none;
 }
 a.wiki-media-citation:hover {
@@ -4313,7 +4657,7 @@ a.codepanel-name:hover {
   margin: 0 0 0 4px;
   cursor: pointer;
   font: inherit;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   font-family: var(--font-mono);
   color: var(--text-muted);
   text-decoration: none;
@@ -4324,7 +4668,7 @@ a.codepanel-name:hover {
   text-decoration: underline;
 }
 .cite-src-loc {
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 
 @media (max-width: 600px) {
@@ -4454,7 +4798,7 @@ a.codepanel-name:hover {
   background: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   line-height: 1.5;
   cursor: pointer;
   text-decoration: underline;
@@ -4479,7 +4823,7 @@ a.codepanel-name:hover {
 }
 .cite-group .cite-src {
   margin: 0 6px 0 0;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   color: var(--text-muted);
 }
 .cite-group .cite-src:hover {
@@ -4722,18 +5066,18 @@ a.codepanel-name:hover {
 }
 .boundary-kicker {
   font-size: var(--fs-caption);
-  font-weight: var(--fw-strong);
+  font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
-  color: var(--accent);
+  color: var(--text-secondary);
 }
 .boundary-meta {
-  font-size: 0.75em;
+  font-size: var(--fs-caption);
   color: var(--text-muted, var(--muted));
 }
 .boundary-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 6px 28px;
 }
 @media (max-width: 720px) {
@@ -4743,8 +5087,8 @@ a.codepanel-name:hover {
 }
 .page-boundary .boundary-heading {
   margin: 0 0 6px;
-  font-size: 0.875em;
-  font-weight: var(--fw-strong);
+  font-size: var(--fs-small);
+  font-weight: 500;
   color: var(--text-secondary, var(--muted));
 }
 .boundary-rows {
@@ -4783,30 +5127,37 @@ a.codepanel-name:hover {
   cursor: default;
 }
 .boundary-symbol code {
-  font-size: 0.875em;
-  padding: 1px 6px;
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-border);
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-size: var(--fs-small);
+  font-weight: 500;
+  padding: 0;
+  background: none;
   color: var(--text-primary, var(--text));
 }
 .boundary-symbol:not(:disabled):hover code {
-  border-color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
 }
 .boundary-link {
   grid-area: link;
-  font-size: 0.875em;
+  font-size: var(--fs-caption);
   color: var(--text-secondary, var(--muted));
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .boundary-link code {
-  font-size: 0.875em;
+  font-size: var(--fs-caption);
   background: none;
   padding: 0;
 }
 .boundary-site {
   grid-area: site;
-  font-size: 0.75em;
+  font-size: var(--fs-caption);
   color: var(--text-muted, var(--muted));
   white-space: nowrap;
 }
@@ -6091,7 +6442,7 @@ a.code-activity-row:focus-visible {
 }
 .wiki-disclosure .arch {
   margin: 0;
-  padding: 16px 14px 6px;
+  padding: 12px 0 6px;
 }
 /* An Overview without a traced path shows the architecture as a figure in
    the bordered story-map card; it needs the card's inner margin. */
@@ -6100,7 +6451,9 @@ a.code-activity-row:focus-visible {
   padding: 20px 20px 4px;
 }
 .wiki-disclosure .arch-title {
-  font-size: 17px;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
 }
 .arch code {
   padding: 0.05em 0.3em;
@@ -6108,7 +6461,7 @@ a.code-activity-row:focus-visible {
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 0.88em;
+  font-size: max(13px, 0.88em);
 }
 .arch-path {
   margin: 0;
@@ -6140,7 +6493,7 @@ a.code-activity-row:focus-visible {
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .arch-body {
@@ -6151,7 +6504,7 @@ a.code-activity-row:focus-visible {
   margin: 0;
   color: var(--text-primary);
   font-size: var(--fs-body);
-  font-weight: var(--fw-strong);
+  font-weight: 500;
   line-height: 1.4;
 }
 .arch-body > p {
@@ -6205,7 +6558,7 @@ a.code-activity-row:focus-visible {
   margin: 0 0 4px;
   color: var(--text-primary);
   font-size: var(--fs-small);
-  font-weight: var(--fw-strong);
+  font-weight: 500;
 }
 .arch-group dl {
   margin: 0;
@@ -6220,7 +6573,7 @@ a.code-activity-row:focus-visible {
 .arch-item dt {
   color: var(--text-primary);
   font-size: var(--fs-small);
-  font-weight: var(--fw-strong);
+  font-weight: 500;
   line-height: 1.4;
 }
 .arch-item dd {

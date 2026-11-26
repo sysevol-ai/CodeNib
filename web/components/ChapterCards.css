@@ -1,0 +1,190 @@
+/* The Overview's chapters, and its walkthroughs, as cards on one surface step
+   above the page: a hairline frame, the chapter's map colour only on its mark
+   and, on hover, its edge. One card per chapter, never a card inside a card. */
+.chapter-cards,
+.walk-cards {
+  margin: 64px 0 0;
+}
+.walk-cards {
+  margin-top: 48px;
+}
+.chapter-cards h2,
+.walk-cards h2 {
+  margin: 0 0 18px;
+  color: var(--text-primary);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.022em;
+}
+.chapter-cards ul,
+.walk-cards ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* An odd last card takes the whole row rather than sitting alone in half. */
+.chapter-cards li:last-child:nth-child(odd),
+.walk-cards li:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+.chapter-cards li,
+.walk-cards li {
+  display: flex;
+}
+.chapter-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-height: 100%;
+  padding: 16px 18px 16px;
+  border: 1px solid var(--panel-line);
+  border-radius: 14px;
+  background: var(--panel-bg);
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+.chapter-card:hover {
+  border-color: color-mix(in srgb, var(--area) 55%, var(--panel-line));
+  background: var(--panel-bg-hover);
+}
+.chapter-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chapter-mark {
+  margin: -2px 0 4px -2px;
+  overflow: visible;
+}
+.chapter-mark line {
+  stroke: var(--area);
+  stroke-opacity: 0.32;
+  stroke-width: 1;
+}
+.chapter-mark-page {
+  fill: var(--area);
+  fill-opacity: 0.72;
+}
+.chapter-mark-area {
+  fill: var(--area);
+}
+.chapter-title {
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+/* The chapter's first pages, one to a line, each whole or cut at its end. */
+.chapter-pages {
+  display: grid;
+  width: 100%;
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  line-height: 1.55;
+}
+.chapter-page {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.chapter-more {
+  color: var(--text-muted);
+}
+.chapter-more.is-narrow {
+  display: none;
+}
+/* A card is one link: no line under its text. */
+.chapter-card:hover,
+.chapter-card:focus-visible,
+.chapter-card:hover *,
+.chapter-card:focus-visible * {
+  text-decoration: none;
+}
+.chapter-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+}
+.chapter-arrow {
+  flex: none;
+  color: var(--text-muted);
+  transition:
+    color 0.2s ease,
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chapter-card:hover .chapter-arrow,
+.chapter-card:focus-visible .chapter-arrow {
+  color: var(--text-primary);
+  transform: translateX(3px);
+}
+/* A walkthrough's card: its question, then the areas it passes through in
+   order, the way its route crosses the map. */
+.walk-card .chapter-title {
+  font-size: 16px;
+}
+.walk-route {
+  display: block;
+  margin: 2px 0 6px -1px;
+  overflow: visible;
+}
+.walk-route line {
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+}
+/* A phone: the mark beside the title, one page named, so a card stays short. */
+@media (max-width: 600px) {
+  .chapter-card {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 4px;
+    align-items: start;
+  }
+  .chapter-card > :not(.chapter-mark):not(.walk-route) {
+    grid-column: 2;
+  }
+  .chapter-mark,
+  .walk-route {
+    grid-row: 1 / span 3;
+    margin: 0;
+    width: 44px;
+  }
+  .chapter-page:nth-child(2),
+  .chapter-more.is-wide {
+    display: none;
+  }
+  .chapter-more.is-narrow {
+    display: block;
+  }
+  .chapter-meta {
+    padding-top: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chapter-card,
+  .chapter-arrow {
+    transition: none;
+  }
+}

@@ -647,15 +647,6 @@
   color: var(--walk-muted);
 }
 
-/* The Overview's list of walkthroughs: the Read next rows, each with how long the walk is. */
-.walk-list .wiki-read-next-title {
-  display: grid;
-  gap: 2px;
-}
-.walk-list-meta {
-  font-size: var(--fs-caption);
-  color: var(--text-muted);
-}
 
 /* Side by side once both sheets have room; the narration keeps one height for the whole walk. */
 @container walk (min-width: 900px) {

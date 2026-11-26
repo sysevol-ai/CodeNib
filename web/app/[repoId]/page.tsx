@@ -19,6 +19,7 @@ import CodeActivity from "@/components/CodeActivity";
 import { activityMarks } from "@/lib/codeActivity";
 import PageBoundaryCard from "@/components/PageBoundary";
 import CallPathFigure from "@/components/CallPathFigure";
+import ChapterCards from "@/components/ChapterCards";
 import MainPath from "@/components/MainPath";
 import ReadNext from "@/components/ReadNext";
 import WikiToc from "@/components/WikiToc";
@@ -1124,7 +1125,9 @@ export default function WikiPageView({
   // index's counts, as the poster does when the map is hidden.
   const overviewTitled = workspace && activeId === "overview";
   const overviewFacts =
-    overviewTitled && areaMap?.available ? repositoryFacts(areaMap, repo?.file_count) : null;
+    // Counted once the repository's own file count is in, so the line never
+    // changes under the reader.
+    overviewTitled && areaMap?.available && repo ? repositoryFacts(areaMap, repo.file_count) : null;
   const renderStageText = (markdown: string) => (
     <Markdown
       citations={page?.citations}
@@ -1195,7 +1198,7 @@ export default function WikiPageView({
       <Header
         actions={
           <>
-          {repo && (
+          {(repo || !staticRuntime) && (
             <button
               ref={jumpTriggerRef}
               type="button"
@@ -1204,7 +1207,7 @@ export default function WikiPageView({
                 setTocOpen(false);
                 setJumpOpen(true);
               }}
-              aria-label={`Search ${repo.repo}`}
+              aria-label={`Search ${repo?.repo ?? repoId.replace("__", "/")}`}
               aria-keyshortcuts="Meta+K Control+K /"
               title={`Jump to a page, walkthrough or function (${IS_MAC ? "⌘K" : "Ctrl+K"})`}
             >
@@ -1215,6 +1218,12 @@ export default function WikiPageView({
               <span className="jump-trigger-label">Search</span>
               <kbd>{IS_MAC ? "⌘K" : "Ctrl K"}</kbd>
             </button>
+          )}
+          {!repo && !staticRuntime && (
+            // Ask's place is held until the repository's record says it may.
+            <span className="icon-btn header-ask" aria-hidden="true" style={{ visibility: "hidden" }}>
+              <AskIcon />
+            </span>
           )}
           {repo && canAsk ? (
             <AppLink
@@ -1246,7 +1255,20 @@ export default function WikiPageView({
               </svg>
             </button>
             <span className="crumb-sep">/</span>
-            <span className="crumb-repo mono">{repo ? repo.repo : repoId}</span>
+            <span className="crumb-repo mono">{repo ? repo.repo : repoId.replace("__", "/")}</span>
+            {walking ? (
+              <>
+                <span className="crumb-sep">/</span>
+                <span className="crumb-page">{walk ? `Walkthrough: ${walk.tab}` : "Walkthrough"}</span>
+              </>
+            ) : (
+              page && (
+                <>
+                  <span className="crumb-sep">/</span>
+                  <span className="crumb-page">{page.title}</span>
+                </>
+              )
+            )}
             {(!staticRuntime || hasGraph) && (
               <button
                 className={`codegraph-launch ${hasGraph ? "" : "unavailable"}`}
@@ -1282,6 +1304,14 @@ export default function WikiPageView({
             {annotationsOn && (
               <NotesButton model={notes} open={notesOpen} onClick={() => setNotesOpen((o) => !o)} />
             )}
+            {!repo && !staticRuntime && (
+              // Notes' place is held until the repository's record arrives,
+              // so the header never moves under the reader.
+              <span className="cn-launch" aria-hidden="true" style={{ visibility: "hidden" }}>
+                <span className="cn-dot is-on" />
+                <span>Notes</span>
+              </span>
+            )}
             {annotationsOn && notes.local && !notes.needsSession && page && !walking && (
               <button
                 type="button"
@@ -1292,19 +1322,6 @@ export default function WikiPageView({
               >
                 {editing ? "Editing" : "Edit page"}
               </button>
-            )}
-            {walking ? (
-              <>
-                <span className="crumb-sep">/</span>
-                <span className="crumb-page">{walk ? `Walkthrough: ${walk.tab}` : "Walkthrough"}</span>
-              </>
-            ) : (
-              page && (
-                <>
-                  <span className="crumb-sep">/</span>
-                  <span className="crumb-page">{page.title}</span>
-                </>
-              )
             )}
           </nav>
         }
@@ -1337,7 +1354,7 @@ export default function WikiPageView({
             ? { role: "dialog", "aria-modal": true, "aria-label": "Pages in this Wiki" }
             : {})}
         >
-          <div className="rail-title">{repo ? repo.repo : repoId}</div>
+          <div className="rail-title">{repo ? repo.repo : repoId.replace("__", "/")}</div>
           {commits.length > 0 ? (
             <div className="rail-sub commit-picker">
               <label className="commit-picker-label" htmlFor="commit-select">
@@ -1359,8 +1376,11 @@ export default function WikiPageView({
               {commitCost && <div className="commit-evidence">{commitCost}</div>}
             </div>
           ) : (
-            repo?.commit_short && (
+            repo?.commit_short ? (
               <div className="rail-sub mono">Last indexed {repo.commit_short}</div>
+            ) : (
+              // Its room is kept until the record arrives, so the list never moves.
+              !repo && <div className="rail-sub mono" aria-hidden="true" style={{ visibility: "hidden" }}>Last indexed 0000000</div>
             )
           )}
           {error ? (
@@ -1502,8 +1522,20 @@ export default function WikiPageView({
                       repoId={repoId}
                       onPageLink={pick}
                     >
-                      {overviewTitled ? titleOverviewLead(wikiMarkdown.lead, repo?.repo) : wikiMarkdown.lead}
+                      {overviewTitled
+                        ? titleOverviewLead(wikiMarkdown.lead, repo?.repo ?? repoId.replace("__", "/"))
+                        : wikiMarkdown.lead}
                     </Markdown>
+                  )}
+                  {!overviewFacts && overviewTitled && !areaMapError && (!areaMap || (areaMap.available && !repo)) && (
+                    // The facts' line is kept while its counts arrive, so the
+                    // path below never moves.
+                    <dl className="wiki-repo-facts" aria-hidden="true" style={{ visibility: "hidden" }}>
+                      <div>
+                        <dt>files</dt>
+                        <dd>0</dd>
+                      </div>
+                    </dl>
                   )}
                   {overviewFacts && (
                     <dl className="wiki-repo-facts">
@@ -1550,13 +1582,8 @@ export default function WikiPageView({
                       onPick={pick}
                       renderText={renderStageText}
                       colors={wikiGraph.colors}
-                    />
-                  )}
-                  {activeId === "overview" && walkthroughs && (
-                    <WalkthroughList
-                      set={walkthroughs}
-                      colors={wikiGraph.colors}
-                      onOpen={(id) => openWalk(id)}
+                      citations={page.citations}
+                      onSource={(index) => setSourceCitation(page.citations[index] ?? null)}
                     />
                   )}
                   {figureSlots.length > 0 && (
@@ -1615,14 +1642,31 @@ export default function WikiPageView({
                 <CodeActivity overlay={codeActivity} pageId={activeId} />
               )}
               {/* A withheld page must not strand a reader above its detail pages. */}
-              {page && (
+              {page && activeId === "overview" && walkthroughs && (
+                <WalkthroughList
+                  set={walkthroughs}
+                  colors={wikiGraph.colors}
+                  onOpen={(id) => openWalk(id)}
+                  hrefFor={(id) => walkLocation(wikiRoute(repoId), id, 0)}
+                />
+              )}
+              {page && activeId === "overview" ? (
+                <ChapterCards
+                  hrefFor={(id) => `${wikiRoute(repoId)}?p=${encodeURIComponent(id)}`}
+                  links={readNext}
+                  pages={pages}
+                  areas={areaMap?.available ? areaMap.areas : undefined}
+                  colors={wikiGraph.colors}
+                  onPick={pick}
+                />
+              ) : page ? (
                 <ReadNext
-                  title={activeId === "overview" ? "Chapters" : "Read next"}
+                  title="Read next"
                   links={readNext}
                   colors={workspace ? wikiGraph.colors : undefined}
                   onPick={pick}
                 />
-              )}
+              ) : null}
               {page && (
                 <div
                   className={`page-provenance ${
@@ -2037,6 +2081,7 @@ export default function WikiPageView({
         <AskBar
           repoId={repoId} repo={repo.repo} collapsible browserTrial={browserTrial}
           compact={showPoster}
+          docked={!drawerMode && !showPoster}
         />
       )}
       {staticRuntime && (

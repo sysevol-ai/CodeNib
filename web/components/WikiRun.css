@@ -1076,3 +1076,35 @@ button.run-step-title:hover {
     animation: none;
   }
 }
+
+/* The rules open as the Wiki's disclosures do: a drawn chevron, no marker. */
+.wiki-repository-rules > details > summary {
+  position: relative;
+  display: inline-block;
+  padding-right: 22px;
+  list-style: none;
+  cursor: pointer;
+}
+.wiki-repository-rules > details > summary::-webkit-details-marker {
+  display: none;
+}
+.wiki-repository-rules > details > summary::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-50%) rotate(-45deg);
+  transition: transform 0.2s ease;
+}
+.wiki-repository-rules > details[open] > summary::after {
+  transform: translateY(-75%) rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wiki-repository-rules > details > summary::after {
+    transition: none;
+  }
+}
