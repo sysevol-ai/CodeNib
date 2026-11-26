@@ -266,24 +266,37 @@ function placeLabels(
       if (best) return { id: node.id, lines, ...best.option, box: best.box };
     }
     if (mode === "force" || ((clash || outside) && priority(node) >= 4)) {
-      // Its usual place, but never past the pane's side.
-      const shift =
-        box.left < LABEL_MARGIN_PX
-          ? LABEL_MARGIN_PX - box.left
-          : box.right > paneWidth - LABEL_MARGIN_PX
-            ? paneWidth - LABEL_MARGIN_PX - box.right
-            : 0;
-      return {
-        id: node.id,
-        lines,
-        anchor,
-        dx: dx + shift,
-        dy,
-        box: { ...box, left: box.left + shift, right: box.right + shift },
+      // Its usual place, but never past the pane's side, and where moving in
+      // would put it over its own mark, the other side.
+      const ownMark = marks.find((mark) => mark.id === node.id);
+      const settle = (side: PlacedLabel["anchor"], sideDx: number) => {
+        const sideLeft = sx + sideDx - (side === "middle" ? width / 2 : side === "end" ? width : 0);
+        const shift =
+          sideLeft < LABEL_MARGIN_PX
+            ? LABEL_MARGIN_PX - sideLeft
+            : sideLeft + width > paneWidth - LABEL_MARGIN_PX
+              ? paneWidth - LABEL_MARGIN_PX - sideLeft - width
+              : 0;
+        const sideBox = { ...box, left: sideLeft + shift, right: sideLeft + shift + width };
+        const onOwn =
+          !!ownMark &&
+          sideBox.left < ownMark.right &&
+          sideBox.right > ownMark.left &&
+          sideBox.top < ownMark.bottom &&
+          sideBox.bottom > ownMark.top;
+        return { placed: { id: node.id, lines, anchor: side, dx: sideDx + shift, dy, box: sideBox }, onOwn };
       };
+      const usual = settle(anchor, dx);
+      if (!usual.onOwn || anchor === "middle") return usual.placed;
+      const other = settle(anchor === "start" ? "end" : "start", anchor === "start" ? -(radius + 7) : radius + 7);
+      return other.onOwn ? usual.placed : other.placed;
     }
     return { id: node.id, lines, anchor, dx, dy, box };
     };
+  // A pointed or focused name keeps a little room round it: the names placed
+  // after it are only estimated, and must not run into it.
+  const room = (node: WikiGraphNode, box: PlacedLabel["box"]) =>
+    priority(node) >= 3.5 ? { left: box.left - 6, right: box.right + 6, top: box.top - 2, bottom: box.bottom + 2 } : box;
   for (const node of ordered) {
     // A pointed name is set bold; if bold finds no place it is set regular,
     // so pointing never takes an area's name away.
@@ -292,7 +305,7 @@ function placeLabels(
     for (const factor of factors) {
       const found = placeOne(node, factor);
       if (found) {
-        taken.push(found.box);
+        taken.push(room(node, found.box));
         placed.push({ ...found, plain: factor === 1 && priority(node) === 3.5 ? true : undefined });
         done = true;
         break;
@@ -315,7 +328,7 @@ function placeLabels(
       const forced =
         layouts.map((lines) => placeOne(node, 1, "must", lines)).find(Boolean) ?? placeOne(node, 1, "force");
       if (forced) {
-        taken.push(forced.box);
+        taken.push(room(node, forced.box));
         placed.push({ ...forced, plain: true });
       }
     }
@@ -726,10 +739,19 @@ export default function WikiGraphPane({
         { anchor: "start", dx: own.left - sx, dy: own.top - sy - 6 },
       ]);
     }
+    // Near its own stop, and nearer it than any other area, so a name never
+    // reads as another area's.
+    const others = graph.nodes
+      .filter((other) => other.kind === "area" && other.id !== node.id)
+      .map((other) => {
+        const p = points.get(other.id)!;
+        return { x: p.x * view.k + view.x, y: p.y * view.k + view.y, r: other.radius * view.k };
+      });
+    const gapTo = (box: Box, cx: number, cy: number, cr: number) =>
+      Math.hypot(Math.max(box.left - cx, 0, cx - box.right), Math.max(box.top - cy, 0, cy - box.bottom)) - cr;
     const nearEnough = (box: Box) => {
-      const gapX = Math.max(box.left - sx, 0, sx - box.right);
-      const gapY = Math.max(box.top - sy, 0, sy - box.bottom);
-      return Math.hypot(gapX, gapY) <= r + 64;
+      const own = gapTo(box, sx, sy, r);
+      return own <= 64 && others.every((other) => gapTo(box, other.x, other.y, other.r) >= own - 2);
     };
     const top = (header ? Math.max(HEADER_PX, headHeight + 14) : 0) + 6;
     // A phone's status line can run to three lines (the path's heading).
