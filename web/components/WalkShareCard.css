@@ -64,7 +64,7 @@
   margin: 24px 0 0;
   padding: 0;
   color: #bdc1c6;
-  font-size: 28px;
+  font-size: 26px;
   line-height: 1.3;
   list-style: none;
 }
@@ -74,10 +74,13 @@
   gap: 10px;
 }
 .walk-card-areas .walk-card-dot {
+  /* The trace's dots centre on their row; a key's dot sits on its first line. */
+  align-self: flex-start;
   flex-shrink: 0;
   width: 16px;
   height: 16px;
-  margin-top: 0.4em;
+  /* Centred on the first line of its name: (line height - dot) / 2. */
+  margin-top: calc((1.3em - 16px) / 2);
   box-shadow: none;
 }
 .walk-card-areas li.is-own .walk-card-dot {
@@ -88,6 +91,7 @@
   display: grid;
   gap: 6px;
   margin: auto 0 0;
+  padding-top: 24px;
   color: #9aa0a6;
   font-size: 28px;
 }
