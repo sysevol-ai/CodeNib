@@ -12,7 +12,7 @@ const TOUR_MS = 2800;
 /** Each recorded call on the main path holds this long, its crossing included. */
 const STOP_MS = 1500;
 /** The finished route stays up this long before the area tour starts. */
-const HOLD_MS = 2600;
+const HOLD_MS = 3600;
 const number = new Intl.NumberFormat("en-US");
 
 type Phase = { kind: "route"; at: number } | { kind: "hold" } | { kind: "areas"; step: number };

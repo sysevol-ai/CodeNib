@@ -869,7 +869,9 @@ export default function WikiGraphPane({
         </div>
       )}
 
-      <div className="wiki-graph-foot" role="status">
+      {/* What the reader points at is announced; what the map plays by
+          itself (the replay, the tour) is not, or it would talk every step. */}
+      <div className="wiki-graph-foot" aria-live={status === idle ? "off" : "polite"}>
         {status ? (
           <p>
             <b className={status.code ? "is-code" : undefined}>{status.title}</b> <span>{status.detail}</span>
