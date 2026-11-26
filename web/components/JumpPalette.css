@@ -100,6 +100,7 @@
   color: var(--text-muted);
 }
 .jump-name {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
@@ -128,8 +129,9 @@ code.jump-name {
 /* The area comes first and gives way first when the row is narrow. */
 .jump-meta {
   display: inline-flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 10px;
+  min-width: 0;
 }
 .jump-meta-page {
   min-width: 0;
@@ -137,8 +139,16 @@ code.jump-name {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* The place in the file gives way last, and then with an ellipsis. */
 .jump-meta .mono {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.jump-meta-page {
+  flex: 0 100 auto;
 }
 .jump-note,
 .jump-empty {
