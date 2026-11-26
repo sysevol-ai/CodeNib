@@ -1551,14 +1551,8 @@ export default function WikiPageView({
                       onPick={pick}
                       renderText={renderStageText}
                       colors={wikiGraph.colors}
-                      commit={repo?.commit_short}
-                    />
-                  )}
-                  {activeId === "overview" && walkthroughs && (
-                    <WalkthroughList
-                      set={walkthroughs}
-                      colors={wikiGraph.colors}
-                      onOpen={(id) => openWalk(id)}
+                      citations={page.citations}
+                      onSource={(index) => setSourceCitation(page.citations[index] ?? null)}
                     />
                   )}
                   {figureSlots.length > 0 && (
@@ -1617,8 +1611,16 @@ export default function WikiPageView({
                 <CodeActivity overlay={codeActivity} pageId={activeId} />
               )}
               {/* A withheld page must not strand a reader above its detail pages. */}
+              {page && activeId === "overview" && walkthroughs && (
+                <WalkthroughList
+                  set={walkthroughs}
+                  colors={wikiGraph.colors}
+                  onOpen={(id) => openWalk(id)}
+                />
+              )}
               {page && activeId === "overview" ? (
                 <ChapterCards
+                  hrefFor={(id) => `${wikiRoute(repoId)}?p=${encodeURIComponent(id)}`}
                   links={readNext}
                   pages={pages}
                   areas={areaMap?.available ? areaMap.areas : undefined}

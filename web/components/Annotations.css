@@ -178,14 +178,14 @@
 /* Styled like the Dependency Map button beside it, but it stays on a phone:
    annotating is the reason a local Wiki is open. */
 .cn-launch {
-  margin-left: 10px;
+  margin-left: 14px;
   flex: none;
   font-size: var(--fs-caption);
   font-family: inherit;
-  padding: 3px 9px;
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-pill);
-  background: var(--accent-soft);
+  padding: 3px 2px;
+  border: 0;
+  border-radius: 2px;
+  background: none;
   color: var(--accent);
   cursor: pointer;
   white-space: nowrap;
@@ -194,10 +194,11 @@
   gap: 6px;
 }
 .cn-launch:hover {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--accent-border));
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .cn-launch.is-open {
-  border-color: var(--accent);
+  color: var(--text-primary);
 }
 @media (max-width: 820px) {
   .cn-launch {

@@ -544,7 +544,7 @@
     padding: 22px 18px 4px;
   }
   .poster-title {
-    font-size: 32px;
+    font-size: clamp(30px, 6cqi, 44px);
   }
   .poster-canvas {
     padding: 4px 8px 0;

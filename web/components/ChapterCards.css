@@ -21,10 +21,16 @@
 .walk-cards ul {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  grid-auto-rows: 1fr;
   gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+/* An odd last card takes the whole row rather than sitting alone in half. */
+.chapter-cards li:last-child:nth-child(odd),
+.walk-cards li:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 .chapter-cards li,
 .walk-cards li {
@@ -44,6 +50,7 @@
   color: var(--text-secondary);
   font: inherit;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
   transition:
     border-color 0.2s ease,
@@ -81,14 +88,31 @@
   letter-spacing: -0.01em;
   text-wrap: balance;
 }
+/* The chapter's first pages, one to a line, each whole or cut at its end. */
 .chapter-pages {
+  display: grid;
+  width: 100%;
   color: var(--text-muted);
   font-size: var(--fs-small);
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  line-height: 1.55;
+}
+.chapter-page {
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chapter-more {
+  color: var(--text-faint);
+}
+.chapter-more.is-narrow {
+  display: none;
+}
+/* A card is one link: no line under its text. */
+.chapter-card:hover,
+.chapter-card:focus-visible,
+.chapter-card:hover *,
+.chapter-card:focus-visible * {
+  text-decoration: none;
 }
 .chapter-meta {
   display: flex;
@@ -128,6 +152,35 @@
 .walk-route line {
   stroke: var(--border-strong);
   stroke-width: 1.5;
+}
+/* A phone: the mark beside the title, one page named, so a card stays short. */
+@media (max-width: 600px) {
+  .chapter-card {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 4px;
+    align-items: start;
+  }
+  .chapter-card > :not(.chapter-mark):not(.walk-route) {
+    grid-column: 2;
+  }
+  .chapter-mark,
+  .walk-route {
+    grid-row: 1 / span 3;
+    margin: 0;
+    width: 44px;
+  }
+  .chapter-page:nth-child(2),
+  .chapter-more.is-wide {
+    display: none;
+  }
+  .chapter-more.is-narrow {
+    display: block;
+  }
+  .chapter-meta {
+    padding-top: 6px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .chapter-card,

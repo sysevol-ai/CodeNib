@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 
 import type { WikiArea, WikiPageRef } from "@/lib/api";
 import { NEUTRAL_COLOR } from "@/lib/wikiGraph";
@@ -51,13 +51,21 @@ export default function ChapterCards({
   areas,
   colors,
   onPick,
+  hrefFor,
 }: {
   links: PageLink[];
   pages: WikiPageRef[];
   areas?: WikiArea[];
   colors: Map<string, string>;
   onPick: (pageId: string) => void;
+  /** The chapter's own address, so a card opens in a new tab as a link does. */
+  hrefFor: (pageId: string) => string;
 }) {
+  const open = (event: MouseEvent, pageId: string) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    onPick(pageId);
+  };
   if (links.length === 0) return null;
   return (
     <nav className="chapter-cards" aria-label="Chapters">
@@ -70,18 +78,32 @@ export default function ChapterCards({
           const more = children.length - named.length;
           return (
             <li key={link.id}>
-              <button
-                type="button"
+              <a
+                href={hrefFor(link.id)}
                 className="chapter-card"
-                onClick={() => onPick(link.id)}
+                onClick={(event) => open(event, link.id)}
                 style={{ "--area": colors.get(link.id) ?? NEUTRAL_COLOR } as CSSProperties}
               >
                 <ChapterMark pages={children.length} />
                 <span className="chapter-title">{link.title}</span>
                 {named.length > 0 && (
                   <span className="chapter-pages">
-                    {named.join(" · ")}
-                    {more > 0 && ` · ${more} more`}
+                    {named.map((title) => (
+                      <span className="chapter-page" key={title}>
+                        {title}
+                      </span>
+                    ))}
+                    {more > 0 && (
+                      <span className="chapter-more is-wide">
+                        and {more} more {more === 1 ? "page" : "pages"}
+                      </span>
+                    )}
+                    {/* A phone names one page; the rest are counted. */}
+                    {children.length > 1 && (
+                      <span className="chapter-more is-narrow">
+                        and {children.length - 1} more {children.length === 2 ? "page" : "pages"}
+                      </span>
+                    )}
                   </span>
                 )}
                 <span className="chapter-meta">
@@ -105,7 +127,7 @@ export default function ChapterCards({
                     <path d="M5 12h14M13 6l6 6-6 6" />
                   </svg>
                 </span>
-              </button>
+              </a>
             </li>
           );
         })}

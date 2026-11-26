@@ -170,6 +170,11 @@ pre,
   width: auto;
   height: 40px;
 }
+@media (max-width: 1180px) {
+  .brand img {
+    height: 36px;
+  }
+}
 
 .nav-link {
   color: var(--ink-2);
