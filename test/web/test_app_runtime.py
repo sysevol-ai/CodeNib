@@ -2622,3 +2622,42 @@ def test_a_changed_repository_is_reread_and_the_caller_retries(monkeypatch) -> N
     # A second failure within the interval does not refresh again.
     assert second.status_code == 503
     assert refreshed == ["req"]
+
+
+def test_files_list_the_pages_that_cite_them(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    from codenib.web import app as web_app
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "a.py").write_text("x = 1\n")
+    (tmp_path / "pkg" / "b.py").write_text("y = 2\n")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "skip.js").write_text("")
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), base_commit="")
+    )
+    monkeypatch.setattr(
+        web_app,
+        "_annotation_pages",
+        lambda repo_id: [
+            {
+                "id": "p1",
+                "title": "One",
+                "citations": [{"file": "pkg/a.py", "start_line": 1, "end_line": 1}],
+            },
+            {
+                "id": "p2",
+                "title": "Two",
+                "citations": [{"file": "pkg/a.py", "start_line": 3, "end_line": 9}],
+            },
+        ],
+    )
+    files = {
+        f["path"]: f["cited_by"]
+        for f in web_app._files_with_pages("r", bundle)["files"]
+    }
+    assert set(files) == {"pkg/a.py", "pkg/b.py"}, "ignored folders stay out"
+    assert [c["page"] for c in files["pkg/a.py"]] == ["p1", "p2"]
+    assert files["pkg/a.py"][1]["lines"] == [[3, 9]]
+    assert files["pkg/b.py"] == []

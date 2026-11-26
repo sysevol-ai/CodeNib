@@ -74,7 +74,8 @@ from .ports import argparse_tcp_port
 from .prerender import (attr, outline_pages, page_body, page_description,
                         page_route, robots, sitemap, standalone_document)
 from .repo_registry import RepoRegistry
-from .repository_files import bound_source_slice, safe_repo_relative_path
+from .repository_files import (bound_source_slice, git_tree_paths,
+                               safe_repo_relative_path)
 from .request_limits import RequestBodyLimitMiddleware
 from .schemas import (ChatRequest, ChatResponse, EdgeLabelRequest,
                       EdgeLabelResponse, RepoIndexStatus, RepoInfo,
@@ -1970,6 +1971,53 @@ async def wiki_page_boundary(repo_id: str, page_id: str) -> dict:
             repo_dir=bundle.entry.repo_dir,
             source_reader=getattr(bundle, "source_reader", None),
         )
+
+
+def _files_with_pages(repo_id: str, bundle) -> dict:
+    """The repository's files, each with the Wiki pages that cite it.
+
+    The other half of the Wiki's mapping to code: a page cites lines of a
+    file, and a file lists the pages (and line ranges) that talk about it.
+    """
+
+    repo_dir = str(bundle.entry.repo_dir)
+    commit = str(getattr(bundle.entry, "base_commit", "") or "")
+    paths = git_tree_paths(repo_dir, commit) if commit else None
+    if paths is None:
+        root = Path(repo_dir)
+        paths = frozenset(
+            path.relative_to(root).as_posix()
+            for path in root.rglob("*")
+            if path.is_file()
+        )
+    visible = sorted(p for p in paths if repository_path_is_visible(p))[:20000]
+    cited: dict[str, list] = {}
+    try:
+        pages = _annotation_pages(repo_id)
+    except Exception:  # noqa: BLE001 - files still list without pages
+        pages = []
+    for page in pages:
+        ranges: dict[str, list] = {}
+        for cite in page.get("citations") or []:
+            file = str(cite.get("file") or "")
+            if not file:
+                continue
+            start = int(cite.get("start_line") or 0)
+            end = int(cite.get("end_line") or start)
+            ranges.setdefault(file, []).append([start, end])
+        for file, spans in ranges.items():
+            cited.setdefault(file, []).append(
+                {"page": page.get("id"), "title": page.get("title"), "lines": spans}
+            )
+    return {
+        "files": [{"path": p, "cited_by": cited.get(p, [])} for p in visible],
+    }
+
+
+@app.get("/api/repos/{repo_id}/files")
+async def list_repository_files(repo_id: str) -> dict:
+    with _pinned_bundle(repo_id) as bundle:
+        return await _run_pinned_thread(_files_with_pages, repo_id, bundle)
 
 
 @app.get("/api/repos/{repo_id}/source")
