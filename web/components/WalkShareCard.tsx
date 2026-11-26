@@ -28,7 +28,8 @@ function rowsOf(set: WalkthroughSet, walk: Walk): (Row | { gap: number })[] {
     return {
       name: stop.full,
       place: stop.ln,
-      area: area?.name ?? null,
+      // The full name the Wiki gives the area; stops are labelled by colour.
+      area: area?.title ?? area?.name ?? null,
       color: area?.color ?? NEUTRAL_COLOR,
       own: index === 0,
     };
@@ -160,7 +161,14 @@ export default function WalkShareCard({ repoId, walkId, host }: { repoId: string
 
         </p>
       </div>
-      <ol className="walk-card-trace">
+      <ol
+        className="walk-card-trace"
+        // A short walk spreads out over the column instead of leaving it empty.
+        style={(() => {
+          const gap = `${Math.round(Math.min(56, Math.max(20, (440 - rows.length * 36) / Math.max(1, rows.length - 1))))}px`;
+          return { gap, "--gap": gap } as CSSProperties;
+        })()}
+      >
         {rows.map((row, index) =>
           "gap" in row ? (
             <li key={`gap-${index}`} className="walk-card-gap" style={{ "--next": nextColor(rows, index) } as CSSProperties}>
