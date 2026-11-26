@@ -165,7 +165,9 @@ export default function WalkShareCard({ repoId, walkId, host }: { repoId: string
         className="walk-card-trace"
         // A short walk spreads out over the column instead of leaving it empty.
         style={(() => {
-          const gap = `${Math.round(Math.min(56, Math.max(20, (440 - rows.length * 36) / Math.max(1, rows.length - 1))))}px`;
+          // The steps fill the band the longest walks fill, from the
+          // repository line down to the footer line.
+          const gap = `${Math.round(Math.min(120, Math.max(20, (440 - rows.length * 36) / Math.max(1, rows.length - 1))))}px`;
           return { gap, "--gap": gap } as CSSProperties;
         })()}
       >
