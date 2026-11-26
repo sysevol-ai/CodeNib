@@ -39,6 +39,7 @@ export default function WikiGenerationForm({
   onStarted,
   onChecked,
   onCheckFailed,
+  onRetry,
   resume = false,
 }: {
   attempt: WikiAttempt;
@@ -47,6 +48,8 @@ export default function WikiGenerationForm({
   onChecked?: (result: WikiRepositoryCheck | null) => void;
   /** The source check could not answer (busy, rate-limited or offline). */
   onCheckFailed?: (message: string) => void;
+  /** The reader asked to check again, so anything else refused may be asked again too. */
+  onRetry?: () => void;
   resume?: boolean;
 }) {
   const keyInput = useRef<HTMLInputElement>(null);
@@ -253,6 +256,7 @@ export default function WikiGenerationForm({
                       if (retrying || (checkLimited && retryLeft > 0)) return;
                       setRetrying(true);
                       setCheckRetry((value) => value + 1);
+                      onRetry?.();
                     }}
                   >
                     {retrying ? "Checking…" : "Check again"}

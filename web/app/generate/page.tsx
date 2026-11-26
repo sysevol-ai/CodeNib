@@ -50,6 +50,8 @@ export default function GenerateWikiPage({
   const [freeMapWait, setFreeMapWait] = useState(0);
   /** The map was refused twice; the outline says so instead of falling silent. */
   const [freeMapRefused, setFreeMapRefused] = useState(false);
+  /** Bumped when "Check again" should ask for a refused map too. */
+  const [mapAttempt, setMapAttempt] = useState(0);
   useEffect(() => {
     let ignored = false;
     if (isStaticRuntime()) {
@@ -93,6 +95,7 @@ export default function GenerateWikiPage({
     let ignored = false;
     setFreeMap(null);
     setFreeMapFailed(false);
+    setFreeMapRefused(false);
     let timer = 0;
     // A refused map (the server is busy, or this network asked a moment ago)
     // is asked for once more when the server says it may be.
@@ -121,7 +124,7 @@ export default function GenerateWikiPage({
       ignored = true;
       window.clearTimeout(timer);
     };
-  }, [enabled, freeMapOffered, repo?.slug]);
+  }, [enabled, freeMapOffered, repo?.slug, mapAttempt]);
   const picture = useMemo(() => freeMapPicture(freeMap), [freeMap]);
   const previous = recentWikis().filter(
     (item) =>
@@ -166,7 +169,7 @@ export default function GenerateWikiPage({
       detail: freeMapWait ? "The map was refused too; asking again shortly." : "The map is still being drawn.",
     };
   else if (checkFailed && freeMapRefused)
-    idle = { title: "The server is busy just now", detail: "Neither the check nor the map ran; reload in a minute." };
+    idle = { title: "The server is busy just now", detail: "Neither the check nor the map ran; check again for both." };
   else if (checkFailed)
     idle = { title: "The snapshot could not be checked just now", detail: "See the form; try again shortly." };
   else if (loaded && !enabled)
@@ -292,6 +295,12 @@ export default function GenerateWikiPage({
                 if (result) setCheckFailed("");
               }}
               onCheckFailed={setCheckFailed}
+              onRetry={() => {
+                // The check starts again, so the outline waits for it; a map
+                // that was refused is asked for with it.
+                setCheckFailed("");
+                if (freeMapFailed) setMapAttempt((value) => value + 1);
+              }}
               onStarted={() => navigate(`/wiki/${attempt.id}`)}
             />
           )}
