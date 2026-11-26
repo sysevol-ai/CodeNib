@@ -63,6 +63,10 @@ for (const item of REPOS) {
     map: { available: map.available, reason: map.reason ?? null, areas: map.areas, links: map.links },
     pages: tree.pages,
     overview: tracedPathSection(overview.markdown || ""),
+    // Only the cited file and first line: the hero names where each step lives.
+    citations: (overview.citations || []).map((citation) =>
+      citation?.file ? { file: citation.file, start_line: citation.start_line ?? null } : null,
+    ),
   });
   console.log(`${item.id}: ${map.areas.length} areas, ${map.links.length} links`);
 }

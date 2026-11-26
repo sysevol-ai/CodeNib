@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import HeroGraph from "@/components/HeroGraph";
 import "@/components/HomeMap.css";
 import type { RepoInfo, WikiAreaMap, WikiPageRef } from "@/lib/api";
+import { routeFromJourney, type RouteCitation } from "@/lib/mapRoute";
+import { extractJourney } from "@/lib/wikiPresentation";
 
 export interface CapturedMap {
   id: string;
@@ -16,6 +18,8 @@ export interface CapturedMap {
   pages: WikiPageRef[];
   /** The Overview's traced path, which the repository video reads. */
   overview: string;
+  /** The Overview's citations, by evidence number, as file and first line. */
+  citations?: (RouteCitation | null)[];
 }
 
 /**
@@ -26,6 +30,17 @@ export interface CapturedMap {
 export default function LandingMap({ maps, demo }: { maps: CapturedMap[]; demo: string }) {
   const [selected, setSelected] = useState(maps[0]?.id);
   const current = maps.find((item) => item.id === selected) ?? maps[0];
+  const route = useMemo(
+    () =>
+      current
+        ? routeFromJourney(
+            extractJourney(current.overview).journey,
+            current.citations,
+            current.map.areas.map((area) => area.id),
+          )
+        : null,
+    [current],
+  );
   if (!current) return null;
   const wiki = `${demo}/${encodeURIComponent(current.id)}`;
   return (
@@ -55,6 +70,7 @@ export default function LandingMap({ maps, demo }: { maps: CapturedMap[]; demo: 
         repoName={current.repo.repo}
         pages={current.pages}
         map={current.map}
+        route={route}
         wikiHref={wiki}
         onPick={(page) => {
           window.location.href = `${wiki}?p=${encodeURIComponent(page)}`;

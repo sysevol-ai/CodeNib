@@ -274,6 +274,125 @@
 .wiki-graph-legend dt.is-contains {
   border-top: 1px solid rgba(232, 234, 237, 0.26);
 }
+/* The route takes each area's own colour; the legend shows that as a run of them. */
+.wiki-graph-legend dt.is-route {
+  height: 3px;
+  border: 0;
+  border-radius: 2px;
+}
+
+/* --- The main path, replayed one recorded call at a time --- */
+/* While it plays, the other references step back so the route reads first. */
+.wiki-graph.is-routing .wg-edge.is-references:not(.is-hot) .wg-edge-line {
+  stroke: rgba(232, 234, 237, 0.13);
+}
+.wiki-graph.is-routing .wg-edge.is-references:not(.is-hot) .wg-arrow {
+  fill: rgba(232, 234, 237, 0.13);
+}
+.wg-route-line {
+  fill: none;
+  stroke-width: 2.75;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.92;
+}
+.wg-route-line.is-newest {
+  stroke-dasharray: 1;
+}
+.wg-route-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  cursor: pointer;
+}
+.wg-route-token {
+  pointer-events: none;
+}
+.wg-route-token circle {
+  stroke: var(--wg-bg);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.wg-route-stop {
+  pointer-events: none;
+}
+.wg-route-ring {
+  fill: none;
+  stroke: var(--node);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.wg-route-ripple {
+  fill: none;
+  stroke: var(--node);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.wg-route-stop.is-moving .wg-route-ring {
+  animation: wg-route-appear 0.24s ease-out var(--arrive) both;
+}
+.wg-route-stop.is-moving .wg-route-ripple {
+  animation: wg-route-ripple 0.9s cubic-bezier(0.2, 0.7, 0.3, 1) var(--arrive) both;
+}
+.wg-route-name,
+.wg-route-name-halo {
+  font-family: var(--font-geist-mono, "Geist Mono"), ui-monospace, monospace;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.wg-route-name {
+  fill: #fff;
+}
+.wg-route-name-halo {
+  fill: var(--wg-bg);
+  stroke: var(--wg-bg);
+  stroke-linejoin: round;
+}
+.wg-route-label {
+  pointer-events: none;
+}
+.wg-route-label.is-link {
+  cursor: pointer;
+  pointer-events: auto;
+}
+.wg-route-label.is-link:hover .wg-route-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* Names switch on at once: a fading name reads as a ghosted one. */
+.wg-route-label.is-moving {
+  animation: wg-route-appear 0s linear var(--arrive) both;
+}
+@keyframes wg-route-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes wg-route-ripple {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wg-route-stop.is-moving .wg-route-ring,
+  .wg-route-label.is-moving {
+    animation: none;
+  }
+  .wg-route-stop.is-moving .wg-route-ripple {
+    display: none;
+  }
+}
 
 .wiki-graph-splitter {
   position: absolute;

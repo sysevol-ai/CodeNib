@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 
 import type { WikiAreaLink } from "@/lib/api";
 import { type ActivityMark, isOpenMark, markRadius, markSummary } from "@/lib/codeActivity";
+import type { RouteStop } from "@/lib/mapRoute";
 import type { WikiPageState } from "@/lib/visitorWiki";
 import { labelLines, neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
 import "./WikiGraphPane.css";
@@ -26,6 +27,8 @@ interface PlacedLabel {
   anchor: "start" | "middle" | "end";
   dx: number;
   dy: number;
+  /** Where the label sits on screen, for anything placed after it. */
+  box: { left: number; right: number; top: number; bottom: number };
 }
 
 // Geist at the label size averages about this wide per character.
@@ -93,26 +96,70 @@ function placeLabels(
     const outside = box.left < 0 || box.right > paneWidth;
     if ((clash || outside) && priority(node) < 4) continue;
     taken.push(box);
-    placed.push({ id: node.id, lines, anchor, dx, dy });
+    placed.push({ id: node.id, lines, anchor, dx, dy, box });
   }
   return placed;
 }
 
-/** A curved path between two nodes, so two-way references stay two visible lines. */
-function edgePath(a: Point, b: Point, ar: number, br: number, curved: boolean): string {
+interface Curve {
+  start: Point;
+  control: Point;
+  end: Point;
+}
+
+/** The bend between two nodes, so two-way references stay two visible lines. */
+function edgeCurve(a: Point, b: Point, ar: number, br: number, curved: boolean): Curve {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const length = Math.max(Math.hypot(dx, dy), 1);
   const ux = dx / length;
   const uy = dy / length;
-  const x1 = a.x + ux * ar;
-  const y1 = a.y + uy * ar;
-  const x2 = b.x - ux * (br + (curved ? 3 : 0));
-  const y2 = b.y - uy * (br + (curved ? 3 : 0));
-  if (!curved) return `M${x1} ${y1}L${x2} ${y2}`;
-  const bend = Math.min(length * 0.12, 34);
-  return `M${x1} ${y1}Q${(x1 + x2) / 2 - uy * bend} ${(y1 + y2) / 2 + ux * bend} ${x2} ${y2}`;
+  const start = { x: a.x + ux * ar, y: a.y + uy * ar };
+  const end = { x: b.x - ux * (br + (curved ? 3 : 0)), y: b.y - uy * (br + (curved ? 3 : 0)) };
+  const bend = curved ? Math.min(length * 0.12, 34) : 0;
+  const control = { x: (start.x + end.x) / 2 - uy * bend, y: (start.y + end.y) / 2 + ux * bend };
+  return { start, control, end };
 }
+
+/** A curved path between two nodes, so two-way references stay two visible lines. */
+function edgePath(a: Point, b: Point, ar: number, br: number, curved: boolean): string {
+  const { start, control, end } = edgeCurve(a, b, ar, br, curved);
+  if (!curved) return `M${start.x} ${start.y}L${end.x} ${end.y}`;
+  return `M${start.x} ${start.y}Q${control.x} ${control.y} ${end.x} ${end.y}`;
+}
+
+function curvePoint({ start, control, end }: Curve, t: number): Point {
+  const u = 1 - t;
+  return {
+    x: u * u * start.x + 2 * u * t * control.x + t * t * end.x,
+    y: u * u * start.y + 2 * u * t * control.y + t * t * end.y,
+  };
+}
+
+/** The route's areas in the order it visits them, as one legend swatch. */
+function routeSwatch(stops: RouteStop[], byId: Map<string, WikiGraphNode>): string {
+  const colors = [...new Set(stops.map((stop) => byId.get(stop.areaId)?.color).filter(Boolean))];
+  if (colors.length < 2) return colors[0] ?? "transparent";
+  const step = 100 / colors.length;
+  return `linear-gradient(90deg, ${colors
+    .map((color, index) => `${color} ${(index * step).toFixed(1)}% ${((index + 1) * step).toFixed(1)}%`)
+    .join(", ")})`;
+}
+
+/** How long the token takes to cross from one area to the next. */
+export const ROUTE_TRAVEL_MS = 720;
+// Geist Mono at 13 px is about this wide per character.
+const ROUTE_CHAR_PX = 7.9;
+
+interface Box {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+const overlaps = (a: Box, b: Box) =>
+  a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 
 const referenceWidth = (link?: WikiAreaLink) => 0.8 + Math.log10(Math.max(link?.weight ?? 1, 1)) * 0.9;
 
@@ -143,6 +190,8 @@ export default function WikiGraphPane({
   surveying = false,
   legend,
   activity,
+  route,
+  onRoute,
 }: {
   graph: WikiGraph;
   activeId: string;
@@ -177,6 +226,13 @@ export default function WikiGraphPane({
   legend?: ReactNode;
   /** Pages with open issues, open pull requests or several recent changes on their code. */
   activity?: Record<string, ActivityMark>;
+  /**
+   * The Overview's main path, drawn up to stop `at`. With `animate`, a token
+   * carries each new call across the map; without it the route is drawn whole.
+   */
+  route?: { stops: RouteStop[]; at: number; animate: boolean };
+  /** Opens the page that tells the path in words. */
+  onRoute?: () => void;
 }) {
   const paneRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -186,6 +242,8 @@ export default function WikiGraphPane({
   const [hoverNode, setHoverNode] = useState<string | null>(null);
   const [hoverEdge, setHoverEdge] = useState<WikiGraphEdge | null>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const tokenRef = useRef<SVGGElement>(null);
+  const newestHopRef = useRef<SVGPathElement>(null);
 
   const byId = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph]);
   const near = useMemo(() => neighborhood(graph, activeId), [graph, activeId]);
@@ -263,6 +321,118 @@ export default function WikiGraphPane({
     });
   }, [graph, points, view, center, size.width, hoverNode, activeId, near, states]);
 
+  // The main path up to the current stop: the hops that crossed areas, where
+  // the token travels last, and a free place for the current function's name.
+  const routeView = useMemo(() => {
+    if (!route || !view || !points.size) return null;
+    const stops = route.stops.filter((stop) => byId.get(stop.areaId)?.kind === "area" && points.has(stop.areaId));
+    const at = Math.min(route.at, stops.length - 1);
+    if (at < 0) return null;
+    const hops: { id: string; to: string; curve: Curve; d: string; color: string; newest: boolean }[] = [];
+    for (let index = 1; index <= at; index += 1) {
+      const from = stops[index - 1].areaId;
+      const to = stops[index].areaId;
+      if (from === to) continue;
+      const curve = edgeCurve(points.get(from)!, points.get(to)!, byId.get(from)!.radius + 2, byId.get(to)!.radius + 5, true);
+      hops.push({
+        id: `${index}:${from}>${to}`,
+        to,
+        curve,
+        d: `M${curve.start.x} ${curve.start.y}Q${curve.control.x} ${curve.control.y} ${curve.end.x} ${curve.end.y}`,
+        color: byId.get(to)!.color,
+        newest: index === at,
+      });
+    }
+    const current = stops[at];
+    const crossed = at > 0 && stops[at - 1].areaId !== current.areaId;
+    const node = byId.get(current.areaId)!;
+    const point = points.get(current.areaId)!;
+    const sx = point.x * view.k + view.x;
+    const sy = point.y * view.k + view.y;
+    const r = node.radius * view.k;
+    const width = current.label.length * ROUTE_CHAR_PX;
+    // Area labels are placed from an estimate of their width, so keep a margin.
+    const taken: Box[] = [
+      ...labels.map(({ box }) => ({ left: box.left - 5, right: box.right + 5, top: box.top - 2, bottom: box.bottom + 2 })),
+      ...graph.nodes
+        .filter((other) => other.kind === "area" && other.id !== node.id)
+        .map((other) => {
+          const p = points.get(other.id)!;
+          const ox = p.x * view.k + view.x;
+          const oy = p.y * view.k + view.y;
+          const or = other.radius * view.k + 3;
+          return { left: ox - or, right: ox + or, top: oy - or, bottom: oy + or };
+        }),
+    ];
+    // Nearest first: straight above or below the mark, then its corners, then
+    // a step further out. A name with no free place stays in the status line.
+    const candidates: { anchor: "start" | "middle" | "end"; dx: number; dy: number }[] = [];
+    for (const out of [0, 14, 30]) {
+      candidates.push(
+        { anchor: "middle", dx: 0, dy: -(r + 13 + out) },
+        { anchor: "middle", dx: 0, dy: r + 23 + out },
+        { anchor: "start", dx: r + 9 + out, dy: -(r + 3 + out) },
+        { anchor: "end", dx: -(r + 9 + out), dy: -(r + 3 + out) },
+        { anchor: "start", dx: r + 9 + out, dy: r + 15 + out },
+        { anchor: "end", dx: -(r + 9 + out), dy: r + 15 + out },
+        { anchor: "start", dx: r + 10 + out, dy: 5 },
+        { anchor: "end", dx: -(r + 10 + out), dy: 5 },
+      );
+    }
+    const top = header ? HEADER_PX + 6 : 6;
+    const bottom = size.height - 58;
+    const boxOf = (spot: (typeof candidates)[number]) => {
+      const left = sx + spot.dx - (spot.anchor === "middle" ? width / 2 : spot.anchor === "end" ? width : 0);
+      return { left: left - 3, right: left + width + 3, top: sy + spot.dy - 13, bottom: sy + spot.dy + 5 };
+    };
+    const inside = (box: Box) => box.left >= 8 && box.right <= size.width - 8 && box.top >= top && box.bottom <= bottom;
+    const spot = candidates.find((option) => {
+      const box = boxOf(option);
+      return inside(box) && !taken.some((other) => overlaps(box, other));
+    });
+    return {
+      at,
+      hops,
+      current,
+      crossed,
+      visited: new Set(stops.slice(0, at + 1).map((stop) => stop.areaId)),
+      label: spot ? { ...spot, x: point.x + spot.dx / view.k, y: point.y + spot.dy / view.k } : null,
+    };
+  }, [route, view, points, byId, labels, graph, header, size]);
+  const newestHop = routeView?.hops.find((hop) => hop.newest) ?? null;
+  const animateRoute = !!route?.animate;
+
+  // The token runs outside React: one frame per paint, while the newest hop
+  // draws itself in behind it.
+  useLayoutEffect(() => {
+    const token = tokenRef.current;
+    const line = newestHopRef.current;
+    if (!newestHop || !token || !line) return undefined;
+    if (!animateRoute) {
+      token.style.opacity = "0";
+      line.style.strokeDashoffset = "0";
+      return undefined;
+    }
+    const curve = newestHop.curve;
+    let frame = 0;
+    const started = performance.now();
+    const place = (t: number) => {
+      const p = curvePoint(curve, t);
+      token.setAttribute("transform", `translate(${p.x} ${p.y})`);
+      line.style.strokeDashoffset = String(1 - t);
+    };
+    place(0);
+    token.style.opacity = "1";
+    const tick = (now: number) => {
+      const raw = Math.min(1, (now - started) / ROUTE_TRAVEL_MS);
+      place(raw < 0.5 ? 2 * raw * raw : 1 - (-2 * raw + 2) ** 2 / 2);
+      if (raw < 1) frame = requestAnimationFrame(tick);
+      else token.style.opacity = "0";
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [newestHop?.id, newestHop?.d, animateRoute]);
+
   const activityLegend = useMemo(() => {
     const marks = Object.entries(activity ?? {}).filter(([id]) => byId.has(id));
     return {
@@ -299,7 +469,9 @@ export default function WikiGraphPane({
     <section
       className={`wiki-graph${graph.edges.filter((edge) => edge.kind === "references").length > 30 ? " is-dense" : ""}${
         embedded ? " is-embedded" : ""
-      }${live ? " is-live" : ""}${readonly ? " is-readonly" : ""}${still ? " is-still" : ""}${surveying ? " is-surveying" : ""}`}
+      }${live ? " is-live" : ""}${readonly ? " is-readonly" : ""}${still ? " is-still" : ""}${surveying ? " is-surveying" : ""}${
+        routeView ? " is-routing" : ""
+      }`}
       ref={paneRef}
       aria-label="Map of this Wiki"
     >
@@ -371,6 +543,32 @@ export default function WikiGraphPane({
                 </g>
               );
             })}
+            {routeView && (
+              <g className="wg-route" aria-hidden="true">
+                {routeView.hops.map((hop) => (
+                  <path
+                    key={hop.id}
+                    ref={hop.newest ? newestHopRef : undefined}
+                    d={hop.d}
+                    className={`wg-route-line${hop.newest ? " is-newest" : ""}`}
+                    stroke={hop.color}
+                    pathLength={hop.newest ? 1 : undefined}
+                  />
+                ))}
+                {onRoute &&
+                  !readonly &&
+                  routeView.hops.map((hop) => (
+                    <path
+                      key={`hit:${hop.id}`}
+                      d={hop.d}
+                      className="wg-route-hit"
+                      onClick={() => {
+                        if (!drag.current?.moved) onRoute();
+                      }}
+                    />
+                  ))}
+              </g>
+            )}
             {graph.nodes.map((node, index) => {
               const active = !readonly && node.id === activeId;
               const point = points.get(node.id);
@@ -413,6 +611,16 @@ export default function WikiGraphPane({
                     </>
                   )}
                   {active && <circle r={node.radius + 5} className="wg-node-ring" />}
+                  {routeView?.current.areaId === node.id && (
+                    <g
+                      key={`route-${routeView.at}`}
+                      className={`wg-route-stop${animateRoute ? " is-moving" : ""}`}
+                      style={{ "--arrive": `${routeView.crossed && animateRoute ? ROUTE_TRAVEL_MS : 0}ms` } as CSSProperties}
+                    >
+                      {animateRoute && <circle r={node.radius + 4} className="wg-route-ripple" />}
+                      <circle r={node.radius + 5} className="wg-route-ring" />
+                    </g>
+                  )}
                   <circle r={node.radius} fill={node.color} className="wg-node-mark" />
                   {mark && (
                     <circle
@@ -455,6 +663,38 @@ export default function WikiGraphPane({
                 );
               }),
             )}
+            {routeView && (
+              <>
+                <g ref={tokenRef} className="wg-route-token" style={{ opacity: 0 }} aria-hidden="true">
+                  <circle r={6.5 / view.k} fill={newestHop?.color ?? "transparent"} />
+                </g>
+                {routeView.label && (
+                <g
+                  key={`route-label-${routeView.at}`}
+                  className={`wg-route-label${animateRoute ? " is-moving" : ""}${onRoute && !readonly ? " is-link" : ""}`}
+                  style={{ "--arrive": `${routeView.crossed && animateRoute ? ROUTE_TRAVEL_MS : 0}ms` } as CSSProperties}
+                  onClick={() => {
+                    if (onRoute && !readonly && !drag.current?.moved) onRoute();
+                  }}
+                >
+                  {(["halo", "text"] as const).map((layer) => (
+                    <text
+                      key={layer}
+                      x={routeView.label!.x}
+                      y={routeView.label!.y}
+                      textAnchor={routeView.label!.anchor}
+                      fontSize={13 / view.k}
+                      strokeWidth={layer === "halo" ? 5 / view.k : undefined}
+                      aria-hidden={layer === "halo" ? true : undefined}
+                      className={layer === "halo" ? "wg-route-name-halo" : "wg-route-name"}
+                    >
+                      {routeView.current.label}
+                    </text>
+                  ))}
+                </g>
+                )}
+              </>
+            )}
           </g>
         )}
       </svg>
@@ -487,6 +727,16 @@ export default function WikiGraphPane({
             <div>
               <dt className="is-references" aria-hidden="true" />
               <dd>References recorded in the code index</dd>
+            </div>
+          )}
+          {routeView && (
+            <div>
+              <dt
+                className="is-route"
+                aria-hidden="true"
+                style={{ background: routeSwatch(route?.stops ?? [], byId) }}
+              />
+              <dd>Main path</dd>
             </div>
           )}
           <div>
