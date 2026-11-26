@@ -167,7 +167,8 @@ code.jump-name {
 .jump-foot span:last-child:not(:first-child) {
   margin-left: auto;
 }
-@media (hover: none) {
+/* Key hints mean nothing on a touch screen or a phone-sized window. */
+@media (hover: none), (max-width: 600px) {
   .jump-foot {
     display: none;
   }

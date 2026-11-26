@@ -183,7 +183,9 @@ export default function JumpPalette({
         : searching && !symbols
           ? "Looking up definitions…"
           : symbols && symbols.query === trimmed && !symbols.found.length
-            ? `No function or class named like "${trimmed}" in the index.`
+            ? items.length
+              ? null
+              : `Nothing in this Wiki or its code matches "${trimmed}".`
             : null;
 
   let index = -1;
