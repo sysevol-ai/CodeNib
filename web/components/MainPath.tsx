@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { displaySymbol } from "@/lib/symbols";
 import { isBareHandoff, type Journey } from "@/lib/wikiPresentation";
@@ -31,10 +31,13 @@ export default function MainPath({
   journey,
   onPick,
   renderText,
+  colors,
 }: {
   journey: Journey;
   onPick: (pageId: string) => void;
   renderText: (markdown: string) => ReactNode;
+  /** Each page's colour on the Wiki map, so a step shows where its code lives. */
+  colors?: Map<string, string>;
 }) {
   return (
     <figure className="main-path" aria-label={journey.title}>
@@ -47,7 +50,15 @@ export default function MainPath({
       </figcaption>
       <ol className="main-path-steps">
         {journey.stages.map((stage) => (
-          <li className="main-path-step" key={stage.index}>
+          <li
+            className={`main-path-step${stage.page && colors?.get(stage.page.id) ? " has-area" : ""}`}
+            key={stage.index}
+            style={
+              stage.page && colors?.get(stage.page.id)
+                ? ({ "--area": colors.get(stage.page.id) } as CSSProperties)
+                : undefined
+            }
+          >
             <span className="main-path-index" aria-hidden="true">
               {stage.index}
             </span>
@@ -62,6 +73,7 @@ export default function MainPath({
                     className="main-path-area"
                     onClick={() => onPick(stage.page!.id)}
                   >
+                    <span className="main-path-area-dot" aria-hidden="true" />
                     {stage.page.title}
                   </button>
                 )}

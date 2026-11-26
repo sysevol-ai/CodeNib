@@ -1386,6 +1386,7 @@ export default function WikiPageView({
                       journey={lifted.journey}
                       onPick={pick}
                       renderText={renderStageText}
+                      colors={wikiGraph.colors}
                     />
                   )}
                   {activeId === "overview" && walkthroughs && (

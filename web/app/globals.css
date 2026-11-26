@@ -959,17 +959,36 @@ pre {
   font-weight: 600;
   overflow-wrap: anywhere;
 }
+/* The area a step's code lives in, in its map colour: the dot carries the
+   colour, the name stays a quiet link. */
 .main-path-area {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: none;
   background: none;
   padding: 0;
-  color: var(--accent);
+  color: var(--text-secondary);
   font: inherit;
   font-size: var(--fs-caption);
   cursor: pointer;
 }
 .main-path-area:hover {
+  color: var(--text-primary);
   text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.main-path-area-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--area, var(--accent));
+}
+.main-path-step.has-area .main-path-index {
+  background: color-mix(in srgb, var(--area) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--area) 55%, transparent);
+  color: var(--text-primary);
 }
 .main-path-text > * {
   margin: 4px 0 0;
@@ -6220,3 +6239,8 @@ a.code-activity-row:focus-visible {
 .wiki-missing-actions .btn-primary:hover { background: var(--action-hover); border-color: var(--action-hover); }
 .wiki-missing-actions .btn-ghost { border-color: var(--border-strong); color: var(--text-primary); background: transparent; }
 .wiki-missing-actions .btn-ghost:hover { border-color: var(--text-muted); }
+
+/* A short cited name and the punctuation after it share a line. */
+.md-glue {
+  white-space: nowrap;
+}

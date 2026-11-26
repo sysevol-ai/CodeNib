@@ -161,6 +161,41 @@ function groupTrailingCitations(
   );
 }
 
+/**
+ * A cited name is drawn as a button, and a line may break after a button, so
+ * the full stop after `get` could start the next line on its own. A short
+ * name and the punctuation after it are held together; a long one keeps its
+ * own break points, since it may need them on a phone.
+ */
+const GLUE_MAX_CHARS = 32;
+export function glueTrailingPunctuation(children: ReactNode): ReactNode {
+  const items = Children.toArray(children);
+  const out: ReactNode[] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    const next = items[index + 1];
+    const mark = typeof next === "string" ? /^[.,;:!?)\]]+/.exec(next) : null;
+    if (
+      mark &&
+      isValidElement(item) &&
+      !isCitationElement(item) &&
+      nodeText(item).length <= GLUE_MAX_CHARS
+    ) {
+      out.push(
+        <span className="md-glue" key={`glue-${index}`}>
+          {item}
+          {mark[0]}
+        </span>,
+        (next as string).slice(mark[0].length),
+      );
+      index += 1;
+    } else {
+      out.push(item);
+    }
+  }
+  return out;
+}
+
 /** Emoji copied from a README are decoration, not part of the explanation. */
 function withoutEmoji(children: ReactNode): ReactNode {
   return Children.map(children, (child) => (typeof child === "string" ? stripEmoji(child) : child));
@@ -427,12 +462,12 @@ export default function Markdown({
             const bridge = bridgeSentence(children);
             return (
               <p className={bridge ? "md-bridge" : undefined}>
-                {groupTrailingCitations(withoutEmoji(bridge ?? children), citationFileOf)}
+                {groupTrailingCitations(glueTrailingPunctuation(withoutEmoji(bridge ?? children)), citationFileOf)}
               </p>
             );
           },
           li({ children }) {
-            return <li>{groupTrailingCitations(withoutEmoji(children), citationFileOf)}</li>;
+            return <li>{groupTrailingCitations(glueTrailingPunctuation(withoutEmoji(children)), citationFileOf)}</li>;
           },
           pre({ children }) {
             const codeEl = (Array.isArray(children) ? children[0] : children) as

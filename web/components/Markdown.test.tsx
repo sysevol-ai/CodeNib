@@ -168,3 +168,16 @@ describe("Markdown reading hierarchy", () => {
     expect(html).not.toContain("type-parameter");
   });
 });
+
+describe("Markdown punctuation after code", () => {
+  it("keeps a short name and its full stop on one line", () => {
+    const html = renderToStaticMarkup(<Markdown>{"Passes them on with the method `get`. Then it returns."}</Markdown>);
+    expect(html).toContain('<span class="md-glue"><code>get</code>.</span> Then it returns.');
+  });
+
+  it("leaves a long name free to break where it needs to", () => {
+    const long = "fmt.detail.dragonbox.shorter_interval_case";
+    const html = renderToStaticMarkup(<Markdown>{`It calls \`${long}\`.`}</Markdown>);
+    expect(html).not.toContain("md-glue");
+  });
+});
