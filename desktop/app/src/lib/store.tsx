@@ -15,13 +15,14 @@ import {
   type WriterId,
 } from "./backend";
 import { deriveFileAreas, type FileAreas, type FileEdge, type FileNode, type MapArea } from "./areas";
-import type { NotesState, RepoInfo, Tree } from "./model";
+import type { NotesState, RepoInfo, Revision, Tree } from "./model";
 
 export type View =
   | { kind: "home" }
   | { kind: "inbox" }
   | { kind: "page"; repo: string; page: string }
   | { kind: "review"; repo: string; task: string }
+  | { kind: "revision"; repo: string; id: string }
   | { kind: "map" | "impact" | "walkthrough"; repo: string; page: string };
 
 export interface WikiProgress {
@@ -42,6 +43,8 @@ export interface RepoData {
   mapAreas?: MapArea[] | null;
   /** Without an outline: areas derived from the file call graph. */
   fileAreas?: FileAreas | null;
+  /** Better paragraphs proposed from comments. */
+  revisions?: Revision[];
   /** Which pages a writing agent has finished. */
   progress?: WikiProgress;
   progressAt?: number;
@@ -173,8 +176,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const notesPath = repoPath(dataRef.current[path], "/annotations");
       if (!notesPath) return;
       try {
-        const notes = await backend.api<NotesState>(path, "GET", notesPath);
-        patchData(path, { notes });
+        const [notes, revisions] = await Promise.all([
+          backend.api<NotesState>(path, "GET", notesPath),
+          backend
+            .api<{ revisions: Revision[] }>(path, "GET", notesPath.replace(/\/annotations$/, "/revisions"))
+            .then((r) => r.revisions)
+            .catch(() => undefined),
+        ]);
+        patchData(path, { notes, ...(revisions ? { revisions } : {}) });
       } catch {
         // The next poll tries again.
       }
@@ -288,7 +297,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (repo.status !== "ready") continue;
         const d = dataRef.current[repo.path];
         if (!d?.info) continue;
-        const busy = d.notes?.tasks.some((t) => t.status === "queued" || t.status === "running");
+        const busy =
+          d.notes?.tasks.some((t) => t.status === "queued" || t.status === "running") ||
+          d.revisions?.some((r) => r.status === "working");
         const age = Date.now() - (d.loadedAt ?? 0);
         if (busy || age > 15000) {
           patchData(repo.path, { loadedAt: Date.now() });

@@ -1185,3 +1185,47 @@ button.sb-service:hover {
 .note.is-focus {
   box-shadow: inset 3px 0 0 #e0a800;
 }
+
+/* ---------- a proposed paragraph, beside the one it replaces ---------- */
+.revision-comment {
+  margin: 0;
+  max-width: 720px;
+  padding: 8px 14px;
+  border-left: 3px solid #e0a800;
+  background: color-mix(in oklab, #f5c542 12%, var(--sheet));
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.revision-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  max-width: 1040px;
+}
+
+.revision-pair h2 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-ink);
+}
+
+.revision-pair .article {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 15px;
+  line-height: 25px;
+}
+
+.revision-old {
+  background: color-mix(in oklab, var(--del-bg) 60%, var(--sheet));
+}
+
+.revision-new {
+  background: color-mix(in oklab, var(--add-bg) 70%, var(--sheet));
+}

@@ -196,7 +196,8 @@ export function AppSidebar() {
   const needs = repos.reduce((sum, repo) => {
     const d = data[repo.path];
     const annotations = d?.notes?.annotations ?? [];
-    return sum + (d?.notes?.tasks ?? []).filter((t) => taskNeed(t, annotations) === "needs").length;
+    const proposals = (d?.revisions ?? []).filter((r) => r.status === "needs_review").length;
+    return sum + proposals + (d?.notes?.tasks ?? []).filter((t) => taskNeed(t, annotations) === "needs").length;
   }, 0);
   const running = repos.filter((r) => r.status === "ready").length;
   const agent = agents?.find((a) => a.id === taskAgent);

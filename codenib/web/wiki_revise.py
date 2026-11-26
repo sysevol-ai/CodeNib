@@ -119,7 +119,21 @@ def _cited_code(repo: Path, page: Dict[str, Any], paragraph: str) -> str:
     items = {i.get("id"): i for i in (page.get("evidence") or {}).get("items", [])}
     parts: List[str] = []
     root = repo.resolve()
-    for cite in dict.fromkeys(_CITE.findall(paragraph)):
+    cites = list(dict.fromkeys(_CITE.findall(paragraph)))
+    if not cites:
+        # A paragraph without citations still describes the page's code:
+        # show the agent what the page cites, so it can say what files do.
+        cites = [i for i in items if i][:5]
+        if not cites:
+            for n, cite in enumerate((page.get("citations") or [])[:5]):
+                key = f"C{n + 1}"
+                items[key] = {
+                    "file": cite.get("file"),
+                    "start_line": cite.get("start_line"),
+                    "end_line": cite.get("end_line"),
+                }
+                cites.append(key)
+    for cite in cites:
         item = items.get(cite)
         if not item or not item.get("file"):
             continue

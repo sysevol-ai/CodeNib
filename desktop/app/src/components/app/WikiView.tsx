@@ -1,4 +1,4 @@
-import { GripVertical, MessageCircleQuestion, PencilLine, RotateCw, StickyNote } from "lucide-react";
+import { GripVertical, MessageCircleQuestion, PencilLine, RotateCw, StickyNote, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,10 @@ import { Markdown, splitBlocks, type MdBlock } from "./markdown";
 import { SourceMark } from "./SourceMark";
 import { StatusMark } from "./StatusMark";
 
-export type Kind = "ask" | "change" | "note";
+export type Kind = "ask" | "change" | "note" | "revise";
 
-const KIND: Record<Kind, { api: "question" | "change" | "note"; placeholder: string; send: string }> = {
+const KIND: Record<Kind, { api: "question" | "change" | "note" | "revise"; placeholder: string; send: string }> = {
+  revise: { api: "revise", placeholder: "What should this passage say better?", send: "Improve" },
   ask: { api: "question", placeholder: "Ask about this", send: "Ask" },
   change: { api: "change", placeholder: "Describe the change you want", send: "Request change" },
   note: { api: "note", placeholder: "Write a note that every later task on this page reads", send: "Save note" },
@@ -670,7 +671,7 @@ function PageWait({ repo, pageId }: { repo: string; pageId: string }) {
 }
 
 export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: string; onReview: (task: string) => void }) {
-  const { data, call, go, palette, setPalette, taskAgent } = useStore();
+  const { data, call, go, palette, setPalette, taskAgent, refreshNotes } = useStore();
   const who = agentName(taskAgent);
   const d = data[repo];
   const [page, setPage] = useState<Page | null>(null);
@@ -818,6 +819,19 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
           if (index === 0 && palette.ask !== undefined) setPalette({ open: false });
         }}
         onSend={async (body) => {
+          if (composing.kind === "revise") {
+            const path = repoPath(d, "/revisions");
+            if (!path) return;
+            await call(repo, "POST", path, {
+              page: pageId,
+              quote: composing.quote ?? plain(text).slice(0, 300),
+              comment: body,
+              agent: taskAgent,
+            });
+            await refreshNotes(repo);
+            toast(`${who} is improving this passage. Its proposal will be in your Inbox.`);
+            return;
+          }
           await annotate(composing.kind, body, {
             page: pageId,
             section: sectionTitle,
@@ -887,6 +901,10 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
           <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => startFromSelection("ask")}>
             <MessageCircleQuestion />
             Ask {who}
+          </button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => startFromSelection("revise")}>
+            <Sparkles />
+            Improve this passage
           </button>
           <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => startFromSelection("change")}>
             <PencilLine />

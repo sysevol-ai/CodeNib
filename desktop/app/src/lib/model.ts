@@ -115,6 +115,23 @@ export interface Agent {
   install?: string;
 }
 
+/** A better paragraph the agent proposed from a comment, waiting for review. */
+export interface Revision {
+  id: string;
+  page: string;
+  page_title: string;
+  quote: string;
+  comment: string;
+  agent: string;
+  original: string;
+  replacement?: string;
+  summary?: string;
+  error?: string;
+  status: "working" | "needs_review" | "applied" | "rejected" | "failed";
+  created: number;
+  finished?: number;
+}
+
 export interface NotesState {
   annotations: Annotation[];
   tasks: Task[];

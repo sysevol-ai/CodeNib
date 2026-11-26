@@ -167,3 +167,19 @@ def test_finds_the_paragraph_through_markup() -> None:
         == "The adapter is chosen by prefix and does the work. [E1](#evidence-E1)"
     )
     assert wiki_revise.paragraph_with(MARKDOWN, "missing words") is None
+
+
+def test_a_paragraph_without_citations_gets_the_pages_code(repo: Path) -> None:
+    page = {
+        "evidence": {
+            "items": [
+                {"id": "E1", "file": "session.py", "start_line": 1, "end_line": 2}
+            ]
+        }
+    }
+    code = wiki_revise._cited_code(repo, page, "Sessions send requests.")
+    assert "def get_adapter(url):" in code
+    bare = {"citations": [{"file": "session.py", "start_line": 1, "end_line": 1}]}
+    assert "def get_adapter(url):" in wiki_revise._cited_code(
+        repo, bare, "No cites here."
+    )

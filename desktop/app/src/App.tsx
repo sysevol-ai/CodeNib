@@ -5,6 +5,7 @@ import { AppSidebar } from "@/components/app/AppSidebar";
 import { CommandPalette } from "@/components/app/CommandPalette";
 import { InboxView } from "@/components/app/InboxView";
 import { ReviewView } from "@/components/app/ReviewView";
+import { RevisionView } from "@/components/app/RevisionView";
 import { Opening, Welcome } from "@/components/app/Screens";
 import { ImpactView, MapView, WalkthroughView } from "@/components/app/AnalysisViews";
 import { ModeSwitch, Toolbar, type Mode } from "@/components/app/Toolbar";
@@ -129,6 +130,14 @@ function Shell() {
             </>
           )}
           {view.kind === "review" && <ReviewScreen repo={view.repo} task={view.task} />}
+          {view.kind === "revision" && (
+            <>
+              <Toolbar parts={["Inbox", "Improve this passage"]} />
+              <ScrollArea className="main-scroll">
+                <RevisionView key={view.id} repo={view.repo} id={view.id} />
+              </ScrollArea>
+            </>
+          )}
           {view.kind === "home" && (
             <>
               <Toolbar parts={["CodeNib"]} />
