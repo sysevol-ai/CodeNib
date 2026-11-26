@@ -176,9 +176,13 @@ def build(tmp_path, monkeypatch):
     monkeypatch.setattr("codenib.web.static_export.export_cached_wiki", export)
     calls["report"] = {"passed": True, "expected_pages": 2, "ready_pages": 2}
 
-    def audit(_local, _parts, progress=None, workers=1):
+    def audit(
+        _local, _parts, progress=None, workers=1, rewritten_pages=None, total_pages=None
+    ):
         calls["progress"] = progress
         calls["workers"] = workers
+        calls["rewritten_pages"] = rewritten_pages
+        calls["total_pages"] = total_pages
         return calls["report"]
 
     monkeypatch.setattr(cli, "_audit_local_wiki", audit)
