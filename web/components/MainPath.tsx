@@ -49,7 +49,8 @@ function titleWithCode(title: string): ReactNode[] {
     const before = /(\S+\s*)$/.exec(parts[index - 1] ?? "");
     out.push(
       <span className="main-path-title-unit" key={index}>
-        {before ? before[1] : ""}
+        {/* A no-break space keeps "to" with its call, even on a phone. */}
+        {before ? before[1].replace(/\s+$/, "\u00a0") : ""}
         <code title={part}>
           <Call symbol={displaySymbol(part, { short: true })} breakable={false} />
         </code>
@@ -110,7 +111,9 @@ export default function MainPath({
         const call = row.querySelector<HTMLElement>(".main-path-symbol");
         const place = row.querySelector<HTMLElement>(".main-path-source");
         if (!call || !place) return false;
-        return call.scrollWidth + place.scrollWidth + 16 > row.clientWidth;
+        // The call's own width on one line: its owner and name, each kept whole.
+        const width = [...call.children].reduce((sum, part) => sum + part.getBoundingClientRect().width, 0);
+        return width + place.scrollWidth + 16 > row.clientWidth;
       });
       list.classList.toggle("is-stacked", tight);
     };

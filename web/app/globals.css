@@ -957,7 +957,7 @@ pre {
 .main-path-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: clamp(26px, 5cqi, 32px);
+  font-size: clamp(30px, 5.4cqi, 34px);
   font-weight: 500;
   line-height: 1.18;
   letter-spacing: -0.028em;
@@ -979,7 +979,7 @@ pre {
   color: var(--text-muted);
   font-size: var(--fs-small);
   line-height: 1.55;
-  text-wrap: pretty;
+  text-wrap: balance;
 }
 /* A call's owner steps back; its own name stands forward. */
 .main-path-owner {
@@ -1088,11 +1088,16 @@ pre {
 .main-path-source {
   margin-left: auto;
 }
+/* A call may break only between its owner and its name, which each stay
+   whole (WebKit ignores a <wbr> inside nowrap, so the call itself wraps). */
 .main-path-symbol {
   font-size: 19px;
   font-weight: 500;
   letter-spacing: -0.02em;
   line-height: 26px;
+}
+.main-path-symbol .main-path-owner,
+.main-path-symbol .main-path-name {
   white-space: nowrap;
 }
 .main-path-name {
@@ -1254,7 +1259,13 @@ pre {
   }
   .main-path-symbol {
     font-size: 15px;
+  }
+  .main-path-symbol .main-path-name {
     white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .main-path-title {
+    font-size: 26px;
   }
   /* A phone's heading may break a long call after its owner. */
   .main-path-title-unit {
@@ -6663,4 +6674,36 @@ a.code-activity-row:focus-visible {
 /* A short cited name and the punctuation after it share a line. */
 .md-glue {
   white-space: nowrap;
+}
+
+/* The home page's rules open as the Wiki's disclosures do: a drawn chevron. */
+.wiki-repository-rules > details > summary {
+  position: relative;
+  display: inline-block;
+  padding-right: 22px;
+  list-style: none;
+  cursor: pointer;
+}
+.wiki-repository-rules > details > summary::-webkit-details-marker {
+  display: none;
+}
+.wiki-repository-rules > details > summary::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-50%) rotate(-45deg);
+  transition: transform 0.2s ease;
+}
+.wiki-repository-rules > details[open] > summary::after {
+  transform: translateY(-75%) rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wiki-repository-rules > details > summary::after {
+    transition: none;
+  }
 }
