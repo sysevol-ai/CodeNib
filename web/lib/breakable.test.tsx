@@ -21,6 +21,8 @@ describe("breakableCode", () => {
   it("leaves short names and leading separators alone", () => {
     expect(html("request()")).toBe("<code>request()</code>");
     expect(html("__init__")).toBe("<code>__init__</code>");
-    expect(html("./src/api.py")).toBe("<code>./src/<wbr/>api.<wbr/>py</code>");
+    expect(html("n.insertChild")).toBe("<code>n.insertChild</code>");
+    expect(html("group.engine.addRoute")).toBe("<code>group.engine.addRoute</code>");
+    expect(html("./src/requests/adapters.py")).toBe("<code>./src/<wbr/>requests/<wbr/>adapters.<wbr/>py</code>");
   });
 });
