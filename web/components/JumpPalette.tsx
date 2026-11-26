@@ -207,7 +207,7 @@ export default function JumpPalette({
             ref={inputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={searchCode ? `Search ${repoName}: pages, walkthroughs, functions` : `Search ${repoName}: pages and walkthroughs`}
+            placeholder={searchCode ? "Pages, walkthroughs, functions" : "Pages and walkthroughs"}
             role="combobox"
             aria-expanded="true"
             aria-controls={listId}

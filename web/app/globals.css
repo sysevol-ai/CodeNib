@@ -1891,6 +1891,7 @@ pre {
     bottom: 0;
     max-height: none;
     z-index: 30;
+    border-right: 1px solid var(--border);
     /* The last entries scroll clear of the home indicator. */
     padding-bottom: calc(22px + var(--safe-bottom));
   }

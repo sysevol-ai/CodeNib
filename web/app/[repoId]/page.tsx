@@ -897,6 +897,25 @@ export default function WikiPageView({
     if (tocRef.current) tocRef.current.inert = drawerMode && !tocOpen;
   }, [drawerMode, tocOpen]);
 
+  // As a drawer, the page list takes focus on the current page when it opens,
+  // closes on Esc, and hands focus back to its toggle.
+  const tocToggleRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!drawerMode || !tocOpen) return undefined;
+    const list = tocRef.current;
+    const current =
+      list?.querySelector<HTMLElement>('[aria-current="page"], .toc-link.active') ??
+      list?.querySelector<HTMLElement>("a[href], button");
+    current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setTocOpen(false);
+      tocToggleRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [drawerMode, tocOpen]);
+
   // Cmd/Ctrl+K anywhere, or "/" outside a text field, opens the jump palette.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -1179,6 +1198,7 @@ export default function WikiPageView({
         center={
           <nav className="breadcrumb" aria-label="Breadcrumb">
             <button
+              ref={tocToggleRef}
               className="toc-toggle"
               aria-label="Toggle section list"
               aria-expanded={tocOpen}

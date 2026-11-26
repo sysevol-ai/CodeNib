@@ -113,8 +113,8 @@ code.jump-name {
   padding: 0;
 }
 .jump-meta {
-  flex: none;
-  max-width: 45%;
+  flex: 0 1 auto;
+  max-width: 55%;
   margin-left: auto;
   overflow: hidden;
   color: var(--text-muted);
