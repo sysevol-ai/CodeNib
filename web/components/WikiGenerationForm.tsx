@@ -70,6 +70,10 @@ export default function WikiGenerationForm({
     return () => window.clearTimeout(timer);
   }, [retryLeft]);
   const [checkRetry, setCheckRetry] = useState(0);
+  // A retry asked for by the reader keeps its button (and focus) in place
+  // until the answer arrives.
+  const [retrying, setRetrying] = useState(false);
+  const retryButton = useRef<HTMLButtonElement>(null);
   const admitted = resume || eligibility?.eligible === true;
   const checked = useRef(onChecked);
   checked.current = onChecked;
@@ -86,11 +90,13 @@ export default function WikiGenerationForm({
       .then((result) => {
         if (!active) return;
         setEligibility(result);
+        setRetrying(false);
         checked.current?.(result);
       })
       .catch((reason) => {
         if (!active) return;
         const message = reason instanceof Error ? reason.message : "Could not check this repository.";
+        setRetrying(false);
         setCheckError(message);
         failed.current?.(message);
         const limited = reason instanceof WikiRequestError && reason.status === 429;
@@ -223,30 +229,34 @@ export default function WikiGenerationForm({
                     </ul>
                   </details>
                 )}
-                {rejected && (
-                  <p className="wgf-check-actions">
-                    {!checkLimited && (
-                      <a href="https://docs.codenib.ai/web_demo/" target="_blank" rel="noopener noreferrer">
-                        Run CodeNib locally ↗
-                      </a>
-                    )}
-                    {/* Waiting, the button stays focusable (aria-disabled), so a
-                        refused retry does not drop keyboard focus to the page. */}
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      aria-disabled={checkLimited && retryLeft > 0}
-                      onClick={() => {
-                        if (checkLimited && retryLeft > 0) return;
-                        setCheckRetry((value) => value + 1);
-                      }}
-                    >
-                      Check again
-                    </button>
-                  </p>
-                )}
               </>
             )}
+            {/* Outside the branches above, so a retry keeps the same button
+                and its focus while the check runs. */}
+              {(rejected || retrying) && (
+                <p className="wgf-check-actions">
+                  {!checkLimited && (
+                    <a href="https://docs.codenib.ai/web_demo/" target="_blank" rel="noopener noreferrer">
+                      Run CodeNib locally ↗
+                    </a>
+                  )}
+                  {/* Waiting, the button stays focusable (aria-disabled), so a
+                      refused retry does not drop keyboard focus to the page. */}
+                  <button
+                    ref={retryButton}
+                    type="button"
+                    className="btn-ghost"
+                    aria-disabled={retrying || (checkLimited && retryLeft > 0)}
+                    onClick={() => {
+                      if (retrying || (checkLimited && retryLeft > 0)) return;
+                      setRetrying(true);
+                      setCheckRetry((value) => value + 1);
+                    }}
+                  >
+                    {retrying ? "Checking…" : "Check again"}
+                  </button>
+                </p>
+              )}
           </div>
         </div>
       )}

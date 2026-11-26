@@ -114,18 +114,31 @@ export default function GenerateWikiPage({
       : undefined;
   const source = useMemo(() => buildSourceGraph(slug, tree), [slug, tree]);
   const folders = tree ? tree.folders.length + tree.more.folders : 0;
+  const snapshot = check?.commit ?? freeMap?.commit ?? null;
   let idle: { title: string; detail: string };
   if (tree)
     idle = {
       title: `${tree.files.toLocaleString()} code files in ${folders} ${folders === 1 ? "folder" : "folders"}`,
-      detail:
+      // Either answer names the snapshot; a refused check leaves the map's.
+      detail: [
+        snapshot ? `at ${snapshot.slice(0, 8)}` : "",
         freeMapOffered && !freeMap && !freeMapFailed
-          ? `at ${check?.commit?.slice(0, 8)} · indexing the code for its map`
-          : `at ${check?.commit?.slice(0, 8)} · a Wiki's chapters appear here as they are planned`,
+          ? "indexing the code for its map"
+          : checkFailed
+            ? "the source check was refused just now; the reason is shown with the form"
+            : "a Wiki's chapters appear here as they are planned",
+      ]
+        .filter(Boolean)
+        .join(" · "),
     };
   else if (check && !check.eligible)
     idle = { title: "This snapshot cannot be generated here", detail: "The reason is shown with the form." };
-  else if (checkFailed && (!freeMapOffered || freeMapFailed))
+  else if (checkFailed && freeMapOffered && !freeMap && !freeMapFailed)
+    idle = {
+      title: "The source check was refused just now",
+      detail: "The free map is still being drawn; the reason for the refusal is shown with the form.",
+    };
+  else if (checkFailed)
     idle = { title: "The snapshot could not be checked just now", detail: "The reason is shown with the form; try again shortly." };
   else if (loaded && !enabled)
     idle = { title: slug, detail: "The folder map appears once generation is available." };
