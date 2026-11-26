@@ -16,3 +16,9 @@ describe("sentenceCase", () => {
     expect(sentenceCase("How gin finds the handler for GET /ping")).toBe("How gin finds the handler for GET /ping");
   });
 });
+
+describe("code in titles", () => {
+  it("treats an HTTP route as code when setting case", () => {
+    expect(sentenceCase("How Gin Finds The Handler For GET /ping")).toBe("How gin finds the handler for GET /ping");
+  });
+});

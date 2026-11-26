@@ -40,7 +40,8 @@ function rowsOf(set: WalkthroughSet, walk: Walk): (Row | { gap: number })[] {
   return [...head, { gap: all.length - head.length - tail.length }, ...tail];
 }
 
-const CODE_IN_TITLE = /([\w.]+\([^)]*\))/;
+// A call (requests.get()) or an HTTP route (GET /ping) is code in a title.
+const CODE_IN_TITLE = /((?:[\w.]+\([^)]*\))|(?:\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) \/\S*))/;
 
 /**
  * A title in sentence case. Generated titles sometimes arrive in Title Case
@@ -80,11 +81,20 @@ function titleWithCode(title: string): ReactNode[] {
   );
 }
 
-/** A title size at which its longest piece of code fits the 500 px column. */
+/**
+ * A title size at which each piece of code fits the 500 px column together
+ * with the word before it, so no word is left alone on a line.
+ */
 function titleSize(title: string): number {
-  const longest = Math.max(0, ...(title.match(new RegExp(CODE_IN_TITLE, "g")) ?? []).map((code) => code.length));
-  // Geist Mono at 0.86em is about 0.52 em per character.
-  return Math.min(46, Math.floor(500 / Math.max(1, longest * 0.52)));
+  const parts = sentenceCase(title).split(CODE_IN_TITLE);
+  let widest = 0;
+  for (let index = 1; index < parts.length; index += 2) {
+    const before = parts[index - 1].trimEnd().split(/\s+/).pop() ?? "";
+    // Geist at the title's weight is about 0.55 em a letter; Geist Mono at
+    // 0.86 em about 0.52 em.
+    widest = Math.max(widest, (before.length + 1) * 0.55 + parts[index].length * 0.52);
+  }
+  return widest ? Math.min(46, Math.floor(500 / widest)) : 46;
 }
 
 /** The line below a stop is the call that leaves it, in the colour of where it lands. */
