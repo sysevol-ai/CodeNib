@@ -650,6 +650,9 @@ button.run-step-title:hover {
   font-size: var(--fs-lead);
   line-height: 1.55;
 }
+.own-lead.is-pending {
+  visibility: hidden;
+}
 .own-wait {
   color: var(--text-secondary);
   font-size: var(--fs-small);

@@ -103,6 +103,13 @@ describe("foldParts", () => {
     expect(folded.into.get("p9")).toBe("other");
   });
 
+  it("keeps the parts the main path stops in, then the largest", () => {
+    const folded = foldParts({ available: true, areas, links: [] }, new Set(["p9", "p8"]))!;
+    expect(folded.areas.map((area) => area.id)).toEqual(["p0", "p1", "p2", "p3", "p4", "p8", "p9", "other"]);
+    expect(folded.into.get("p8")).toBeUndefined();
+    expect(folded.into.get("p6")).toBe("other");
+  });
+
   it("leaves a map of eight parts or fewer alone", () => {
     const small = { available: true, areas: areas.slice(0, 3), links: [] };
     expect(foldParts(small)!.areas).toEqual(small.areas);

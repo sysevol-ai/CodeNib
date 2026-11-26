@@ -43,6 +43,21 @@ interface PlacedLabel {
 
 // Geist at the label size averages about this wide per character.
 const LABEL_CHAR_PX = 6.1;
+
+let measureContext: CanvasRenderingContext2D | null | undefined;
+/** A label's drawn width, where the browser can say; null where it cannot. */
+function labelWidth(text: string, weight: number): number | null {
+  if (measureContext === undefined) {
+    try {
+      measureContext = document.createElement("canvas").getContext("2d");
+    } catch {
+      measureContext = null;
+    }
+  }
+  if (!measureContext) return null;
+  measureContext.font = `${weight} 11.5px Geist, system-ui, sans-serif`;
+  return measureContext.measureText(text).width;
+}
 const LABEL_HEIGHT_PX = 15;
 const LABEL_LINE_PX = 14;
 const LABEL_MARGIN_PX = 8;
@@ -82,12 +97,24 @@ function placeLabels(
   const ordered = nodes
     .filter((node) => priority(node) > 0)
     .sort((a, b) => priority(b) - priority(a) || b.radius - a.radius);
-  const placeOne = (node: WikiGraphNode, factor: number, force = false): PlacedLabel | null => {
+  // "must": a pointed name tries every side (and moves in from the pane's
+  // edge) but gives up rather than cover anything; "force": it then takes its
+  // usual place, kept inside the pane.
+  const placeOne = (
+    node: WikiGraphNode,
+    factor: number,
+    mode: "normal" | "must" | "force" = "normal",
+    linesOverride?: string[],
+  ): PlacedLabel | null => {
+    const force = mode !== "normal";
     const point = points.get(node.id)!;
-    const lines = labelLines(node.title);
+    const lines = linesOverride ?? labelLines(node.title);
     const extra = (lines.length - 1) * LABEL_LINE_PX;
-    // The focused or pointed name is set bold, about 8% wider.
-    const width = Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_PX * factor;
+    // The focused or pointed name is set bold, about 8% wider; it is the one
+    // name being read, so its width is measured where the browser can.
+    const measured =
+      priority(node) >= 3.5 ? Math.max(...lines.map((line) => labelWidth(line, factor > 1 ? 650 : 500) ?? 0)) : 0;
+    const width = measured > 0 ? measured + 2 : Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_PX * factor;
     const sx = point.x * view.k + view.x;
     const sy = point.y * view.k + view.y;
     const radius = node.radius * view.k;
@@ -113,14 +140,28 @@ function placeLabels(
     const hits = (other: typeof box) =>
       box.left - pad < other.right && box.right + pad > other.left && box.top < other.bottom && box.bottom > other.top;
     const clash = taken.some(hits) || marks.some((mark) => mark.id !== node.id && hits(mark));
-    const outside = box.left < 0 || box.right > paneWidth || box.bottom > floor;
+    // A pointed name keeps the pane's margin: it is the one name being read.
+    const edge = priority(node) >= 3.5 ? LABEL_MARGIN_PX : 0;
+    const outside = box.left < edge || box.right > paneWidth - edge || box.bottom > floor;
     const retry = retryAreas && node.kind === "area" && priority(node) >= 3;
     if ((clash || outside) && priority(node) < 4 && !retry && priority(node) !== 3.5 && !force) return null;
     if (clash || outside) {
       // A label that must show (the focused area's) tries the other side,
       // then above and below, before it is allowed to cover anything.
       const free = (option: { anchor: PlacedLabel["anchor"]; dx: number; dy: number }, strict = true) => {
-        const optionLeft = sx + option.dx - (option.anchor === "middle" ? width / 2 : option.anchor === "end" ? width : 0);
+        let optionLeft = sx + option.dx - (option.anchor === "middle" ? width / 2 : option.anchor === "end" ? width : 0);
+        // A pointed or focused name that runs past the pane's side moves in,
+        // towards its mark.
+        if (force || priority(node) >= 3.5) {
+          const shift =
+            optionLeft < LABEL_MARGIN_PX
+              ? LABEL_MARGIN_PX - optionLeft
+              : optionLeft + width > paneWidth - LABEL_MARGIN_PX
+                ? paneWidth - LABEL_MARGIN_PX - optionLeft - width
+                : 0;
+          optionLeft += shift;
+          option.dx += shift;
+        }
         const optionBox = {
           left: optionLeft,
           right: optionLeft + width,
@@ -135,7 +176,7 @@ function placeLabels(
           (!strict ||
           !marks.some(
             (mark) =>
-              mark.id !== node.id &&
+              (mark.id !== node.id || force || priority(node) >= 3.5) &&
               optionBox.left < mark.right &&
               optionBox.right > mark.left &&
               optionBox.top < mark.bottom &&
@@ -144,6 +185,7 @@ function placeLabels(
         return clear ? optionBox : null;
       };
       const options: { anchor: PlacedLabel["anchor"]; dx: number; dy: number }[] = [
+        ...(force ? [{ anchor, dx, dy }] : []),
         { anchor: anchor === "start" ? "end" : "start", dx: anchor === "start" ? -(radius + 7) : radius + 7, dy: 4 - extra / 2 },
         { anchor: "middle", dx: 0, dy: -(radius + 8) - extra },
         { anchor: "middle", dx: 0, dy: radius + 15 },
@@ -156,10 +198,105 @@ function placeLabels(
           ? options.map((option) => ({ option, box: free(option, false) })).find((entry) => entry.box)
           : undefined);
       if (found) return { id: node.id, lines, ...found.option, box: found.box! };
-      if (priority(node) < 4 && !force) return null;
+      if (mode === "must" || priority(node) >= 3.5) {
+        // All the way round the mark, a step further out each time, before a
+        // pointed or focused name may cover anything.
+        for (const out of [7, 14, 22, 32]) {
+          for (const angle of [0, 180, -90, 90, -30, -150, 30, 150, -60, -120, 60, 120]) {
+            const radians = (angle * Math.PI) / 180;
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
+            const reach = radius + out;
+            const ringAnchor: PlacedLabel["anchor"] = cos > 0.3 ? "start" : cos < -0.3 ? "end" : "middle";
+            const ringDy = reach * sin + (sin > 0.3 ? 11 : sin < -0.3 ? -2 - extra : 4 - extra / 2);
+            const option = { anchor: ringAnchor, dx: reach * cos, dy: ringDy };
+            const ringBox = free(option);
+            if (ringBox) return { id: node.id, lines, ...option, box: ringBox };
+          }
+        }
+      }
+      if (priority(node) < 4 && mode !== "force") return null;
+    }
+    if (mode === "force" || ((clash || outside) && priority(node) >= 4)) {
+      // Nowhere is free: of the places round the mark, the one that covers
+      // the least of other areas' marks, kept inside the pane and off other
+      // names.
+      const inPane = (option: { anchor: PlacedLabel["anchor"]; dx: number; dy: number }) => {
+        let optionLeft = sx + option.dx - (option.anchor === "middle" ? width / 2 : option.anchor === "end" ? width : 0);
+        const shift =
+          optionLeft < LABEL_MARGIN_PX
+            ? LABEL_MARGIN_PX - optionLeft
+            : optionLeft + width > paneWidth - LABEL_MARGIN_PX
+              ? paneWidth - LABEL_MARGIN_PX - optionLeft - width
+              : 0;
+        optionLeft += shift;
+        const placedBox = {
+          left: optionLeft,
+          right: optionLeft + width,
+          top: sy + option.dy - 11,
+          bottom: sy + option.dy - 11 + LABEL_HEIGHT_PX + extra,
+        };
+        return { option: { ...option, dx: option.dx + shift }, box: placedBox };
+      };
+      const coverage = (candidate: typeof box) =>
+        marks.reduce((sum, mark) => {
+          const w = Math.min(candidate.right, mark.right) - Math.max(candidate.left, mark.left);
+          const h = Math.min(candidate.bottom, mark.bottom) - Math.max(candidate.top, mark.top);
+          return sum + (w > 0 && h > 0 ? w * h : 0);
+        }, 0);
+      const ring: { anchor: PlacedLabel["anchor"]; dx: number; dy: number }[] = [{ anchor, dx, dy }];
+      for (const out of [7, 14, 22]) {
+        for (const angle of [0, 180, -90, 90, -30, -150, 30, 150, -60, -120, 60, 120]) {
+          const radians = (angle * Math.PI) / 180;
+          const reach = radius + out;
+          const cos = Math.cos(radians);
+          const sin = Math.sin(radians);
+          ring.push({
+            anchor: cos > 0.3 ? "start" : cos < -0.3 ? "end" : "middle",
+            dx: reach * cos,
+            dy: reach * sin + (sin > 0.3 ? 11 : sin < -0.3 ? -2 - extra : 4 - extra / 2),
+          });
+        }
+      }
+      const best = ring
+        .map(inPane)
+        .filter(({ box: candidate }) => candidate.bottom <= floor && !taken.some((other) => candidate.left < other.right && candidate.right > other.left && candidate.top < other.bottom && candidate.bottom > other.top))
+        .map((entry) => ({ ...entry, cost: coverage(entry.box) }))
+        .sort((a, b) => a.cost - b.cost)[0];
+      if (best) return { id: node.id, lines, ...best.option, box: best.box };
+    }
+    if (mode === "force" || ((clash || outside) && priority(node) >= 4)) {
+      // Its usual place, but never past the pane's side, and where moving in
+      // would put it over its own mark, the other side.
+      const ownMark = marks.find((mark) => mark.id === node.id);
+      const settle = (side: PlacedLabel["anchor"], sideDx: number) => {
+        const sideLeft = sx + sideDx - (side === "middle" ? width / 2 : side === "end" ? width : 0);
+        const shift =
+          sideLeft < LABEL_MARGIN_PX
+            ? LABEL_MARGIN_PX - sideLeft
+            : sideLeft + width > paneWidth - LABEL_MARGIN_PX
+              ? paneWidth - LABEL_MARGIN_PX - sideLeft - width
+              : 0;
+        const sideBox = { ...box, left: sideLeft + shift, right: sideLeft + shift + width };
+        const onOwn =
+          !!ownMark &&
+          sideBox.left < ownMark.right &&
+          sideBox.right > ownMark.left &&
+          sideBox.top < ownMark.bottom &&
+          sideBox.bottom > ownMark.top;
+        return { placed: { id: node.id, lines, anchor: side, dx: sideDx + shift, dy, box: sideBox }, onOwn };
+      };
+      const usual = settle(anchor, dx);
+      if (!usual.onOwn || anchor === "middle") return usual.placed;
+      const other = settle(anchor === "start" ? "end" : "start", anchor === "start" ? -(radius + 7) : radius + 7);
+      return other.onOwn ? usual.placed : other.placed;
     }
     return { id: node.id, lines, anchor, dx, dy, box };
     };
+  // A pointed or focused name keeps a little room round it: the names placed
+  // after it are only estimated, and must not run into it.
+  const room = (node: WikiGraphNode, box: PlacedLabel["box"]) =>
+    priority(node) >= 3.5 ? { left: box.left - 6, right: box.right + 6, top: box.top - 2, bottom: box.bottom + 2 } : box;
   for (const node of ordered) {
     // A pointed name is set bold; if bold finds no place it is set regular,
     // so pointing never takes an area's name away.
@@ -168,18 +305,30 @@ function placeLabels(
     for (const factor of factors) {
       const found = placeOne(node, factor);
       if (found) {
-        taken.push(found.box);
+        taken.push(room(node, found.box));
         placed.push({ ...found, plain: factor === 1 && priority(node) === 3.5 ? true : undefined });
         done = true;
         break;
       }
     }
-    // As in production, a pointed name always shows: where nothing is free it
-    // takes its usual place, set regular.
+    // As in production, a pointed name always shows. Set regular, it tries
+    // every side on one line and on two, and only where nothing is free
+    // takes its usual place.
     if (!done && priority(node) === 3.5) {
-      const forced = placeOne(node, 1, true);
+      const words = node.title.split(" ");
+      const layouts: (string[] | undefined)[] = [undefined];
+      if (labelLines(node.title).length === 1 && words.length > 1) {
+        let best: string[] = [node.title];
+        for (let split = 1; split < words.length; split += 1) {
+          const pair = [words.slice(0, split).join(" "), words.slice(split).join(" ")];
+          if (best.length === 1 || Math.max(...pair.map((line) => line.length)) < Math.max(...best.map((line) => line.length))) best = pair;
+        }
+        layouts.push(best);
+      }
+      const forced =
+        layouts.map((lines) => placeOne(node, 1, "must", lines)).find(Boolean) ?? placeOne(node, 1, "force");
       if (forced) {
-        taken.push(forced.box);
+        taken.push(room(node, forced.box));
         placed.push({ ...forced, plain: true });
       }
     }
@@ -563,65 +712,107 @@ export default function WikiGraphPane({
     // Nearest first, all the way round the mark: straight above and below,
     // then beside it, then the diagonals, each a step further out in turn.
     // A name with no free place stays in the status line.
-    const candidates: { anchor: "start" | "middle" | "end"; dx: number; dy: number }[] = [];
+    type Candidate = { anchor: "start" | "middle" | "end"; dx: number; dy: number };
     const angles = [-90, 90, 0, 180, -30, -150, 30, 150, -60, -120, 60, 120, -15, -165, 15, 165, -45, -135, 45, 135, -75, -105, 75, 105];
-    for (const out of [10, 16, 22, 29, 36, 44, 52, 70, 90]) {
-      for (const angle of angles) {
+    // Rings of places, nearest first; a name never goes so far that it reads
+    // as another area's.
+    const tiers: Candidate[][] = [10, 16, 22, 29, 36, 44, 52, 62].map((out) =>
+      angles.map((angle) => {
         const radians = (angle * Math.PI) / 180;
         const cos = Math.cos(radians);
         const sin = Math.sin(radians);
         const reach = r + out;
-        const anchor: "start" | "middle" | "end" = cos > 0.3 ? "start" : cos < -0.3 ? "end" : "middle";
+        const anchor: Candidate["anchor"] = cos > 0.3 ? "start" : cos < -0.3 ? "end" : "middle";
         // Text sits above its baseline: lift names below the mark by a line.
         const dy = reach * sin + (sin > 0.3 ? 13 : sin < -0.3 ? -3 : 5);
-        candidates.push({ anchor, dx: reach * cos, dy });
-      }
-    }
+        return { anchor, dx: reach * cos, dy };
+      }),
+    );
     // Beside the area's own name too: right of it, left of it, under it.
     const own = labels.find((label) => label.id === node.id)?.box;
     if (own) {
       const ownMid = (own.top + own.bottom) / 2 - sy + 5;
-      candidates.push(
+      tiers.splice(5, 0, [
         { anchor: "start", dx: own.right + 10 - sx, dy: ownMid },
         { anchor: "end", dx: own.left - 10 - sx, dy: ownMid },
         { anchor: "start", dx: own.left - sx, dy: own.bottom - sy + 16 },
         { anchor: "start", dx: own.left - sx, dy: own.top - sy - 6 },
-      );
+      ]);
     }
+    // Near its own stop, and nearer it than any other area, so a name never
+    // reads as another area's.
+    const others = graph.nodes
+      .filter((other) => other.kind === "area" && other.id !== node.id)
+      .map((other) => {
+        const p = points.get(other.id)!;
+        return { x: p.x * view.k + view.x, y: p.y * view.k + view.y, r: other.radius * view.k };
+      });
+    const gapTo = (box: Box, cx: number, cy: number, cr: number) =>
+      Math.hypot(Math.max(box.left - cx, 0, cx - box.right), Math.max(box.top - cy, 0, cy - box.bottom)) - cr;
+    const nearEnough = (box: Box) => {
+      const own = gapTo(box, sx, sy, r);
+      return own <= 64 && others.every((other) => gapTo(box, other.x, other.y, other.r) >= own - 2);
+    };
     const top = (header ? Math.max(HEADER_PX, headHeight + 14) : 0) + 6;
     // A phone's status line can run to three lines (the path's heading).
     const statusLines = size.width < 520 ? 3 : 2;
     const bottom = size.height - Math.max(58, legendHeight + statusLines * 19 + 24);
     const inside = (box: Box) => box.left >= 8 && box.right <= size.width - 8 && box.top >= top && box.bottom <= bottom;
-    let spot: (typeof candidates)[number] | undefined;
+    let spot: Candidate | undefined;
     let nameLines = layouts[0];
-    for (const lines of layouts) {
+    const fits = layouts.map((lines) => {
       const width = Math.max(...lines.map((line) => line.length)) * ROUTE_CHAR_PX;
       const extra = (lines.length - 1) * ROUTE_LINE_PX;
-      const boxOf = (option: (typeof candidates)[number]) => {
+      const boxOf = (option: Candidate) => {
         const left = sx + option.dx - (option.anchor === "middle" ? width / 2 : option.anchor === "end" ? width : 0);
         // A 13 px name: cap height above the baseline, the brackets just below.
         return { left: left - 3, right: left + width + 3, top: sy + option.dy - 12, bottom: sy + option.dy + 3 + extra };
       };
-      // A place that runs past the pane's side is moved in, towards the mark,
-      // rather than given up.
-      const within = (option: (typeof candidates)[number]) => {
+      // A place that runs past the pane's side is moved in, towards the
+      // mark, rather than given up, as long as it stays near the mark.
+      const within = (option: Candidate) => {
         const box = boxOf(option);
         const shift = box.left < 8 ? 8 - box.left : box.right > size.width - 8 ? size.width - 8 - box.right : 0;
         return shift ? { ...option, dx: option.dx + shift } : option;
       };
-      spot = candidates.map(within).find((option) => {
-        const box = boxOf(option);
-        return inside(box) && !taken.some((other) => overlaps(box, other));
-      });
-      if (spot) {
-        nameLines = lines;
-        break;
+      return (option: Candidate) => {
+        const placed = within(option);
+        const box = boxOf(placed);
+        return inside(box) && nearEnough(box) && !taken.some((other) => overlaps(box, other)) ? placed : undefined;
+      };
+    });
+    // Each ring tries one line, then the name broken after its owner, before
+    // the next ring out.
+    search: for (const tier of tiers) {
+      for (let index = 0; index < layouts.length; index += 1) {
+        for (const option of tier) {
+          const found = fits[index](option);
+          if (found) {
+            spot = found;
+            nameLines = layouts[index];
+            break search;
+          }
+        }
       }
     }
+    // Areas a line passes over, other than its own two: their marks are drawn
+    // again over the path, so the path goes behind them as other lines do.
+    const covered = graph.nodes.filter((other) => {
+      if (other.kind !== "area") return false;
+      const p = points.get(other.id)!;
+      return hops.some((hop) => {
+        if (hop.to === other.id || hop.id.includes(`:${other.id}>`)) return false;
+        for (let step = 0; step <= 24; step += 1) {
+          const q = curvePoint(hop.curve, step / 24);
+          if (Math.hypot(q.x - p.x, q.y - p.y) < other.radius + 2) return true;
+        }
+        return false;
+      });
+    });
     return {
       at,
       hops,
+      covered,
       current,
       crossed,
       visited: new Set(stops.slice(0, at + 1).map((stop) => stop.areaId)),
@@ -835,16 +1026,6 @@ export default function WikiGraphPane({
             })}
             {routeView && (
               <g className="wg-route" aria-hidden="true">
-                {routeView.hops.map((hop) => (
-                  <path
-                    key={hop.id}
-                    ref={hop.newest ? newestHopRef : undefined}
-                    d={hop.d}
-                    className={`wg-route-line${hop.newest ? " is-newest" : ""}`}
-                    stroke={hop.color}
-                    pathLength={hop.newest ? 1 : undefined}
-                  />
-                ))}
                 {onRoute &&
                   !readonly &&
                   routeView.hops.map((hop) => (
@@ -925,15 +1106,44 @@ export default function WikiGraphPane({
                 </g>
               );
             })}
-            {routeView && (
-              <g ref={tokenRef} className="wg-route-token" style={{ opacity: 0 }} aria-hidden="true">
-                <circle r={6 / view.k} stroke={newestHop?.color ?? "transparent"} />
-              </g>
-            )}
             {/* The halo is its own layer under every label. Safari paints a stroked
                 glyph over the one before it, so a halo on the label itself eats
-                the letters. */}
-            {(["halo", "text"] as const).map((layer) =>
+                the letters. The path and its token go between the halos and the
+                letters: a name keeps its letters on top, and the path stays seen
+                where it passes behind one. */}
+            {(["halo", "route", "text"] as const).map((layer) =>
+              layer === "route" ? (
+                routeView && (
+                  <g key="route" className="wg-route-over" aria-hidden="true">
+                    {routeView.hops.map((hop) => (
+                      <path
+                        key={hop.id}
+                        ref={hop.newest ? newestHopRef : undefined}
+                        d={hop.d}
+                        className={`wg-route-line${hop.newest ? " is-newest" : ""}`}
+                        stroke={hop.color}
+                        pathLength={hop.newest ? 1 : undefined}
+                      />
+                    ))}
+                    <g ref={tokenRef} className="wg-route-token" style={{ opacity: 0 }}>
+                      <circle r={6 / view.k} stroke={newestHop?.color ?? "transparent"} />
+                    </g>
+                    {routeView.covered.map((other) => {
+                      const p = points.get(other.id)!;
+                      return (
+                        <circle
+                          key={`cover:${other.id}`}
+                          className="wg-route-cover"
+                          cx={p.x}
+                          cy={p.y}
+                          r={other.radius}
+                          fill={other.color}
+                        />
+                      );
+                    })}
+                  </g>
+                )
+              ) :
               labels.map((label) => {
                 const point = points.get(label.id)!;
                 const x = point.x + label.dx / view.k;
