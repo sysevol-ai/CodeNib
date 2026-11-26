@@ -733,3 +733,7 @@
 .wg-route-over {
   pointer-events: none;
 }
+/* While an area is pointed at, the path steps back, and so do its covers. */
+.wiki-graph.is-pointing .wg-route-cover {
+  display: none;
+}
