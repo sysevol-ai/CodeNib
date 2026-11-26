@@ -117,7 +117,7 @@ export default function HeroGraph({
           {place && (
             <>
               {"\u00a0·\u00a0"}
-              <span className="is-code">{place}</span>
+              <span className="is-code wg-place">{place}</span>
             </>
           )}
         </>

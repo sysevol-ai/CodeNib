@@ -255,6 +255,11 @@
 .wiki-graph-foot .is-code {
   overflow-wrap: anywhere;
 }
+/* A file and line read as one: never split "format-inl.h:1274". */
+.wiki-graph-foot .wg-place {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
 /* Pointing at an area tells its facts; the path's marks step aside meanwhile. */
 .wiki-graph.is-pointing .wg-route-stop,
 .wiki-graph.is-pointing .wg-route-label,

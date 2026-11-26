@@ -37,6 +37,8 @@ interface PlacedLabel {
   dy: number;
   /** Where the label sits on screen, for anything placed after it. */
   box: { left: number; right: number; top: number; bottom: number };
+  /** Set regular although focused: bold had no room. */
+  plain?: boolean;
 }
 
 // Geist at the label size averages about this wide per character.
@@ -80,12 +82,12 @@ function placeLabels(
   const ordered = nodes
     .filter((node) => priority(node) > 0)
     .sort((a, b) => priority(b) - priority(a) || b.radius - a.radius);
-  for (const node of ordered) {
+  const placeOne = (node: WikiGraphNode, factor: number, force = false): PlacedLabel | null => {
     const point = points.get(node.id)!;
     const lines = labelLines(node.title);
     const extra = (lines.length - 1) * LABEL_LINE_PX;
     // The focused or pointed name is set bold, about 8% wider.
-    const width = Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_PX * (priority(node) >= 3.5 ? 1.08 : 1);
+    const width = Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_PX * factor;
     const sx = point.x * view.k + view.x;
     const sy = point.y * view.k + view.y;
     const radius = node.radius * view.k;
@@ -113,7 +115,7 @@ function placeLabels(
     const clash = taken.some(hits) || marks.some((mark) => mark.id !== node.id && hits(mark));
     const outside = box.left < 0 || box.right > paneWidth || box.bottom > floor;
     const retry = retryAreas && node.kind === "area" && priority(node) >= 3;
-    if ((clash || outside) && priority(node) < 4 && !retry) continue;
+    if ((clash || outside) && priority(node) < 4 && !retry && priority(node) !== 3.5 && !force) return null;
     if (clash || outside) {
       // A label that must show (the focused area's) tries the other side,
       // then above and below, before it is allowed to cover anything.
@@ -153,15 +155,34 @@ function placeLabels(
         (box.bottom > floor && priority(node) >= 4
           ? options.map((option) => ({ option, box: free(option, false) })).find((entry) => entry.box)
           : undefined);
-      if (found) {
-        taken.push(found.box!);
-        placed.push({ id: node.id, lines, ...found.option, box: found.box! });
-        continue;
-      }
-      if (priority(node) < 4) continue;
+      if (found) return { id: node.id, lines, ...found.option, box: found.box! };
+      if (priority(node) < 4 && !force) return null;
     }
-    taken.push(box);
-    placed.push({ id: node.id, lines, anchor, dx, dy, box });
+    return { id: node.id, lines, anchor, dx, dy, box };
+    };
+  for (const node of ordered) {
+    // A pointed name is set bold; if bold finds no place it is set regular,
+    // so pointing never takes an area's name away.
+    const factors = priority(node) === 3.5 ? [1.08, 1] : [priority(node) >= 4 ? 1.08 : 1];
+    let done = false;
+    for (const factor of factors) {
+      const found = placeOne(node, factor);
+      if (found) {
+        taken.push(found.box);
+        placed.push({ ...found, plain: factor === 1 && priority(node) === 3.5 ? true : undefined });
+        done = true;
+        break;
+      }
+    }
+    // As in production, a pointed name always shows: where nothing is free it
+    // takes its usual place, set regular.
+    if (!done && priority(node) === 3.5) {
+      const forced = placeOne(node, 1, true);
+      if (forced) {
+        taken.push(forced.box);
+        placed.push({ ...forced, plain: true });
+      }
+    }
   }
   return placed;
 }
@@ -526,22 +547,25 @@ export default function WikiGraphPane({
       // The route's own lines, sampled along each crossing. Where a line
       // meets the current mark it ends under the name's halo, so the last
       // stretch next to the mark does not count.
-      ...hops.flatMap((hop) =>
-        Array.from({ length: 13 }, (_, step) => {
-          const p = curvePoint(hop.curve, step / 12);
+      ...hops.flatMap((hop) => {
+        // A sample every few pixels, so a name cannot slip between two.
+        const span = Math.hypot(hop.curve.end.x - hop.curve.start.x, hop.curve.end.y - hop.curve.start.y) * view.k;
+        const steps = Math.max(12, Math.ceil(span / 5));
+        return Array.from({ length: steps + 1 }, (_, step) => {
+          const p = curvePoint(hop.curve, step / steps);
           const hx = p.x * view.k + view.x;
           const hy = p.y * view.k + view.y;
-          if (Math.hypot(hx - sx, hy - sy) < r + 16) return null;
+          if (Math.hypot(hx - sx, hy - sy) < r + 6) return null;
           return { left: hx - 5, right: hx + 5, top: hy - 5, bottom: hy + 5 };
-        }).filter((box): box is Box => box !== null),
-      ),
+        }).filter((box): box is Box => box !== null);
+      }),
     ];
     // Nearest first, all the way round the mark: straight above and below,
     // then beside it, then the diagonals, each a step further out in turn.
     // A name with no free place stays in the status line.
     const candidates: { anchor: "start" | "middle" | "end"; dx: number; dy: number }[] = [];
     const angles = [-90, 90, 0, 180, -30, -150, 30, 150, -60, -120, 60, 120, -15, -165, 15, 165, -45, -135, 45, 135, -75, -105, 75, 105];
-    for (const out of [10, 22, 36, 52, 70]) {
+    for (const out of [10, 16, 22, 29, 36, 44, 52, 70, 90]) {
       for (const angle of angles) {
         const radians = (angle * Math.PI) / 180;
         const cos = Math.cos(radians);
@@ -579,7 +603,14 @@ export default function WikiGraphPane({
         // A 13 px name: cap height above the baseline, the brackets just below.
         return { left: left - 3, right: left + width + 3, top: sy + option.dy - 12, bottom: sy + option.dy + 3 + extra };
       };
-      spot = candidates.find((option) => {
+      // A place that runs past the pane's side is moved in, towards the mark,
+      // rather than given up.
+      const within = (option: (typeof candidates)[number]) => {
+        const box = boxOf(option);
+        const shift = box.left < 8 ? 8 - box.left : box.right > size.width - 8 ? size.width - 8 - box.right : 0;
+        return shift ? { ...option, dx: option.dx + shift } : option;
+      };
+      spot = candidates.map(within).find((option) => {
         const box = boxOf(option);
         return inside(box) && !taken.some((other) => overlaps(box, other));
       });
@@ -906,7 +937,7 @@ export default function WikiGraphPane({
               labels.map((label) => {
                 const point = points.get(label.id)!;
                 const x = point.x + label.dx / view.k;
-                const state = `${label.id === focusId && !readonly ? " is-active" : ""}${
+                const state = `${label.id === focusId && !readonly && !label.plain ? " is-active" : ""}${
                   states?.[label.id] ? ` is-${states[label.id]}` : ""
                 }`;
                 return (
