@@ -10,6 +10,14 @@ import type { WikiPageState } from "@/lib/visitorWiki";
 import { labelLines, neighborhood, type WikiGraph, type WikiGraphEdge, type WikiGraphNode } from "@/lib/wikiGraph";
 import "./WikiGraphPane.css";
 
+/** The status line under a map: what is named, and what to know about it. */
+export interface MapStatus {
+  title: string;
+  detail: ReactNode;
+  /** The title is a name from the code. */
+  code?: boolean;
+}
+
 interface View {
   x: number;
   y: number;
@@ -192,6 +200,7 @@ export default function WikiGraphPane({
   legend,
   activity,
   route,
+  routeLegend,
   onRoute,
 }: {
   graph: WikiGraph;
@@ -208,13 +217,13 @@ export default function WikiGraphPane({
   embedded?: boolean;
   header?: ReactNode;
   /** What the status line says when nothing is under the pointer. */
-  idle?: { title: string; detail: string };
+  idle?: MapStatus;
   /** A Wiki being written: each page is planned, being written, ready or withheld. */
   states?: Record<string, WikiPageState>;
   /** Pages that became ready while this map was open; each blooms once. */
   arrived?: ReadonlySet<string>;
   /** What the status line says about a node under the pointer. */
-  describe?: (node: WikiGraphNode) => { title: string; detail: string } | null;
+  describe?: (node: WikiGraphNode) => MapStatus | null;
   /** A picture of the source: nothing to open, so nodes are not links. */
   readonly?: boolean;
   /** Nodes fade in as they first appear, and references draw in once. */
@@ -232,6 +241,8 @@ export default function WikiGraphPane({
    * carries each new call across the map; without it the route is drawn whole.
    */
   route?: { stops: RouteStop[]; at: number; animate: boolean };
+  /** The route this map replays, for the legend, also while it is not drawn. */
+  routeLegend?: RouteStop[];
   /** Opens the page that tells the path in words. */
   onRoute?: () => void;
 }) {
@@ -249,6 +260,30 @@ export default function WikiGraphPane({
   const byId = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph]);
   const near = useMemo(() => neighborhood(graph, activeId), [graph, activeId]);
 
+  // Room above and below the drawing for labels, the header and the status
+  // line. On a narrow pane it is at least the legend plus two lines of
+  // status, so a wrapped legend never covers the lowest label.
+  const legendRef = useRef<HTMLDListElement>(null);
+  const [legendHeight, setLegendHeight] = useState(0);
+  useLayoutEffect(() => {
+    const legendElement = legendRef.current;
+    if (!legendElement) return undefined;
+    setLegendHeight(legendElement.offsetHeight);
+    const observer = new ResizeObserver(() => setLegendHeight(legendElement.offsetHeight));
+    observer.observe(legendElement);
+    return () => observer.disconnect();
+  }, []);
+  const frame = useMemo(() => {
+    const reserve = embedded && size.width >= 520 ? 124 : 170;
+    const top = (header ? HEADER_PX : 0) + (reserve - 40) / 2;
+    // A pane whose legend fits one line keeps the layout it always had;
+    // only a wrapped legend needs the extra room.
+    const wrapped = legendHeight > 26;
+    const bottom = wrapped ? Math.max(20 + reserve / 2, legendHeight + 2 * 19 + 22 + 46) : 20 + reserve / 2;
+    return { top, bottom };
+  }, [embedded, size.width, header, legendHeight]);
+
+
   // The layout is stretched to the pane's shape, so the map fills it at any
   // width; nodes stay round because only their positions are stretched.
   const { points, center } = useMemo(() => {
@@ -260,7 +295,7 @@ export default function WikiGraphPane({
     // A phone has no room for labels at the sides; they move inward instead.
     const fitX = (size.width - (size.width < 520 ? 56 : 190)) / Math.max(maxX - minX, 1);
     // An embedded map has no toolbar, so its nodes can use more of the pane.
-    const fitY = (size.height - (embedded && size.width >= 520 ? 124 : 170) - (header ? HEADER_PX : 0)) / Math.max(maxY - minY, 1);
+    const fitY = (size.height - frame.top - frame.bottom) / Math.max(maxY - minY, 1);
     const scale = Math.min(fitX, fitY);
     const stretchX = Math.min(Math.max(fitX, 0.1), scale * 1.45, 2.4);
     const stretchY = Math.min(Math.max(fitY, 0.1), scale * 1.45, 2.4);
@@ -269,13 +304,12 @@ export default function WikiGraphPane({
       points: next,
       center: { x: ((minX + maxX) / 2) * stretchX, y: ((minY + maxY) / 2) * stretchY },
     };
-  }, [graph, size, header, embedded]);
+  }, [graph, size, frame]);
 
   const fitted = useMemo((): View | null => {
     if (!size.width || !size.height || !points.size) return null;
-    const top = header ? HEADER_PX : 0;
-    return { k: 1, x: size.width / 2 - center.x, y: (size.height - 40 + top) / 2 - center.y };
-  }, [points, center, size, header]);
+    return { k: 1, x: size.width / 2 - center.x, y: (frame.top + size.height - frame.bottom) / 2 - center.y };
+  }, [points, center, size, frame]);
   const view = movedView ?? fitted;
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -361,9 +395,19 @@ export default function WikiGraphPane({
           const p = points.get(other.id)!;
           const ox = p.x * view.k + view.x;
           const oy = p.y * view.k + view.y;
-          const or = other.radius * view.k + 3;
+          // Arrowheads land just outside a mark, so keep clear of them too.
+          const or = other.radius * view.k + 9;
           return { left: ox - or, right: ox + or, top: oy - or, bottom: oy + or };
         }),
+      // The route's own lines, sampled along each crossing.
+      ...hops.flatMap((hop) =>
+        Array.from({ length: 13 }, (_, step) => {
+          const p = curvePoint(hop.curve, step / 12);
+          const hx = p.x * view.k + view.x;
+          const hy = p.y * view.k + view.y;
+          return { left: hx - 5, right: hx + 5, top: hy - 5, bottom: hy + 5 };
+        }),
+      ),
     ];
     // Nearest first: straight above or below the mark, then its corners, then
     // a step further out. A name with no free place stays in the status line.
@@ -441,49 +485,42 @@ export default function WikiGraphPane({
     if (!node || node.kind !== "area" || !view || drag.current?.moved) return null;
     const point = points.get(node.id);
     if (!point) return null;
-    const strongest = (side: "source" | "target") =>
-      graph.edges
-        .filter((edge) => edge.kind === "references" && edge.link && edge[side] === node.id)
-        .sort((a, b) => b.link!.weight - a.link!.weight)
-        .slice(0, 2)
-        .map((edge) => {
-          const other = byId.get(side === "source" ? edge.target : edge.source)!;
-          return { id: other.id, title: other.title, color: other.color, weight: edge.link!.weight };
-        });
+    // One row per neighbouring area, strongest exchange first.
+    const exchange = new Map<string, { id: string; title: string; color: string; out: number; in: number }>();
+    for (const edge of graph.edges) {
+      if (edge.kind !== "references" || !edge.link) continue;
+      const outward = edge.source === node.id;
+      if (!outward && edge.target !== node.id) continue;
+      const other = byId.get(outward ? edge.target : edge.source);
+      if (!other) continue;
+      const row = exchange.get(other.id) ?? { id: other.id, title: other.title, color: other.color, out: 0, in: 0 };
+      if (outward) row.out += edge.link.weight;
+      else row.in += edge.link.weight;
+      exchange.set(other.id, row);
+    }
+    const rows = [...exchange.values()].sort((a, b) => b.out + b.in - (a.out + a.in)).slice(0, 3);
     return {
       node,
-      to: strongest("source"),
-      from: strongest("target"),
-      at: { x: point.x * view.k + view.x, y: point.y * view.k + view.y, r: node.radius * view.k },
+      rows,
+      at: { x: point.x * view.k + view.x, y: point.y * view.k + view.y },
     };
   }, [hoverNode, byId, view, points, graph]);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Placed once its size is known: beside the mark where there is room, else
-  // under or over it, and always inside the map.
+  // Docked in the corner farthest from the area it describes, so it never
+  // covers that area, its name or the status line.
   useLayoutEffect(() => {
     const element = cardRef.current;
     if (!card || !element) return;
-    const { x, y, r } = card.at;
+    const { x, y } = card.at;
     const w = element.offsetWidth;
     const h = element.offsetHeight;
-    const gap = r + 12;
-    const fits = (left: number, top: number) =>
-      left >= 8 && top >= 8 && left + w <= size.width - 8 && top + h <= size.height - 8;
-    const clampY = (top: number) => Math.max(8, Math.min(top, size.height - h - 8));
-    const clampX = (left: number) => Math.max(8, Math.min(left, size.width - w - 8));
-    const options = [
-      { left: x + gap, top: clampY(y - 28) },
-      { left: x - gap - w, top: clampY(y - 28) },
-      { left: clampX(x - w / 2), top: y + gap },
-      { left: clampX(x - w / 2), top: y - gap - h },
-    ];
-    const chosen = options.find((option) => fits(option.left, option.top)) ?? {
-      left: clampX(x + gap),
-      top: clampY(y + gap),
-    };
-    element.style.left = `${chosen.left}px`;
-    element.style.top = `${chosen.top}px`;
+    const top = (header ? HEADER_PX : 0) + 10;
+    const foot = paneRef.current?.querySelector<HTMLElement>(".wiki-graph-foot")?.offsetHeight ?? 56;
+    const left = x > size.width / 2 ? 12 : Math.max(12, size.width - w - 12);
+    const below = Math.max(top, size.height - foot - h - 10);
+    element.style.left = `${left}px`;
+    element.style.top = `${y < size.height / 2 ? below : top}px`;
     element.style.visibility = "visible";
   }, [card, size]);
 
@@ -689,6 +726,11 @@ export default function WikiGraphPane({
                 </g>
               );
             })}
+            {routeView && (
+              <g ref={tokenRef} className="wg-route-token" style={{ opacity: 0 }} aria-hidden="true">
+                <circle r={6 / view.k} stroke={newestHop?.color ?? "transparent"} />
+              </g>
+            )}
             {/* The halo is its own layer under every label. Safari paints a stroked
                 glyph over the one before it, so a halo on the label itself eats
                 the letters. */}
@@ -721,9 +763,6 @@ export default function WikiGraphPane({
             )}
             {routeView && (
               <>
-                <g ref={tokenRef} className="wg-route-token" style={{ opacity: 0 }} aria-hidden="true">
-                  <circle r={6.5 / view.k} fill={newestHop?.color ?? "transparent"} />
-                </g>
                 {routeView.label && (
                 <g
                   key={`route-label-${routeView.at}`}
@@ -767,26 +806,24 @@ export default function WikiGraphPane({
               {card.node.files != null && ` · ${number.format(card.node.files)} ${card.node.files === 1 ? "file" : "files"}`}
             </p>
           )}
-          {(card.to.length > 0 || card.from.length > 0) && (
+          {card.rows.length > 0 && (
             <dl className="wg-card-links">
-              {[
-                ["To", card.to],
-                ["From", card.from],
-              ].flatMap(([word, rows]) =>
-                (rows as typeof card.to).map((row) => (
-                  <div key={`${word}:${row.id}`}>
-                    <dt>
-                      <span className="wg-card-word">{word as string}</span>
-                      <span className="wg-card-dot" style={{ background: row.color }} />
-                      <span className="wg-card-name">{row.title}</span>
-                    </dt>
-                    <dd>{number.format(row.weight)}</dd>
-                  </div>
-                )),
-              )}
+              {card.rows.map((row) => (
+                <div key={row.id}>
+                  <dt>
+                    <span className="wg-card-dot" style={{ background: row.color }} />
+                    <span className="wg-card-name">{row.title}</span>
+                  </dt>
+                  <dd>
+                    {[row.out && `${number.format(row.out)} out`, row.in && `${number.format(row.in)} in`]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </dd>
+                </div>
+              ))}
             </dl>
           )}
-          <p className="wg-card-hint">Recorded references · click to read this area</p>
+          <p className="wg-card-hint">Recorded references · click to read this page</p>
         </div>
       )}
       {header && <div className="wiki-graph-head">{header}</div>}
@@ -804,7 +841,7 @@ export default function WikiGraphPane({
       <div className="wiki-graph-foot" role="status">
         {status ? (
           <p>
-            <b>{status.title}</b> <span>{status.detail}</span>
+            <b className={status.code ? "is-code" : undefined}>{status.title}</b> <span>{status.detail}</span>
           </p>
         ) : (
           <p>
@@ -812,19 +849,19 @@ export default function WikiGraphPane({
           </p>
         )}
         {legend ?? (
-        <dl className="wiki-graph-legend">
+        <dl className="wiki-graph-legend" ref={legendRef}>
           {hasReferences && (
             <div>
               <dt className="is-references" aria-hidden="true" />
               <dd>References recorded in the code index</dd>
             </div>
           )}
-          {routeView && (
+          {(routeView || routeLegend?.length) && (
             <div>
               <dt
                 className="is-route"
                 aria-hidden="true"
-                style={{ background: routeSwatch(route?.stops ?? [], byId) }}
+                style={{ background: routeSwatch(route?.stops ?? routeLegend ?? [], byId) }}
               />
               <dd>Main path</dd>
             </div>

@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { plainTitle, routeFromJourney, stopPlace } from "@/lib/mapRoute";
+import { callLabel, plainTitle, routeFromJourney, stopPlace } from "@/lib/mapRoute";
 import { extractJourney } from "@/lib/wikiPresentation";
 
 const OVERVIEW = `# Overview
@@ -53,6 +53,11 @@ describe("routeFromJourney", () => {
 });
 
 describe("route text", () => {
+  it("writes every stop as a call", () => {
+    expect(callLabel("RouterGroup.handle")).toBe("RouterGroup.handle()");
+    expect(callLabel("Session.send()")).toBe("Session.send()");
+  });
+
   it("names a stop by file name and line", () => {
     expect(
       stopPlace({ index: 1, symbol: "get()", label: "get()", areaId: "a", file: "src/requests/api.py", line: 74 }),

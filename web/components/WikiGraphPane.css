@@ -73,7 +73,7 @@
 .wiki-graph-stats {
   margin: 0;
   color: var(--wg-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 /* With many links only the current page's stand out at full strength. */
 .wiki-graph.is-dense {
@@ -190,7 +190,7 @@
 .wiki-graph-controls button {
   padding: 5px 10px;
   color: var(--wg-soft);
-  font-size: 12px;
+  font-size: 13px;
   background: rgba(14, 15, 17, 0.8);
   border: 1px solid var(--wg-line);
   border-radius: 6px;
@@ -217,7 +217,7 @@
   min-height: 44px;
   padding: 10px 16px;
   color: var(--wg-muted);
-  font-size: 12px;
+  font-size: 13px;
   background: linear-gradient(to top, var(--wg-bg) 62%, transparent);
   pointer-events: none;
 }
@@ -229,13 +229,18 @@
   color: var(--wg-text);
   font-weight: 600;
 }
+.wiki-graph-foot b.is-code,
+.wiki-graph-foot .is-code {
+  font-family: var(--font-geist-mono, "Geist Mono"), ui-monospace, monospace;
+  font-weight: 500;
+}
 .wiki-graph-note {
   flex-basis: 100%;
 }
 .wiki-graph-note button {
   padding: 2px 8px;
   color: var(--wg-hot);
-  font-size: 12px;
+  font-size: 13px;
   background: transparent;
   border: 1px solid var(--wg-line);
   border-radius: 6px;
@@ -308,9 +313,11 @@
 .wg-route-token {
   pointer-events: none;
 }
+/* A light core in the destination's colour ring: it reads as something moving,
+   not as another page on the map. */
 .wg-route-token circle {
-  stroke: var(--wg-bg);
-  stroke-width: 2;
+  fill: #fff;
+  stroke-width: 3;
   vector-effect: non-scaling-stroke;
 }
 .wg-route-stop {
@@ -712,10 +719,7 @@
 .wg-card-title .wg-card-dot {
   margin-top: 0.42em;
 }
-.wg-card-word {
-  flex: none;
-  width: 2.7em;
-}
+
 .wg-card-size {
   padding-left: 15px;
   color: var(--wg-muted);

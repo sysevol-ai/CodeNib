@@ -53,7 +53,7 @@ export function routeFromJourney(
     stops.push({
       index: stage.index,
       symbol: stage.symbol,
-      label: displaySymbol(stage.symbol, { short: true }),
+      label: callLabel(displaySymbol(stage.symbol, { short: true })),
       areaId,
       file: cited?.file ?? null,
       line: cited?.start_line ?? null,
@@ -61,6 +61,11 @@ export function routeFromJourney(
   }
   if (new Set(stops.map((stop) => stop.areaId)).size < 2) return null;
   return { title: journey.title, total: journey.stages.length, stops };
+}
+
+/** Every stop is a function the path calls, so it reads as one: `RouterGroup.handle()`. */
+export function callLabel(label: string): string {
+  return /\(.*\)$/.test(label) ? label : `${label}()`;
 }
 
 /** `sessions.py:752`, the place a stop is defined, by file name. */

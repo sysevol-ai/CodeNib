@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import WikiGraphPane from "@/components/WikiGraphPane";
+import WikiGraphPane, { type MapStatus } from "@/components/WikiGraphPane";
 import type { WikiAreaMap, WikiPageRef } from "@/lib/api";
 import { plainTitle, stopPlace, type MapRoute } from "@/lib/mapRoute";
 import { buildWikiGraph } from "@/lib/wikiGraph";
@@ -92,13 +92,26 @@ export default function HeroGraph({
   const symbols = map.areas.reduce((sum, area) => sum + area.symbols, 0);
   const total = map.links.reduce((sum, link) => sum + link.weight, 0);
 
-  let idle: { title: string; detail: string } | undefined;
+  let idle: MapStatus | undefined;
   if (route && hasRoute && phase.kind === "route") {
+    // The ring on the map already names the area; the line keeps to the step
+    // and the place in the file, so it stays one line on a phone.
     const stop = stops[Math.min(phase.at, stops.length - 1)];
-    const area = graph.nodes.find((node) => node.id === stop.areaId)?.title;
+    const place = stopPlace(stop);
     idle = {
       title: stop.label,
-      detail: [`Step ${stop.index} of ${route.total}`, stopPlace(stop), area].filter(Boolean).join(" · "),
+      code: true,
+      detail: (
+        <>
+          Step {stop.index} of {route.total}
+          {place && (
+            <>
+              {" · "}
+              <span className="is-code">{place}</span>
+            </>
+          )}
+        </>
+      ),
     };
   } else if (route && hasRoute && phase.kind === "hold") {
     idle = {
@@ -131,6 +144,7 @@ export default function HeroGraph({
             ? { stops, at: phase.kind === "route" ? phase.at : stops.length - 1, animate: !reduced }
             : undefined
         }
+        routeLegend={hasRoute ? stops : undefined}
         onRoute={() => onPick("overview")}
         header={
           <>
