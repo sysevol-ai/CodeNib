@@ -38,12 +38,15 @@ export default function WikiGenerationForm({
   attempt,
   onStarted,
   onChecked,
+  onCheckFailed,
   resume = false,
 }: {
   attempt: WikiAttempt;
   onStarted: () => void;
   /** The source check's result, so the page can draw the snapshot. */
   onChecked?: (result: WikiRepositoryCheck | null) => void;
+  /** The source check could not answer (busy, rate-limited or offline). */
+  onCheckFailed?: (message: string) => void;
   resume?: boolean;
 }) {
   const keyInput = useRef<HTMLInputElement>(null);
@@ -63,6 +66,8 @@ export default function WikiGenerationForm({
   const admitted = resume || eligibility?.eligible === true;
   const checked = useRef(onChecked);
   checked.current = onChecked;
+  const failed = useRef(onCheckFailed);
+  failed.current = onCheckFailed;
   useEffect(() => {
     if (resume) return;
     let active = true;
@@ -78,7 +83,9 @@ export default function WikiGenerationForm({
       })
       .catch((reason) => {
         if (!active) return;
-        setCheckError(reason instanceof Error ? reason.message : "Could not check this repository.");
+        const message = reason instanceof Error ? reason.message : "Could not check this repository.";
+        setCheckError(message);
+        failed.current?.(message);
         setCheckLimited(reason instanceof WikiRequestError && reason.status === 429);
       });
     return () => { active = false; };

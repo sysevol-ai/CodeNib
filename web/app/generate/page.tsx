@@ -41,6 +41,7 @@ export default function GenerateWikiPage({
   const [freeMapOffered, setFreeMapOffered] = useState(false);
   const [freeMap, setFreeMap] = useState<FreeRepositoryMap | null>(null);
   const [freeMapFailed, setFreeMapFailed] = useState(false);
+  const [checkFailed, setCheckFailed] = useState("");
   useEffect(() => {
     let ignored = false;
     if (isStaticRuntime()) {
@@ -102,7 +103,12 @@ export default function GenerateWikiPage({
       item.id !== attempt?.id,
   );
   const slug = repo?.slug ?? `${owner}/${name}`;
-  const tree = check?.eligible ? check.source_tree : undefined;
+  // The free map carries the same outline, so either answer draws it.
+  const tree = check?.eligible
+    ? check.source_tree
+    : freeMap?.eligible
+      ? freeMap.source_tree
+      : undefined;
   const source = useMemo(() => buildSourceGraph(slug, tree), [slug, tree]);
   const folders = tree ? tree.folders.length + tree.more.folders : 0;
   let idle: { title: string; detail: string };
@@ -116,6 +122,8 @@ export default function GenerateWikiPage({
     };
   else if (check && !check.eligible)
     idle = { title: "This snapshot cannot be generated here", detail: "The reason is beside the map." };
+  else if (checkFailed && (!freeMapOffered || freeMapFailed))
+    idle = { title: "The snapshot could not be checked just now", detail: "The reason is beside the map; try again shortly." };
   else if (loaded && !enabled)
     idle = { title: slug, detail: "The folder map appears once generation is available." };
   else idle = { title: "Checking the snapshot", detail: "Its folders appear when the check finishes. No key is needed." };
@@ -158,12 +166,7 @@ export default function GenerateWikiPage({
               written.
             </p>
           )}
-          {freeMap?.map && !freeMap.map.available && freeMap.map.reason === "graph_language" && (
-            <p className="own-note">
-              The free map traces Python repositories for now. Its folders are
-              on the map; the written Wiki covers every supported language.
-            </p>
-          )}
+
         </div>
         <section className="own-start-map" aria-label="The snapshot as a map">
           {picture ? (
@@ -187,7 +190,6 @@ export default function GenerateWikiPage({
             graph={source.graph}
             activeId={SOURCE_HUB}
             hasReferences={false}
-            note={null}
             onPick={() => {}}
             onOpenReference={() => {}}
             embedded
@@ -195,13 +197,21 @@ export default function GenerateWikiPage({
             live
             // The repository turns while its snapshot is being checked.
             states={
-              enabled && (!check || (freeMapOffered && !freeMap && !freeMapFailed))
+              enabled &&
+              ((!check && !checkFailed) || (freeMapOffered && !freeMap && !freeMapFailed))
                 ? { [SOURCE_HUB]: "running" }
                 : undefined
             }
             idle={idle}
             describe={(node) => describeSourceNode(node, source.facts)}
-            legend={<WikiStateLegend folders />}
+            // Before a run there are no chapters yet when the free map is
+            // on its way: the legend explains only what is drawn.
+            legend={freeMapOffered ? <WikiStateLegend folders chapters={false} /> : <WikiStateLegend folders />}
+            note={
+              freeMap?.map && !freeMap.map.available && freeMap.map.reason === "graph_language"
+                ? "The free map traces Python code for now; this is the repository's folder outline. The written Wiki covers every supported language."
+                : null
+            }
           />
           )}
         </section>
@@ -235,7 +245,11 @@ export default function GenerateWikiPage({
           {attempt && enabled && (
             <WikiGenerationForm
               attempt={attempt}
-              onChecked={setCheck}
+              onChecked={(result) => {
+                setCheck(result);
+                if (result) setCheckFailed("");
+              }}
+              onCheckFailed={setCheckFailed}
               onStarted={() => navigate(`/wiki/${attempt.id}`)}
             />
           )}

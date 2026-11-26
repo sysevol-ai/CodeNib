@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { freeAreaUrl, freeMapPicture } from "@/lib/freeMap";
+import { freeAreaUrl, freeMapPicture, partNames } from "@/lib/freeMap";
 import type { FreeRepositoryMap } from "@/lib/visitorWiki";
 
 const base: FreeRepositoryMap = {
@@ -32,6 +32,7 @@ describe("freeMapPicture", () => {
   it("draws folder areas as pages and the path across them", () => {
     const picture = freeMapPicture(base)!;
     expect(picture.pages.map((page) => page.id)).toEqual(["src/app/api", "src/app/core"]);
+    expect(picture.pages.map((page) => page.title)).toEqual(["api/", "core/"]);
     expect(picture.route?.total).toBe(3);
     expect(picture.route?.stops.map((stop) => [stop.index, stop.label, stop.areaId])).toEqual([
       [1, "serve()", "src/app/api"],
@@ -58,5 +59,24 @@ describe("freeAreaUrl", () => {
     expect(freeAreaUrl("o/r", "abc", area("file", "src/app.py"))).toBe("https://github.com/o/r/blob/abc/src/app.py");
     expect(freeAreaUrl("o/r", "abc", area("root", ""))).toBe("https://github.com/o/r/tree/abc");
     expect(freeAreaUrl("o/r", "abc", area("other", null))).toBeNull();
+  });
+});
+
+describe("partNames", () => {
+  const part = (id: string, kind: "folder" | "file" | "root" | "other", path: string | null) =>
+    ({ id, title: path ?? id, symbols: 1, files: 1, kind, path });
+  it("says the shared folder once and marks folders", () => {
+    const names = partNames([
+      part("a", "file", "httpx/_client.py"),
+      part("b", "folder", "httpx/_transports"),
+      part("c", "root", ""),
+      part("other", "other", null),
+    ]);
+    expect([...names.values()]).toEqual(["_client.py", "_transports/", "Top-level files", "other"]);
+  });
+
+  it("keeps whole paths when parts share nothing", () => {
+    const names = partNames([part("a", "folder", "src"), part("b", "folder", "docs")]);
+    expect([...names.values()]).toEqual(["src/", "docs/"]);
   });
 });
