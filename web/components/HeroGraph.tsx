@@ -132,10 +132,24 @@ export default function HeroGraph({
           part
         ),
       ),
-      detail: `${stops.length}\u00a0steps traced in the code index`,
+      // Some of the Overview's steps may lie outside the mapped areas; say so.
+      detail: (
+        <>
+          {stops.length < route.total
+            ? `${stops.length}\u00a0of the Overview's ${route.total}\u00a0steps`
+            : `${stops.length}\u00a0steps`}
+          <span className="wg-status-more"> traced in the code index</span>
+        </>
+      ),
     };
   } else if (title) {
-    idle = { title, detail: `${number.format(references)}\u00a0recorded references with other areas` };
+    idle = { title, detail: (
+        <>
+          {`${number.format(references)}\u00a0`}
+          <span className="wg-status-more">recorded </span>
+          references<span className="wg-status-more"> with other areas</span>
+        </>
+      ) };
   }
 
   return (

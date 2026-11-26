@@ -658,13 +658,28 @@ export default function WikiGraphPane({
       // indexed code (documentation, tooling) keeps the plain line.
       if (card && card.node.id === node.id && card.node.symbols) {
         const references = card.rows.reduce((sum, row) => sum + row.out + row.in, 0);
-        const facts = [
-          `${number.format(card.node.symbols)}\u00a0${card.node.symbols === 1 ? "symbol" : "symbols"}`,
-          card.node.files ? `${number.format(card.node.files)}\u00a0${card.node.files === 1 ? "file" : "files"}` : "",
-          references ? `${number.format(references)}\u00a0recorded references` : "",
-          summary,
-        ].filter(Boolean);
-        return { title: node.title, detail: facts.join("\u00a0· ") };
+        // A narrow map drops the words marked optional, so the line stays one line.
+        return {
+          title: node.title,
+          detail: (
+            <>
+              {`${number.format(card.node.symbols)}\u00a0${card.node.symbols === 1 ? "symbol" : "symbols"}`}
+              {card.node.files ? (
+                <span className="wg-status-more">
+                  {`\u00a0· ${number.format(card.node.files)}\u00a0${card.node.files === 1 ? "file" : "files"}`}
+                </span>
+              ) : null}
+              {references ? (
+                <>
+                  {`\u00a0· ${number.format(references)}\u00a0`}
+                  <span className="wg-status-more">recorded </span>
+                  references
+                </>
+              ) : null}
+              {summary && `\u00a0· ${summary}`}
+            </>
+          ),
+        };
       }
       return {
         title: node.title,

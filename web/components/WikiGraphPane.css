@@ -221,6 +221,15 @@
   background: linear-gradient(to top, var(--wg-bg) 62%, transparent);
   pointer-events: none;
 }
+/* Words a narrow map can do without, so its status stays on one line. */
+.wiki-graph-foot {
+  container-type: inline-size;
+}
+@container (max-width: 560px) {
+  .wg-status-more {
+    display: none;
+  }
+}
 /* The status line has its own row, so the legend never moves as it changes. */
 .wiki-graph-foot p {
   flex-basis: 100%;
