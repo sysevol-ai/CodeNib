@@ -1616,6 +1616,7 @@ export default function WikiPageView({
                   set={walkthroughs}
                   colors={wikiGraph.colors}
                   onOpen={(id) => openWalk(id)}
+                  hrefFor={(id) => walkLocation(wikiRoute(repoId), id, 0)}
                 />
               )}
               {page && activeId === "overview" ? (
@@ -2049,6 +2050,7 @@ export default function WikiPageView({
         <AskBar
           repoId={repoId} repo={repo.repo} collapsible browserTrial={browserTrial}
           compact={showPoster}
+          docked={workspace}
         />
       )}
       {staticRuntime && (

@@ -27,10 +27,38 @@
   padding: 0;
   list-style: none;
 }
-/* An odd last card takes the whole row rather than sitting alone in half. */
+/* An odd last card takes the whole row rather than sitting alone in half,
+   laid out across it: mark, name and pages, then its counts. */
 .chapter-cards li:last-child:nth-child(odd),
 .walk-cards li:last-child:nth-child(odd) {
   grid-column: 1 / -1;
+}
+@media (min-width: 601px) {
+  .chapter-cards li:last-child:nth-child(odd) .chapter-card,
+  .walk-cards li:last-child:nth-child(odd) .chapter-card {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    column-gap: 16px;
+    row-gap: 6px;
+    align-items: start;
+  }
+  .chapter-cards li:last-child:nth-child(odd) .chapter-card > :not(.chapter-mark):not(.walk-route):not(.chapter-meta),
+  .walk-cards li:last-child:nth-child(odd) .chapter-card > :not(.chapter-mark):not(.walk-route):not(.chapter-meta) {
+    grid-column: 2;
+  }
+  .chapter-cards li:last-child:nth-child(odd) .chapter-mark,
+  .walk-cards li:last-child:nth-child(odd) .walk-route {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+  }
+  .chapter-cards li:last-child:nth-child(odd) .chapter-meta,
+  .walk-cards li:last-child:nth-child(odd) .chapter-meta {
+    grid-column: 3;
+    grid-row: 1 / span 3;
+    align-self: end;
+    width: auto;
+    gap: 16px;
+  }
 }
 .chapter-cards li,
 .walk-cards li {
@@ -97,12 +125,14 @@
   line-height: 1.55;
 }
 .chapter-page {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .chapter-more {
-  color: var(--text-faint);
+  color: var(--text-muted);
+  opacity: 0.85;
 }
 .chapter-more.is-narrow {
   display: none;

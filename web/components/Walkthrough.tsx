@@ -913,10 +913,13 @@ export function WalkthroughList({
   set,
   colors,
   onOpen,
+  hrefFor,
 }: {
   set: WalkthroughSet;
   colors?: Map<string, string>;
   onOpen: (walkId: string) => void;
+  /** The walkthrough's own address, so a card opens in a new tab as a link does. */
+  hrefFor?: (walkId: string) => string;
 }) {
   return (
     <nav className="walk-cards" aria-label="Walkthroughs">
@@ -930,10 +933,14 @@ export function WalkthroughList({
           const route = walk.areas.slice(0, 6);
           return (
             <li key={walk.id}>
-              <button
-                type="button"
+              <a
+                href={hrefFor?.(walk.id) ?? `?walk=${encodeURIComponent(walk.id)}`}
                 className="chapter-card walk-card"
-                onClick={() => onOpen(walk.id)}
+                onClick={(event) => {
+                  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                  event.preventDefault();
+                  onOpen(walk.id);
+                }}
                 style={{ "--area": areaColor(set, first, colors) } as CSSProperties}
               >
                 {route.length > 0 && (
@@ -972,7 +979,7 @@ export function WalkthroughList({
                     <path d="M5 12h14M13 6l6 6-6 6" />
                   </svg>
                 </span>
-              </button>
+              </a>
             </li>
           );
         })}

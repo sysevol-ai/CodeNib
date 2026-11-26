@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 
 import type { Citation } from "@/lib/api";
 import { displaySymbol } from "@/lib/symbols";
@@ -45,8 +45,8 @@ function titleWithCode(title: string): ReactNode[] {
 }
 
 /** Each step sits right of the one that calls it, at most this far in all. */
-const CASCADE_PX = 132;
-const CASCADE_STEP_PX = 24;
+const CASCADE_PX = 216;
+const CASCADE_STEP_PX = 36;
 
 /** The main path through the code, one step per recorded call.
  *
@@ -77,35 +77,37 @@ export default function MainPath({
   const steps = journey.stages.length;
   const step = steps > 1 ? Math.min(CASCADE_STEP_PX, CASCADE_PX / (steps - 1)) : 0;
   const listRef = useRef<HTMLOListElement>(null);
-  // The lines draw in, caller to callee, the first time the path scrolls into
-  // view. A path already in view when the page opens is simply shown.
-  const [motion, setMotion] = useState<"" | "is-armed" | "is-flowing">("");
-  useEffect(() => {
+  // Each call's line draws down from its caller and turns into the step as
+  // that step comes into view, so the path pours down the page as it is
+  // read. Steps already in view when the page opens draw in turn, once.
+  useLayoutEffect(() => {
     const list = listRef.current;
     if (!list || typeof IntersectionObserver === "undefined") return undefined;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
-    let first = true;
+    list.classList.add("is-armed");
+    const steps = [...list.querySelectorAll<HTMLElement>(".main-path-step")];
+    let batch = 0;
     const observer = new IntersectionObserver(
       (entries) => {
-        const seen = entries.some((entry) => entry.isIntersecting);
-        // The first report says where the path is now: in view, it stays
-        // as it is; below, it waits drawn back until it is scrolled to.
-        if (first) {
-          first = false;
-          if (seen) observer.disconnect();
-          else setMotion("is-armed");
-          return;
-        }
-        if (seen) {
-          setMotion("is-flowing");
-          observer.disconnect();
-        }
+        const arriving = entries
+          .filter((entry) => entry.isIntersecting)
+          .map((entry) => entry.target as HTMLElement)
+          .sort((a, b) => steps.indexOf(a) - steps.indexOf(b));
+        // The first report holds every step on screen at load: they draw in
+        // order after the page settles. Later ones draw as they arrive.
+        const start = batch === 0 ? 0.35 : 0;
+        batch += 1;
+        arriving.forEach((step, order) => {
+          step.style.setProperty("--draw-delay", `${start + order * 0.24}s`);
+          step.classList.add("is-drawn");
+          observer.unobserve(step);
+        });
       },
-      { rootMargin: "0px 0px -12% 0px" },
+      { rootMargin: "0px 0px -4% 0px" },
     );
-    observer.observe(list);
+    steps.forEach((step) => observer.observe(step));
     return () => observer.disconnect();
-  }, []);
+  }, [journey]);
   return (
     <figure className="main-path" aria-label={journey.title}>
       <figcaption className="main-path-head">
@@ -118,7 +120,7 @@ export default function MainPath({
       </figcaption>
       <ol
         ref={listRef}
-        className={`main-path-steps${colors ? " is-coloured" : ""}${motion ? ` ${motion}` : ""}`}
+        className={`main-path-steps${colors ? " is-coloured" : ""}`}
         style={{ "--cascade": `${step}px` } as CSSProperties}
       >
         {journey.stages.map((stage, position) => {
@@ -132,9 +134,12 @@ export default function MainPath({
             .find((index) => index >= 0 && !!citations?.[index]?.file);
           const source = cited !== undefined && citations ? citations[cited] : null;
           const file = source?.file ? source.file.split("/").pop() : null;
+          // The path names an area where it enters one; the steps after it
+          // keep its colour on their rings and lines.
+          const entry = !!stage.page && journey.stages[position - 1]?.page?.id !== stage.page.id;
           return (
             <li
-              className={`main-path-step${area ? " has-area" : ""}${next ? " has-next" : ""}${source ? " has-source" : ""}`}
+              className={`main-path-step${area ? " has-area" : ""}${next ? " has-next" : ""}${source ? " has-source" : ""}${entry && position > 0 ? " is-entry" : ""}`}
               key={stage.index}
               style={
                 {
@@ -153,7 +158,7 @@ export default function MainPath({
                     <code className="main-path-symbol" title={stage.symbol}>
                       <Call symbol={displaySymbol(stage.symbol, { short: true })} />
                     </code>
-                    {stage.page && (
+                    {stage.page && entry && (
                       <button
                         type="button"
                         className="main-path-area"

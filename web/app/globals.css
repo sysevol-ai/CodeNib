@@ -986,7 +986,7 @@ pre {
 /* The path as a cascade: each call a step right of its caller, joined to it
    by an elbow in the colour of where the call lands. */
 .main-path-steps {
-  --shift: var(--cascade, 24px);
+  --shift: var(--cascade, 36px);
   --line: var(--border-strong);
   list-style: none;
   margin: 0;
@@ -1002,6 +1002,16 @@ pre {
 }
 .main-path-step:last-child {
   padding-bottom: 0;
+}
+/* Where the path drops into another area it leaves a little more room, and
+   names the area it lands in. */
+.main-path-step.is-entry {
+  margin-top: 10px;
+}
+/* The drop's elbow reaches up through that room to its caller's line. */
+.main-path-step.is-entry::after {
+  top: -10px;
+  height: 24px;
 }
 /* Down from this step's ring towards the call it makes. */
 .main-path-step:not(:last-child)::before {
@@ -1022,7 +1032,7 @@ pre {
   top: 0;
   width: calc(var(--shift) - 12.5px);
   min-width: 2px;
-  height: 13px;
+  height: 14px;
   border-left: 1px solid color-mix(in srgb, var(--area, var(--line)) 75%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--area, var(--line)) 75%, transparent);
   border-bottom-left-radius: 9px;
@@ -1046,11 +1056,14 @@ pre {
   min-width: 0;
   padding-top: 1px;
 }
+/* The call, the area it enters, and where it is defined at the row's end;
+   where the row is too narrow for the call, the place moves to the next line
+   rather than break the call's name. */
 .main-path-symbol-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 16px;
+  gap: 2px 16px;
 }
 .main-path-call {
   display: flex;
@@ -1059,10 +1072,14 @@ pre {
   gap: 2px 14px;
   min-width: 0;
 }
+.main-path-source {
+  margin-left: auto;
+}
 .main-path-symbol {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  line-height: 26px;
 }
 /* A long call breaks after its owner, never inside a name. */
 .main-path-owner,
@@ -1120,7 +1137,8 @@ pre {
   cursor: pointer;
 }
 .main-path-source-line {
-  color: var(--text-faint);
+  color: var(--text-muted);
+  opacity: 0.8;
 }
 /* A step that names its source on its row does not repeat it after its sentence. */
 .main-path-step.has-source .main-path-text .cite-group[data-single] {
@@ -1147,29 +1165,29 @@ pre {
   font-size: 15px;
   line-height: 1.6;
 }
-/* The first time the path scrolls into view, each call's line draws down
-   from its caller and turns into the step, in order, and each ring lights
-   as its line arrives. Off screen until then, so nothing is seen hidden. */
-.main-path-steps.is-armed .main-path-step::before {
+/* Each step's lines draw as the step comes into view: down from its
+   caller, then across into its ring, which lights as the line arrives.
+   Armed only by script, so without it everything is simply drawn. */
+.main-path-steps.is-armed .main-path-step:not(.is-drawn)::before {
   transform: scaleY(0);
 }
-.main-path-steps.is-armed .main-path-step::after {
+.main-path-steps.is-armed .main-path-step:not(.is-drawn)::after {
   clip-path: inset(0 100% 100% 0);
 }
-.main-path-steps.is-armed .main-path-step:not(:first-child) .main-path-index {
+.main-path-steps.is-armed .main-path-step:not(:first-child):not(.is-drawn) .main-path-index {
   opacity: 0.35;
 }
-.main-path-steps.is-flowing .main-path-step::before {
-  animation: main-path-down 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--depth) * 0.26s);
+.main-path-steps.is-armed .main-path-step.is-drawn::after {
+  animation: main-path-turn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--draw-delay, 0s);
 }
-.main-path-steps.is-flowing .main-path-step::after {
-  animation: main-path-turn 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc((var(--depth) - 1) * 0.26s + 0.22s);
-}
-.main-path-steps.is-flowing .main-path-step:not(:first-child) .main-path-index {
+.main-path-steps.is-armed .main-path-step.is-drawn:not(:first-child) .main-path-index {
   animation: main-path-arrive 0.3s ease-out both;
-  animation-delay: calc((var(--depth) - 1) * 0.26s + 0.38s);
+  animation-delay: calc(var(--draw-delay, 0s) + 0.22s);
+}
+.main-path-steps.is-armed .main-path-step.is-drawn::before {
+  animation: main-path-down 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--draw-delay, 0s) + 0.3s);
 }
 @keyframes main-path-down {
   from { transform: scaleY(0); }
@@ -1196,55 +1214,102 @@ pre {
 }
 @media (max-width: 600px) {
   .main-path-steps {
-    --shift: min(var(--cascade, 24px), 12px);
+    --shift: min(var(--cascade, 36px), 18px);
+  }
+  .main-path-symbol {
+    font-size: 15px;
   }
   .main-path-step {
     gap: 10px;
   }
   /* A phone's column is too narrow to keep the source beside the call. */
   .main-path-symbol-row {
-    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column;
+    align-items: flex-start;
     gap: 2px;
   }
   .main-path-source {
-    justify-self: start;
+    margin-left: 0;
   }
 }
 .call-path {
   margin: 0;
   padding: 16px 18px;
 }
+/* A call path is drawn on the page itself, as the Overview's is: the story
+   card around it steps away. */
+.wiki-story-map:has(> .wiki-story-map-frame > .call-path) {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.wiki-story-map-frame > .call-path {
+  padding: 8px 0 4px;
+}
+/* A chapter's call path, drawn as the Overview's is: each call a step right
+   of its caller, joined by an elbow. */
 .call-path-steps {
   list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 8px;
   margin: 0;
   padding: 0;
 }
 .call-path-step {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
+  position: relative;
+  margin-left: calc(var(--depth, 0) * 28px);
+  padding: 0 0 10px 18px;
 }
-.call-path-arrow::before {
-  content: "→";
-  color: var(--accent);
+.call-path-step:last-child {
+  padding-bottom: 0;
+}
+.call-path-step::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.call-path-step:not(:first-child)::after {
+  content: "";
+  position: absolute;
+  left: -24.5px;
+  top: -6px;
+  width: 22px;
+  height: 18px;
+  border-left: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  border-bottom-left-radius: 8px;
+}
+.call-path-arrow {
+  display: none;
 }
 .call-path-symbol {
-  padding: 6px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
+  padding: 0;
+  background: none;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+}
+.call-path-symbol .main-path-owner,
+.call-path-symbol .main-path-name {
   overflow-wrap: anywhere;
 }
 .call-path-caption {
-  margin-top: 10px;
-  color: var(--muted);
+  margin-top: 12px;
+  color: var(--text-muted);
   font-size: var(--fs-caption);
+}
+@media (max-width: 600px) {
+  .call-path-step {
+    margin-left: calc(var(--depth, 0) * 16px);
+  }
+  .call-path-step:not(:first-child)::after {
+    left: -12.5px;
+    width: 10px;
+  }
 }
 .wiki-go-deeper {
   margin-top: 36px;
@@ -2211,6 +2276,15 @@ pre {
 .askbar-trigger:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+/* With the map open, the launcher sits at the foot of the page list, clear
+   of the reading column and its file and line references. */
+.askbar-collapsed.askbar-docked {
+  left: 18px;
+  right: auto;
+}
+.wiki-grid.is-workspace .wiki-toc {
+  padding-bottom: 84px;
 }
 /* On the Overview the content runs under the corner, so the launcher shrinks
    to its icon; the label stays for screen readers and the tooltip. */

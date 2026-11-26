@@ -151,8 +151,8 @@ try {
         assert.match(new URL(page.url()).search, /^\?p=/);
         // The Overview lists the walkthroughs by their questions.
         await page.goto(`${base}/${repo.id}`, { waitUntil: "domcontentloaded" });
-        await page.locator(".walk-cards button").first().waitFor();
-        assert.equal(await page.locator(".walk-cards button").count(), 2);
+        await page.locator(".walk-cards a.walk-card").first().waitFor();
+        assert.equal(await page.locator(".walk-cards a.walk-card").count(), 2);
       }
       assert.deepEqual(errors, []);
       assert.deepEqual(unexpected, []);
