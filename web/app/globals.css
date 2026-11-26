@@ -324,6 +324,7 @@ pre {
   font-size: 14.5px;
   font-weight: var(--fw-regular);
   color: var(--text-secondary);
+  white-space: nowrap;
   transition: color 0.15s;
 }
 .site-header .header-link:hover {
@@ -1881,16 +1882,33 @@ pre {
   color: #7ee787;
 }
 
+/* The open drawer dims the page and closes on a tap outside it. Declared
+   after the base `.toc-scrim { display: none }`, which otherwise wins. */
+@media (max-width: 820px) {
+  .toc-scrim {
+    display: block;
+    position: fixed;
+    inset: var(--top-h) 0 0 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 25;
+  }
+}
+
 /* Mobile TOC positioning — declared last so it wins over the base
    `.wiki-toc { position: sticky }` rule (media queries add no specificity). */
 @media (max-width: 820px) {
+  /* A positioned grid child aligned to start is only as tall as its
+     content; the drawer stretches from the header to the bottom. */
   .wiki-toc {
     position: fixed;
     top: var(--top-h);
     left: 0;
     bottom: 0;
+    align-self: stretch;
+    height: auto;
     max-height: none;
     z-index: 30;
+    border-right: 1px solid var(--border);
     /* The last entries scroll clear of the home indicator. */
     padding-bottom: calc(22px + var(--safe-bottom));
   }

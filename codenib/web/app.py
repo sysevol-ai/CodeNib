@@ -100,6 +100,7 @@ from .schemas import (
 from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
+from .symbol_search import symbol_index
 from .visitor_wikis import router as visitor_wiki_router
 from .walkthroughs import load_walkthroughs, walkthrough_path
 from .worktree import WorktreeFollower
@@ -1925,6 +1926,58 @@ async def threads_overlay(repo_id: str) -> dict:
     if overlay is None:
         raise HTTPException(status_code=404, detail="No thread overlay for this repo")
     return overlay
+
+
+@app.get("/api/repos/{repo_id}/symbols")
+async def search_symbols(repo_id: str, q: str = "", limit: int = 20) -> dict:
+    """Functions, methods and classes whose name matches *q*.
+
+    For the Wiki's jump palette: each result is a definition the index
+    recorded, with its file and 1-based first line, so it opens in the source
+    view. A repository without a graph answers ``available: false``.
+    """
+    with _pinned_bundle(repo_id) as bundle:
+        graph = await _run_pinned_thread(bundle.code_graph)
+        if graph is None:
+            return {"available": False, "symbols": []}
+        index = await _run_pinned_thread(symbol_index, repo_id, graph)
+        found = await _run_pinned_thread(index.search, q[:200], limit)
+        if found:
+            places = await _run_pinned_thread(_symbol_pages, repo_id)
+            for item in found:
+                item["page"] = places.get(item["file"])
+    return {"available": True, "symbols": found}
+
+
+_SYMBOL_PAGES_TTL_S = 300.0
+_symbol_pages_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _symbol_pages(repo_id: str) -> dict:
+    """The first Wiki page, in outline order, that cites each file.
+
+    Outline order puts the top-level areas first, so a definition is shown in
+    the area the map draws it in. Kept for a few minutes: pages change only
+    when they are regenerated.
+    """
+    now = monotonic()
+    cached = _symbol_pages_cache.get(repo_id)
+    if cached and now - cached[0] < _SYMBOL_PAGES_TTL_S:
+        return cached[1]
+    places: dict[str, dict] = {}
+    try:
+        pages = _annotation_pages(repo_id)
+    except Exception:  # noqa: BLE001 - definitions still list without pages
+        pages = []
+    for page in pages:
+        if page.get("id") == "overview":
+            continue
+        for cite in page.get("citations") or []:
+            file = str(cite.get("file") or "")
+            if file and file not in places:
+                places[file] = {"id": page.get("id"), "title": page.get("title")}
+    _symbol_pages_cache[repo_id] = (now, places)
+    return places
 
 
 @app.get("/api/repos/{repo_id}/walkthroughs")

@@ -25,7 +25,8 @@ import WikiToc from "@/components/WikiToc";
 import WikiGraphPane from "@/components/WikiGraphPane";
 import Walkthrough, { WalkthroughList } from "@/components/Walkthrough";
 import type { WalkthroughSet } from "@/lib/walkthrough";
-import { buildWikiGraph } from "@/lib/wikiGraph";
+import { buildWikiGraph, NEUTRAL_COLOR } from "@/lib/wikiGraph";
+import JumpPalette, { type JumpPage } from "@/components/JumpPalette";
 import { childPages } from "@/lib/wikiNav";
 import { displaySymbol } from "@/lib/symbols";
 import AreaMap from "@/components/AreaMap";
@@ -455,6 +456,8 @@ function MultimodalMedia({
 
 // Below this width the map would squeeze the reader, so the page stays a document.
 const WORKSPACE_MEDIA = "(min-width: 1200px)";
+const DRAWER_MEDIA = "(max-width: 820px)";
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MAP_HIDDEN_KEY = "cm-wiki-map-hidden";
 const READER_WIDTH_KEY = "cm-wiki-reader-width";
 
@@ -533,6 +536,14 @@ export default function WikiPageView({
   const [pageError, setPageError] = useState<string | null>(null);
   const [tocLoading, setTocLoading] = useState(true);
   const [tocOpen, setTocOpen] = useState(false);
+  // At phone and tablet widths the page list is a drawer; closed, it is off
+  // screen and must not take keyboard focus.
+  const [drawerMode, setDrawerMode] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(DRAWER_MEDIA).matches,
+  );
+  const tocRef = useRef<HTMLElement>(null);
+  const [jumpOpen, setJumpOpen] = useState(false);
+  const jumpTriggerRef = useRef<HTMLButtonElement>(null);
   // Commit window: empty when this repo has no prebuilt snapshots, in which
   // case the rail keeps its static "Last indexed" label.
   const [commits, setCommits] = useState<CommitRef[]>([]);
@@ -834,6 +845,9 @@ export default function WikiPageView({
   }, [headings]);
 
   function pick(id: string) {
+    // Chosen from the drawer, the new page's heading takes the focus the
+    // drawer had, once the page is on screen.
+    if (drawerMode && tocOpen) headingFocus.current = true;
     setActiveId(id);
     setWalkAt(null);
     setTocOpen(false);
@@ -874,6 +888,86 @@ export default function WikiPageView({
     setActiveHeading(id);
   }
 
+  useEffect(() => {
+    const query = window.matchMedia(DRAWER_MEDIA);
+    const update = () => setDrawerMode(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (tocRef.current) tocRef.current.inert = drawerMode && !tocOpen;
+  }, [drawerMode, tocOpen]);
+
+  // As a drawer, the page list takes focus on the current page when it opens,
+  // keeps Tab inside itself, closes on Esc, and hands focus back to its toggle.
+  const tocToggleRef = useRef<HTMLButtonElement>(null);
+  const headingFocus = useRef(false);
+  useEffect(() => {
+    if (!drawerMode || !tocOpen) return undefined;
+    const list = tocRef.current;
+    const current =
+      list?.querySelector<HTMLElement>('[aria-current="page"], .toc-link.active') ??
+      list?.querySelector<HTMLElement>("a[href], button");
+    current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setTocOpen(false);
+        tocToggleRef.current?.focus();
+        return;
+      }
+      if (event.key !== "Tab" || !list) return;
+      const focusable = [
+        ...list.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), select, [tabindex]:not([tabindex="-1"])'),
+      ].filter((element) => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const inside = list.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || !inside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !inside)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [drawerMode, tocOpen]);
+
+  useEffect(() => {
+    if (!headingFocus.current || !page) return;
+    const heading = document.querySelector<HTMLElement>(".wiki-main h1");
+    if (!heading) return;
+    headingFocus.current = false;
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+  }, [page]);
+
+  // Cmd/Ctrl+K anywhere, or "/" outside a text field, opens the jump palette.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      // The palette takes over from the page-list drawer, so the two never
+      // trap focus against each other.
+      if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        setTocOpen(false);
+        setJumpOpen((open) => !open);
+      } else if (event.key === "/" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        setTocOpen(false);
+        setJumpOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   // Esc closes the graph explorer modal.
   useEffect(() => {
     if (!graphOpen) return;
@@ -893,6 +987,19 @@ export default function WikiPageView({
     return () => document.removeEventListener("keydown", onKey);
   }, [sourceCitation]);
 
+  // The source dialog takes focus when it opens and gives it back when it
+  // closes, so the keyboard never stays on the page behind it.
+  const sourceModalRef = useRef<HTMLDivElement>(null);
+  const sourceOpen = !!sourceCitation;
+  useEffect(() => {
+    if (!sourceOpen) return undefined;
+    const before = document.activeElement as HTMLElement | null;
+    sourceModalRef.current?.querySelector<HTMLElement>(".source-modal-close")?.focus();
+    return () => {
+      if (before && document.contains(before)) before.focus();
+    };
+  }, [sourceOpen]);
+
   // An address naming a walkthrough this repository does not have shows the page.
   const walk = walkAt ? walkthroughs?.walks.find((item) => item.id === walkAt.id) ?? null : null;
   const walking = !!walkAt && (walkthroughs === undefined || !!walk);
@@ -902,6 +1009,18 @@ export default function WikiPageView({
     () => buildWikiGraph(pages, areaMap),
     [pages, areaMap],
   );
+  // Every page for the jump palette, each with its area's colour and name.
+  const jumpPages = useMemo(() => {
+    const found: JumpPage[] = [];
+    const visit = (list: WikiPageRef[], area?: string) => {
+      for (const item of list) {
+        found.push({ id: item.id, title: item.title, area, color: wikiGraph.colors.get(item.id) ?? NEUTRAL_COLOR });
+        visit(item.children, area ?? (item.id === "overview" ? undefined : item.title));
+      }
+    };
+    visit(pages);
+    return found;
+  }, [pages, wikiGraph]);
 
   useEffect(() => {
     const query = window.matchMedia(WORKSPACE_MEDIA);
@@ -1075,7 +1194,29 @@ export default function WikiPageView({
     <div className="wiki wiki-reading">
       <Header
         actions={
-          repo && canAsk ? (
+          <>
+          {repo && (
+            <button
+              ref={jumpTriggerRef}
+              type="button"
+              className="jump-trigger"
+              onClick={() => {
+                setTocOpen(false);
+                setJumpOpen(true);
+              }}
+              aria-label={`Search ${repo.repo}`}
+              aria-keyshortcuts="Meta+K Control+K /"
+              title={`Jump to a page, walkthrough or function (${IS_MAC ? "⌘K" : "Ctrl+K"})`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" />
+              </svg>
+              <span className="jump-trigger-label">Search</span>
+              <kbd>{IS_MAC ? "⌘K" : "Ctrl K"}</kbd>
+            </button>
+          )}
+          {repo && canAsk ? (
             <AppLink
               className="icon-btn header-ask"
               href={`/${encodeURIComponent(repoId)}/ask`}
@@ -1088,16 +1229,21 @@ export default function WikiPageView({
             >
               <AskIcon />
             </AppLink>
-          ) : null
+          ) : null}
+          </>
         }
         center={
           <nav className="breadcrumb" aria-label="Breadcrumb">
             <button
+              ref={tocToggleRef}
               className="toc-toggle"
               aria-label="Toggle section list"
+              aria-expanded={tocOpen}
               onClick={() => setTocOpen((o) => !o)}
             >
-              ☰
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
             </button>
             <span className="crumb-sep">/</span>
             <span className="crumb-repo mono">{repo ? repo.repo : repoId}</span>
@@ -1172,8 +1318,25 @@ export default function WikiPageView({
             : undefined
         }
       >
-        {tocOpen && <div className="toc-scrim" onClick={() => setTocOpen(false)} aria-hidden />}
-        <aside className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
+        {tocOpen && (
+          <div
+            className="toc-scrim"
+            onClick={() => {
+              setTocOpen(false);
+              tocToggleRef.current?.focus();
+            }}
+            aria-hidden
+          />
+        )}
+        <aside
+          ref={tocRef}
+          className={`wiki-toc ${tocOpen ? "open" : ""}`}
+          data-rail="left"
+          // Open as a drawer, the page list is a modal dialog over the page.
+          {...(drawerMode && tocOpen
+            ? { role: "dialog", "aria-modal": true, "aria-label": "Pages in this Wiki" }
+            : {})}
+        >
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
           {commits.length > 0 ? (
             <div className="rail-sub commit-picker">
@@ -1768,8 +1931,28 @@ export default function WikiPageView({
           aria-label="Source definition"
         >
           <div
+            ref={sourceModalRef}
             className="source-modal"
             onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              // Keep Tab inside the source while it is open.
+              if (event.key !== "Tab") return;
+              const focusable = [
+                ...event.currentTarget.querySelectorAll<HTMLElement>(
+                  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                ),
+              ].filter((element) => element.offsetParent !== null);
+              if (!focusable.length) return;
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }}
           >
             <div className="source-modal-head">
               <div>
@@ -1813,6 +1996,39 @@ export default function WikiPageView({
             </div>
           </div>
         </div>
+      )}
+
+      {jumpOpen && repo && (
+        <JumpPalette
+          repoId={repoId}
+          repoName={repo.repo}
+          pages={jumpPages}
+          walks={(walkthroughs?.walks ?? []).map((item) => ({
+            id: item.id,
+            title: item.tab || item.title,
+            also: item.title,
+          }))}
+          searchCode={hasGraph && !staticRuntime}
+          onClose={() => {
+            setJumpOpen(false);
+            // The source dialog, when one opens, takes focus from here and
+            // hands it back to the trigger when it closes.
+            jumpTriggerRef.current?.focus();
+          }}
+          onPage={pick}
+          onWalk={(id) => openWalk(id)}
+          onSymbol={(symbol) =>
+            setSourceCitation({
+              file: symbol.file,
+              start_line: symbol.line,
+              end_line: symbol.end_line ?? symbol.line,
+              node_name: symbol.name,
+              type: "definition",
+              score: null,
+              content: null,
+            })
+          }
+        />
       )}
 
       {/* A walkthrough's narration sits where the Ask bar floats; the header keeps Ask. */}
