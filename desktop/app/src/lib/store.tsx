@@ -23,7 +23,13 @@ export type View =
   | { kind: "page"; repo: string; page: string }
   | { kind: "review"; repo: string; task: string }
   | { kind: "revision"; repo: string; id: string }
+  | { kind: "file"; repo: string; file: string }
   | { kind: "map" | "impact" | "walkthrough"; repo: string; page: string };
+
+export interface RepoFile {
+  path: string;
+  cited_by: { page: string; title: string; lines: [number, number][] }[];
+}
 
 export interface WikiProgress {
   writing: boolean;
@@ -43,6 +49,8 @@ export interface RepoData {
   mapAreas?: MapArea[] | null;
   /** Without an outline: areas derived from the file call graph. */
   fileAreas?: FileAreas | null;
+  /** The repository's files and the pages that cite each one. */
+  files?: RepoFile[];
   /** Better paragraphs proposed from comments. */
   revisions?: Revision[];
   /** Which pages a writing agent has finished. */
@@ -62,6 +70,7 @@ interface Store {
   open: (path: string) => void;
   reload: (path: string) => Promise<void>;
   refreshNotes: (path: string) => Promise<void>;
+  loadFiles: (path: string) => Promise<void>;
   call: <T>(path: string, method: string, apiPath: string, body?: unknown) => Promise<T>;
   /** The add-a-repository dialog, when it is open. */
   adding: Adding | null;
@@ -235,6 +244,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patchData],
   );
 
+  const loadFiles = useCallback(
+    async (path: string) => {
+      const filesPath = repoPath(dataRef.current[path], "/files");
+      if (!filesPath) return;
+      try {
+        const r = await backend.api<{ files: RepoFile[] }>(path, "GET", filesPath);
+        patchData(path, { files: r.files });
+      } catch {
+        patchData(path, { files: [] });
+      }
+    },
+    [patchData],
+  );
+
   const refreshRepos = useCallback(async () => {
     const list = await backend.repositories();
     setRepos(list);
@@ -390,6 +413,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       open,
       reload,
       refreshNotes,
+      loadFiles,
       call,
       adding,
       setAdding,
@@ -419,6 +443,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       open,
       reload,
       refreshNotes,
+      loadFiles,
       call,
       adding,
       chooseFolder,

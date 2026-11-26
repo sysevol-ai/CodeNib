@@ -1229,3 +1229,71 @@ button.sb-service:hover {
 .revision-new {
   background: color-mix(in oklab, var(--add-bg) 70%, var(--sheet));
 }
+
+/* ---------- files, and the pages that cite them ---------- */
+.sb-folder .sb-chev {
+  width: 12px;
+  height: 12px;
+}
+
+.sb-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
+.sb-file-cites {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--nib);
+  font-variant-numeric: tabular-nums;
+}
+
+.file-title .mono {
+  font-size: 0.8em;
+}
+
+.file-cited {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-cited-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted-ink);
+  margin-right: 4px;
+}
+
+.file-cited-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.file-cited-page:hover {
+  border-color: var(--nib-line);
+  color: var(--nib);
+}
+
+.file-cited-page svg {
+  width: 13px;
+  height: 13px;
+}
+
+.file-code .code-row.is-hl {
+  background: transparent;
+  box-shadow: inset 3px 0 0 var(--nib-line);
+}

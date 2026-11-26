@@ -6,6 +6,7 @@ import { CommandPalette } from "@/components/app/CommandPalette";
 import { InboxView } from "@/components/app/InboxView";
 import { ReviewView } from "@/components/app/ReviewView";
 import { RevisionView } from "@/components/app/RevisionView";
+import { FileView } from "@/components/app/FileView";
 import { Opening, Welcome } from "@/components/app/Screens";
 import { ImpactView, MapView, WalkthroughView } from "@/components/app/AnalysisViews";
 import { ModeSwitch, Toolbar, type Mode } from "@/components/app/Toolbar";
@@ -89,7 +90,7 @@ function ReviewScreen({ repo, task }: { repo: string; task: string }) {
 }
 
 function Shell() {
-  const { view, setPalette, palette, chooseFolder, openFromGitHub, setAccountsOpen } = useStore();
+  const { view, setPalette, palette, chooseFolder, openFromGitHub, setAccountsOpen, repos } = useStore();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -130,6 +131,14 @@ function Shell() {
             </>
           )}
           {view.kind === "review" && <ReviewScreen repo={view.repo} task={view.task} />}
+          {view.kind === "file" && (
+            <>
+              <Toolbar parts={[repos.find((r) => r.path === view.repo)?.name ?? "", ...view.file.split("/")]} />
+              <ScrollArea className="main-scroll">
+                <FileView key={view.file} repo={view.repo} file={view.file} />
+              </ScrollArea>
+            </>
+          )}
           {view.kind === "revision" && (
             <>
               <Toolbar parts={["Inbox", "Improve this passage"]} />
