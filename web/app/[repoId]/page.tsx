@@ -19,6 +19,7 @@ import CodeActivity from "@/components/CodeActivity";
 import { activityMarks } from "@/lib/codeActivity";
 import PageBoundaryCard from "@/components/PageBoundary";
 import CallPathFigure from "@/components/CallPathFigure";
+import ChapterCards from "@/components/ChapterCards";
 import MainPath from "@/components/MainPath";
 import ReadNext from "@/components/ReadNext";
 import WikiToc from "@/components/WikiToc";
@@ -1550,6 +1551,7 @@ export default function WikiPageView({
                       onPick={pick}
                       renderText={renderStageText}
                       colors={wikiGraph.colors}
+                      commit={repo?.commit_short}
                     />
                   )}
                   {activeId === "overview" && walkthroughs && (
@@ -1615,14 +1617,22 @@ export default function WikiPageView({
                 <CodeActivity overlay={codeActivity} pageId={activeId} />
               )}
               {/* A withheld page must not strand a reader above its detail pages. */}
-              {page && (
+              {page && activeId === "overview" ? (
+                <ChapterCards
+                  links={readNext}
+                  pages={pages}
+                  areas={areaMap?.available ? areaMap.areas : undefined}
+                  colors={wikiGraph.colors}
+                  onPick={pick}
+                />
+              ) : page ? (
                 <ReadNext
-                  title={activeId === "overview" ? "Chapters" : "Read next"}
+                  title="Read next"
                   links={readNext}
                   colors={workspace ? wikiGraph.colors : undefined}
                   onPick={pick}
                 />
-              )}
+              ) : null}
               {page && (
                 <div
                   className={`page-provenance ${

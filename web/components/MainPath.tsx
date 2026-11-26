@@ -32,13 +32,18 @@ export default function MainPath({
   onPick,
   renderText,
   colors,
+  commit,
 }: {
   journey: Journey;
   onPick: (pageId: string) => void;
   renderText: (markdown: string) => ReactNode;
   /** Each page's colour on the Wiki map, so a step shows where its code lives. */
   colors?: Map<string, string>;
+  /** The snapshot the path was read from. */
+  commit?: string | null;
 }) {
+  const steps = journey.stages.length;
+  const areas = new Set(journey.stages.map((stage) => stage.page?.id).filter(Boolean)).size;
   return (
     <figure className="main-path" aria-label={journey.title}>
       <figcaption className="main-path-head">
@@ -49,6 +54,14 @@ export default function MainPath({
           {colors && " Each colour is the area of the Wiki map where a step's code lives; the line into a step takes its colour."}
         </p>
       </figcaption>
+      <div className="main-path-panel">
+      <div className="main-path-bar">
+        <span>
+          {steps} {steps === 1 ? "step" : "steps"}
+          {areas > 1 ? ` across ${areas} areas` : ""}
+        </span>
+        {commit && <code>at {commit}</code>}
+      </div>
       <ol className={`main-path-steps${colors ? " is-coloured" : ""}`}>
         {journey.stages.map((stage, position) => {
           const area = stage.page ? colors?.get(stage.page.id) : undefined;
@@ -89,6 +102,7 @@ export default function MainPath({
           );
         })}
       </ol>
+      </div>
     </figure>
   );
 }

@@ -43,7 +43,7 @@
   grid-area: title;
   margin: 0 0 12px;
   font-size: 44px;
-  font-weight: 650;
+  font-weight: 540;
   line-height: 1.04;
   letter-spacing: -0.035em;
   color: #fff;
@@ -51,7 +51,7 @@
 }
 .poster-owner {
   color: var(--p-dim);
-  font-weight: 500;
+  font-weight: 400;
 }
 .poster-lead {
   grid-area: lead;

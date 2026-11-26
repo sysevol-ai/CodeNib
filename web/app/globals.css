@@ -29,6 +29,10 @@
   --bg-muted: #f8f9fa;
   --border-subtle: #dadce0;    /* the 1px hairline that separates sections */
   --border-strong: #bdc1c6;
+  /* Framed surfaces in the reader (the main path, chapter cards). */
+  --panel-bg: #fbfbfc;
+  --panel-bg-hover: #f4f5f6;
+  --panel-line: #dfe1e5;
 
   /* Text: three greys, all readable on white. */
   --text-primary: #1f1f1f;     /* 16.5:1 */
@@ -116,6 +120,9 @@
 [data-theme="dark"] {
   --bg-page: #121315;
   --bg-surface: #1a1b1e;
+  --panel-bg: #16171a;
+  --panel-bg-hover: #1b1c20;
+  --panel-line: rgba(232, 234, 237, 0.1);
   --bg-subtle: #1f2023;
   --bg-muted: #17181b;
   --border-subtle: #2a2b2f;
@@ -271,7 +278,7 @@ pre {
 }
 .site-header .brand .brand-logo {
   display: block;
-  height: 32px;
+  height: 40px;
   width: auto;
 }
 .site-header .brand .brand-logo.for-dark,
@@ -281,9 +288,14 @@ pre {
 [data-theme="dark"] .site-header .brand .brand-logo.for-dark {
   display: block;
 }
+@media (max-width: 1180px) {
+  .site-header .brand .brand-logo {
+    height: 36px;
+  }
+}
 @media (max-width: 540px) {
   .site-header .brand .brand-logo {
-    height: 28px;
+    height: 30px;
   }
 }
 .site-header .brand .brand-mark {
@@ -868,15 +880,18 @@ pre {
   font-size: var(--fs-caption);
 }
 .wiki-disclosure {
-  margin: 20px 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  margin: 28px 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .wiki-disclosure > summary {
-  padding: 10px 14px;
-  color: var(--muted);
+  padding: 12px 0;
+  color: var(--text-secondary);
   font-size: var(--fs-small);
   cursor: pointer;
+}
+.wiki-disclosure > summary:hover {
+  color: var(--text-primary);
 }
 .wiki-disclosure[open] > summary {
   border-bottom: 1px solid var(--border-subtle);
@@ -888,46 +903,72 @@ pre {
   box-shadow: none;
 }
 .main-path {
-  margin: 40px 0 28px;
+  margin: 56px 0 32px;
 }
 .main-path-head {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 .main-path-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 22px;
-  font-weight: var(--fw-strong);
-  line-height: 1.3;
-  letter-spacing: -0.012em;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.022em;
   text-wrap: balance;
 }
 .main-path-title code {
-  font-size: 0.9em;
+  font-size: 0.84em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 .main-path-note {
-  margin: 6px 0 0;
+  max-width: 62ch;
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  line-height: 1.55;
+}
+.main-path-panel {
+  border: 1px solid var(--panel-line);
+  border-radius: 14px;
+  background: var(--panel-bg);
+  overflow: hidden;
+}
+/* The panel's own bar: how long the path is, and the snapshot it was read from. */
+.main-path-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 20px;
+  border-bottom: 1px solid var(--panel-line);
   color: var(--text-muted);
   font-size: var(--fs-caption);
+}
+.main-path-bar code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
 }
 .main-path-steps {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 20px 20px 4px;
 }
 .main-path-step {
   position: relative;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 12px;
-  padding-bottom: 16px;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 14px;
+  padding-bottom: 18px;
 }
 .main-path-step:not(:last-child)::before {
   content: "";
   position: absolute;
-  left: 13.5px;
-  top: 32px;
+  left: 12.5px;
+  top: 30px;
   bottom: 4px;
   width: 1px;
   background: var(--border-strong);
@@ -936,13 +977,13 @@ pre {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-pill);
   background: var(--accent-soft);
   color: var(--accent-ink);
   font-size: var(--fs-caption);
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
 .main-path-body {
@@ -953,31 +994,43 @@ pre {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 4px 12px;
 }
 .main-path-symbol {
   color: var(--text-primary);
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
-/* The area a step's code lives in. Its map colour is on the step's ring and
-   on the line that reaches the step; the name itself is a quiet link. */
+/* The area a step's code lives in: its map colour as a dot, the name a quiet
+   link beside the call. */
 .main-path-area {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
   border: none;
   background: none;
   padding: 0;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font: inherit;
   font-size: var(--fs-caption);
-  text-decoration: underline;
-  text-decoration-color: var(--border-strong);
-  text-underline-offset: 3px;
+  text-align: left;
   cursor: pointer;
+}
+.main-path-area::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--area, var(--border-strong));
+  transform: translateY(-1px);
 }
 .main-path-area:hover,
 .main-path-area:focus-visible {
-  color: var(--accent);
-  text-decoration-color: currentColor;
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .main-path-area:focus-visible {
   outline: none;
@@ -986,12 +1039,12 @@ pre {
 }
 /* A step whose code is in no area of the map: a quiet ring, no colour. */
 .main-path-steps.is-coloured .main-path-step:not(.has-area) .main-path-index {
-  background: var(--bg-surface);
+  background: var(--panel-bg);
   box-shadow: inset 0 0 0 1.5px var(--border-strong);
   color: var(--text-secondary);
 }
 .main-path-step.has-area .main-path-index {
-  background: var(--bg-surface);
+  background: var(--panel-bg);
   box-shadow: inset 0 0 0 1.5px var(--area);
   color: var(--text-primary);
 }
@@ -999,10 +1052,22 @@ pre {
   background: color-mix(in srgb, var(--next) 70%, transparent);
 }
 .main-path-text > * {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
 }
 .main-path-text .markdown {
-  font-size: var(--fs-small);
+  font-size: 15px;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .main-path-bar {
+    padding-inline: 16px;
+  }
+  .main-path-steps {
+    padding: 16px 14px 2px;
+  }
+  .main-path-step {
+    gap: 12px;
+  }
 }
 .call-path {
   margin: 0;
@@ -1364,17 +1429,30 @@ pre {
   scroll-margin-bottom: var(--askbar-h);
 }
 .markdown h1 {
-  font-size: clamp(28px, 2.5vw, 34px);
-  line-height: 1.15;
-  font-weight: var(--fw-strong);
-  letter-spacing: -0.022em;
+  font-size: clamp(30px, 2.7vw, 38px);
+  line-height: 1.1;
+  font-weight: 550;
+  letter-spacing: -0.03em;
   text-wrap: balance;
-  margin: 0 0 14px;
+  margin: 0 0 16px;
+}
+/* A repository's own name heads its Overview: display size, the owner a step
+   back, as on the home page and the phone poster. */
+.markdown h1.is-repo-title {
+  font-size: clamp(36px, 3.5vw, 54px);
+  line-height: 1.02;
+  font-weight: 520;
+  letter-spacing: -0.04em;
+  margin-bottom: 20px;
+}
+.markdown h1 .title-owner {
+  color: var(--text-muted);
+  font-weight: 400;
 }
 /* The sentence under the title is the page's claim. */
 .markdown h1 + p {
-  color: var(--text-primary);
-  font-size: 18px;
+  color: color-mix(in srgb, var(--text-primary) 82%, var(--text-secondary));
+  font-size: 19px;
   line-height: 1.6;
 }
 /* The index's counts under the Overview's claim: one line of facts, the
@@ -1382,9 +1460,9 @@ pre {
 .wiki-repo-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 20px;
-  margin: 14px 0 0;
-  font-size: var(--fs-caption);
+  gap: 6px 24px;
+  margin: 20px 0 0;
+  font-size: var(--fs-small);
 }
 .wiki-repo-facts > div {
   display: flex;
@@ -1395,7 +1473,6 @@ pre {
 }
 .wiki-repo-facts dd {
   margin: 0;
-  font-family: var(--font-mono);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
@@ -1404,12 +1481,12 @@ pre {
   color: var(--text-muted);
 }
 .markdown h2 {
-  font-size: 22px;
-  line-height: 1.3;
-  font-weight: var(--fw-strong);
-  letter-spacing: -0.012em;
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: -0.022em;
   text-wrap: balance;
-  margin: 44px 0 10px;
+  margin: 56px 0 12px;
 }
 .markdown h3 {
   font-size: 17px;
@@ -1461,7 +1538,7 @@ pre {
   background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   border-radius: var(--radius-sm);
   padding: 0.1em 0.36em;
-  font-size: 0.86em;
+  font-size: max(13px, 0.875em);
   color: var(--text-primary);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
@@ -2905,7 +2982,7 @@ button.evidence-row:hover {
   padding: 8px 2px;
   border-bottom: 1px solid var(--border);
   color: var(--text-secondary);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   text-decoration: none;
   scroll-margin-top: calc(var(--top-h) + 12px);
 }
@@ -3717,7 +3794,7 @@ a.evidence-row:hover {
   padding: 3px 6px;
   color: var(--muted);
   background: var(--bg-subtle);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   text-decoration: none;
 }
 a.wiki-media-citation:hover {
@@ -4313,7 +4390,7 @@ a.codepanel-name:hover {
   margin: 0 0 0 4px;
   cursor: pointer;
   font: inherit;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   font-family: var(--font-mono);
   color: var(--text-muted);
   text-decoration: none;
@@ -4454,7 +4531,7 @@ a.codepanel-name:hover {
   background: none;
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   line-height: 1.5;
   cursor: pointer;
   text-decoration: underline;
@@ -4479,7 +4556,7 @@ a.codepanel-name:hover {
 }
 .cite-group .cite-src {
   margin: 0 6px 0 0;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   color: var(--text-muted);
 }
 .cite-group .cite-src:hover {
