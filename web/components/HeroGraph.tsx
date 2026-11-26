@@ -31,6 +31,7 @@ export default function HeroGraph({
   route = null,
   wikiHref,
   onPick,
+  retryAreaLabels = false,
 }: {
   repoName: string;
   pages: WikiPageRef[];
@@ -39,6 +40,8 @@ export default function HeroGraph({
   route?: MapRoute | null;
   wikiHref: string;
   onPick: (id: string) => void;
+  /** Area labels try other sides before they are left out. */
+  retryAreaLabels?: boolean;
 }) {
   const graph = useMemo(() => buildWikiGraph(pages, map), [pages, map]);
   // The largest areas first; they have the most to show.
@@ -188,6 +191,7 @@ export default function HeroGraph({
             : undefined
         }
         routeLegend={hasRoute ? stops : undefined}
+        retryAreaLabels={retryAreaLabels}
         onRoute={() => onPick("overview")}
         header={
           <>

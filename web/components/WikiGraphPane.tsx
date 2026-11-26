@@ -62,6 +62,8 @@ function placeLabels(
   priority: (node: WikiGraphNode) => number,
   /** Where the status line begins: a label below it would be covered. */
   floor = Infinity,
+  /** Area labels too try the other sides before they are left out. */
+  retryAreas = false,
 ): PlacedLabel[] {
   const taken: { left: number; right: number; top: number; bottom: number }[] = [];
   const placed: PlacedLabel[] = [];
@@ -82,7 +84,8 @@ function placeLabels(
     const point = points.get(node.id)!;
     const lines = labelLines(node.title);
     const extra = (lines.length - 1) * LABEL_LINE_PX;
-    const width = Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_PX;
+    // The focused or pointed name is set bold, about 8% wider.
+    const width = Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_PX * (priority(node) >= 3.5 ? 1.08 : 1);
     const sx = point.x * view.k + view.x;
     const sy = point.y * view.k + view.y;
     const radius = node.radius * view.k;
@@ -109,7 +112,8 @@ function placeLabels(
       box.left - pad < other.right && box.right + pad > other.left && box.top < other.bottom && box.bottom > other.top;
     const clash = taken.some(hits) || marks.some((mark) => mark.id !== node.id && hits(mark));
     const outside = box.left < 0 || box.right > paneWidth || box.bottom > floor;
-    if ((clash || outside) && priority(node) < 4) continue;
+    const retry = retryAreas && node.kind === "area" && priority(node) >= 3;
+    if ((clash || outside) && priority(node) < 4 && !retry) continue;
     if (clash || outside) {
       // A label that must show (the focused area's) tries the other side,
       // then above and below, before it is allowed to cover anything.
@@ -146,7 +150,7 @@ function placeLabels(
       // names and the status line, even if it crosses a mark.
       const found =
         options.map((option) => ({ option, box: free(option) })).find((entry) => entry.box) ??
-        (box.bottom > floor
+        (box.bottom > floor && priority(node) >= 4
           ? options.map((option) => ({ option, box: free(option, false) })).find((entry) => entry.box)
           : undefined);
       if (found) {
@@ -154,6 +158,7 @@ function placeLabels(
         placed.push({ id: node.id, lines, ...found.option, box: found.box! });
         continue;
       }
+      if (priority(node) < 4) continue;
     }
     taken.push(box);
     placed.push({ id: node.id, lines, anchor, dx, dy, box });
@@ -210,6 +215,7 @@ function routeSwatch(stops: RouteStop[], byId: Map<string, WikiGraphNode>): stri
 export const ROUTE_TRAVEL_MS = 720;
 // Geist Mono at 13 px is about this wide per character.
 const ROUTE_CHAR_PX = 7.9;
+const ROUTE_LINE_PX = 16;
 
 interface Box {
   left: number;
@@ -253,6 +259,7 @@ export default function WikiGraphPane({
   route,
   routeLegend,
   onRoute,
+  retryAreaLabels = false,
 }: {
   graph: WikiGraph;
   activeId: string;
@@ -296,6 +303,8 @@ export default function WikiGraphPane({
   routeLegend?: RouteStop[];
   /** Opens the page that tells the path in words. */
   onRoute?: () => void;
+  /** Area labels try other sides before they are left out (the free map). */
+  retryAreaLabels?: boolean;
 }) {
   const paneRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -459,8 +468,8 @@ export default function WikiGraphPane({
       if (node.kind === "area") return 3;
       if (near.has(node.id)) return 2;
       return view.k >= 1.7 ? 1 : 0;
-    }, floor);
-  }, [graph, points, view, center, size.width, size.height, footHeight, hoverNode, focusId, pointedArea, near, states]);
+    }, floor, retryAreaLabels);
+  }, [graph, points, view, center, size.width, size.height, footHeight, hoverNode, focusId, pointedArea, near, states, retryAreaLabels]);
 
   // The main path up to the current stop: the hops that crossed areas, where
   // the token travels last, and a free place for the current function's name.
@@ -491,7 +500,13 @@ export default function WikiGraphPane({
     const sx = point.x * view.k + view.x;
     const sy = point.y * view.k + view.y;
     const r = node.radius * view.k;
-    const width = current.label.length * ROUTE_CHAR_PX;
+    // A long name that finds no place on one line may break after its owner:
+    // "dragonbox." over "shorter_interval_case()".
+    const cut = Math.max(current.label.lastIndexOf("."), current.label.lastIndexOf("::") + 1);
+    const layouts: string[][] = [[current.label]];
+    if (cut > 0 && cut < current.label.length - 1 && current.label.length > 22) {
+      layouts.push([current.label.slice(0, cut + 1), current.label.slice(cut + 1)]);
+    }
     // Area labels are placed from an estimate of their width, so keep a margin.
     const taken: Box[] = [
       ...labels.map(({ box }) => ({ left: box.left - 4, right: box.right + 4, top: box.top - 1, bottom: box.bottom + 1 })),
@@ -553,23 +568,33 @@ export default function WikiGraphPane({
     // A phone's status line can run to three lines (the path's heading).
     const statusLines = size.width < 520 ? 3 : 2;
     const bottom = size.height - Math.max(58, legendHeight + statusLines * 19 + 24);
-    const boxOf = (spot: (typeof candidates)[number]) => {
-      const left = sx + spot.dx - (spot.anchor === "middle" ? width / 2 : spot.anchor === "end" ? width : 0);
-      // A 13 px name: cap height above the baseline, the brackets just below.
-      return { left: left - 3, right: left + width + 3, top: sy + spot.dy - 12, bottom: sy + spot.dy + 3 };
-    };
     const inside = (box: Box) => box.left >= 8 && box.right <= size.width - 8 && box.top >= top && box.bottom <= bottom;
-    const spot = candidates.find((option) => {
-      const box = boxOf(option);
-      return inside(box) && !taken.some((other) => overlaps(box, other));
-    });
+    let spot: (typeof candidates)[number] | undefined;
+    let nameLines = layouts[0];
+    for (const lines of layouts) {
+      const width = Math.max(...lines.map((line) => line.length)) * ROUTE_CHAR_PX;
+      const extra = (lines.length - 1) * ROUTE_LINE_PX;
+      const boxOf = (option: (typeof candidates)[number]) => {
+        const left = sx + option.dx - (option.anchor === "middle" ? width / 2 : option.anchor === "end" ? width : 0);
+        // A 13 px name: cap height above the baseline, the brackets just below.
+        return { left: left - 3, right: left + width + 3, top: sy + option.dy - 12, bottom: sy + option.dy + 3 + extra };
+      };
+      spot = candidates.find((option) => {
+        const box = boxOf(option);
+        return inside(box) && !taken.some((other) => overlaps(box, other));
+      });
+      if (spot) {
+        nameLines = lines;
+        break;
+      }
+    }
     return {
       at,
       hops,
       current,
       crossed,
       visited: new Set(stops.slice(0, at + 1).map((stop) => stop.areaId)),
-      label: spot ? { ...spot, x: point.x + spot.dx / view.k, y: point.y + spot.dy / view.k } : null,
+      label: spot ? { ...spot, x: point.x + spot.dx / view.k, y: point.y + spot.dy / view.k, lines: nameLines } : null,
     };
   }, [route, view, points, byId, labels, graph, header, size, headHeight, legendHeight]);
   const newestHop = routeView?.hops.find((hop) => hop.newest) ?? null;
@@ -926,7 +951,11 @@ export default function WikiGraphPane({
                       aria-hidden={layer === "halo" ? true : undefined}
                       className={layer === "halo" ? "wg-route-name-halo" : "wg-route-name"}
                     >
-                      {routeView.current.label}
+                      {routeView.label!.lines.map((line, index) => (
+                        <tspan key={index} x={routeView.label!.x} dy={index ? ROUTE_LINE_PX / view.k : 0}>
+                          {line}
+                        </tspan>
+                      ))}
                     </text>
                   ))}
                 </g>
