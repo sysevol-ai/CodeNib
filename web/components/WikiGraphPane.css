@@ -236,6 +236,10 @@
 .wiki-graph.is-pointing .wg-route-token {
   visibility: hidden;
 }
+.wiki-graph.is-pointing .wg-route-line {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
 .wiki-graph-foot b {
   color: var(--wg-text);
   font-weight: 600;

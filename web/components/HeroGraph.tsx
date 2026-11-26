@@ -105,7 +105,7 @@ export default function HeroGraph({
       code: true,
       detail: (
         <>
-          Step {at + 1} of {stops.length}
+          {`Step\u00a0${at + 1}\u00a0of\u00a0${stops.length}`}
           {place && (
             <>
               {" · "}
@@ -127,7 +127,7 @@ export default function HeroGraph({
           part
         ),
       ),
-      detail: `${stops.length} steps traced in the code index`,
+      detail: `${stops.length}\u00a0steps traced in the code index`,
     };
   } else if (title) {
     idle = { title, detail: `${number.format(references)} recorded references with other areas` };

@@ -421,7 +421,7 @@ export default function WikiGraphPane({
     const width = current.label.length * ROUTE_CHAR_PX;
     // Area labels are placed from an estimate of their width, so keep a margin.
     const taken: Box[] = [
-      ...labels.map(({ box }) => ({ left: box.left - 5, right: box.right + 5, top: box.top - 2, bottom: box.bottom + 2 })),
+      ...labels.map(({ box }) => ({ left: box.left - 4, right: box.right + 4, top: box.top - 1, bottom: box.bottom + 1 })),
       ...graph.nodes
         .filter((other) => other.id !== node.id)
         .map((other) => {
@@ -430,43 +430,58 @@ export default function WikiGraphPane({
           const oy = p.y * view.k + view.y;
           // Arrowheads land just outside an area's mark, so keep clear of
           // them too; a page's small dot needs only its own room.
-          const or = other.radius * view.k + (other.kind === "area" ? 9 : 2);
+          const or = other.radius * view.k + (other.kind === "area" ? 7 : 2);
           return { left: ox - or, right: ox + or, top: oy - or, bottom: oy + or };
         }),
-      // The route's own lines, sampled along each crossing.
+      // The route's own lines, sampled along each crossing. Where a line
+      // meets the current mark it ends under the name's halo, so the last
+      // stretch next to the mark does not count.
       ...hops.flatMap((hop) =>
         Array.from({ length: 13 }, (_, step) => {
           const p = curvePoint(hop.curve, step / 12);
           const hx = p.x * view.k + view.x;
           const hy = p.y * view.k + view.y;
+          if (Math.hypot(hx - sx, hy - sy) < r + 16) return null;
           return { left: hx - 5, right: hx + 5, top: hy - 5, bottom: hy + 5 };
-        }),
+        }).filter((box): box is Box => box !== null),
       ),
     ];
-    // Nearest first: straight above or below the mark, then its corners, then
-    // a step further out. A name with no free place stays in the status line.
+    // Nearest first, all the way round the mark: straight above and below,
+    // then beside it, then the diagonals, each a step further out in turn.
+    // A name with no free place stays in the status line.
     const candidates: { anchor: "start" | "middle" | "end"; dx: number; dy: number }[] = [];
-    for (const out of [0, 10, 20, 32, 46, 62]) {
+    const angles = [-90, 90, 0, 180, -30, -150, 30, 150, -60, -120, 60, 120];
+    for (const out of [10, 22, 36, 52, 70]) {
+      for (const angle of angles) {
+        const radians = (angle * Math.PI) / 180;
+        const cos = Math.cos(radians);
+        const sin = Math.sin(radians);
+        const reach = r + out;
+        const anchor: "start" | "middle" | "end" = cos > 0.3 ? "start" : cos < -0.3 ? "end" : "middle";
+        // Text sits above its baseline: lift names below the mark by a line.
+        const dy = reach * sin + (sin > 0.3 ? 13 : sin < -0.3 ? -3 : 5);
+        candidates.push({ anchor, dx: reach * cos, dy });
+      }
+    }
+    // Beside the area's own name too: right of it, left of it, under it.
+    const own = labels.find((label) => label.id === node.id)?.box;
+    if (own) {
+      const ownMid = (own.top + own.bottom) / 2 - sy + 5;
       candidates.push(
-        { anchor: "middle", dx: 0, dy: -(r + 13 + out) },
-        { anchor: "middle", dx: 0, dy: r + 23 + out },
-        { anchor: "start", dx: r + 9 + out, dy: -(r + 3 + out) },
-        { anchor: "end", dx: -(r + 9 + out), dy: -(r + 3 + out) },
-        { anchor: "start", dx: r + 9 + out, dy: r + 15 + out },
-        { anchor: "end", dx: -(r + 9 + out), dy: r + 15 + out },
-        { anchor: "start", dx: r + 10 + out, dy: 5 },
-        { anchor: "end", dx: -(r + 10 + out), dy: 5 },
+        { anchor: "start", dx: own.right + 10 - sx, dy: ownMid },
+        { anchor: "end", dx: own.left - 10 - sx, dy: ownMid },
+        { anchor: "start", dx: own.left - sx, dy: own.bottom - sy + 16 },
+        { anchor: "start", dx: own.left - sx, dy: own.top - sy - 6 },
       );
     }
-    // Keep clear of the header (which wraps to two lines on a phone) and of
-    // the status line with its legend.
     const top = (header ? Math.max(HEADER_PX, headHeight + 14) : 0) + 6;
     // A phone's status line can run to three lines (the path's heading).
     const statusLines = size.width < 520 ? 3 : 2;
     const bottom = size.height - Math.max(58, legendHeight + statusLines * 19 + 24);
     const boxOf = (spot: (typeof candidates)[number]) => {
       const left = sx + spot.dx - (spot.anchor === "middle" ? width / 2 : spot.anchor === "end" ? width : 0);
-      return { left: left - 3, right: left + width + 3, top: sy + spot.dy - 13, bottom: sy + spot.dy + 5 };
+      // A 13 px name: cap height above the baseline, the brackets just below.
+      return { left: left - 3, right: left + width + 3, top: sy + spot.dy - 12, bottom: sy + spot.dy + 3 };
     };
     const inside = (box: Box) => box.left >= 8 && box.right <= size.width - 8 && box.top >= top && box.bottom <= bottom;
     const spot = candidates.find((option) => {
@@ -569,13 +584,14 @@ export default function WikiGraphPane({
       const summary = activity?.[node.id] ? markSummary(activity[node.id]) : "";
       const described = describe?.(node);
       if (described) return described;
-      if (card && card.node.id === node.id && (card.node.symbols != null || card.rows.length)) {
-        const size =
-          card.node.symbols != null
-            ? `${number.format(card.node.symbols)} ${card.node.symbols === 1 ? "symbol" : "symbols"}${
-                card.node.files != null ? ` · ${number.format(card.node.files)} ${card.node.files === 1 ? "file" : "files"}` : ""
-              }`
-            : "";
+      // An area with no indexed code (documentation, tooling) has no facts
+      // to tell; it keeps the plain line rather than printing zeros.
+      if (card && card.node.id === node.id && (card.node.symbols || card.rows.length)) {
+        const size = card.node.symbols
+          ? `${number.format(card.node.symbols)}\u00a0${card.node.symbols === 1 ? "symbol" : "symbols"}${
+              card.node.files ? ` · ${number.format(card.node.files)}\u00a0${card.node.files === 1 ? "file" : "files"}` : ""
+            }`
+          : "";
         return {
           title: node.title,
           detail: (
@@ -590,9 +606,9 @@ export default function WikiGraphPane({
                       <i className="wg-status-dot" style={{ background: row.color }} aria-hidden="true" />
                       {row.title}{" "}
                       <span className="wg-status-count">
-                        ({[row.out && `${number.format(row.out)} out`, row.in && `${number.format(row.in)} in`]
+                        ({[row.out && `${number.format(row.out)}\u00a0out`, row.in && `${number.format(row.in)}\u00a0in`]
                           .filter(Boolean)
-                          .join(", ")})
+                          .join(",\u00a0")})
                       </span>
                     </span>
                   ))}
