@@ -29,12 +29,12 @@
   align-items: center;
   gap: 10px;
   color: #fff;
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 600;
 }
 .walk-card-brand img {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
 }
 .walk-card-repo {
   margin: 34px 0 0;
@@ -64,18 +64,20 @@
   margin: 24px 0 0;
   padding: 0;
   color: #bdc1c6;
-  font-size: 26px;
+  font-size: 28px;
   line-height: 1.3;
   list-style: none;
 }
 .walk-card-areas li {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
 }
 .walk-card-areas .walk-card-dot {
+  flex-shrink: 0;
   width: 16px;
   height: 16px;
+  margin-top: 0.4em;
   box-shadow: none;
 }
 .walk-card-areas li.is-own .walk-card-dot {
@@ -87,7 +89,7 @@
   gap: 6px;
   margin: auto 0 0;
   color: #9aa0a6;
-  font-size: 24px;
+  font-size: 28px;
 }
 /* The recorded calls, top to bottom, each dot in its area's map colour. */
 /* Starts level with the repository's name, so the two columns share a top. */
