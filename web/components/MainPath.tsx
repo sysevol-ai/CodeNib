@@ -85,6 +85,26 @@ export default function MainPath({
   const step = units > 0 ? Math.min(CASCADE_STEP_PX, CASCADE_PX / units) : 0;
   let offset = 0;
   const listRef = useRef<HTMLOListElement>(null);
+  // Where any call's file:line would fall onto a line of its own, every
+  // step sets its place under its call, so the rows stay alike.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return undefined;
+    const check = () => {
+      const rows = [...list.querySelectorAll<HTMLElement>(".main-path-symbol-row")];
+      const tight = rows.some((row) => {
+        const call = row.querySelector<HTMLElement>(".main-path-symbol");
+        const place = row.querySelector<HTMLElement>(".main-path-source");
+        if (!call || !place) return false;
+        return call.scrollWidth + place.scrollWidth + 16 > row.clientWidth;
+      });
+      list.classList.toggle("is-stacked", tight);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [journey]);
   // Each call's line draws down from its caller and turns into the step as
   // that step comes into view, so the path pours down the page as it is
   // read. Steps already in view when the page opens draw in turn, once.

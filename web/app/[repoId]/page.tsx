@@ -1198,7 +1198,7 @@ export default function WikiPageView({
       <Header
         actions={
           <>
-          {repo && (
+          {(repo || !staticRuntime) && (
             <button
               ref={jumpTriggerRef}
               type="button"
@@ -1207,7 +1207,7 @@ export default function WikiPageView({
                 setTocOpen(false);
                 setJumpOpen(true);
               }}
-              aria-label={`Search ${repo.repo}`}
+              aria-label={`Search ${repo?.repo ?? repoId.replace("__", "/")}`}
               aria-keyshortcuts="Meta+K Control+K /"
               title={`Jump to a page, walkthrough or function (${IS_MAC ? "⌘K" : "Ctrl+K"})`}
             >
@@ -1218,6 +1218,12 @@ export default function WikiPageView({
               <span className="jump-trigger-label">Search</span>
               <kbd>{IS_MAC ? "⌘K" : "Ctrl K"}</kbd>
             </button>
+          )}
+          {!repo && !staticRuntime && (
+            // Ask's place is held until the repository's record says it may.
+            <span className="icon-btn header-ask" aria-hidden="true" style={{ visibility: "hidden" }}>
+              <AskIcon />
+            </span>
           )}
           {repo && canAsk ? (
             <AppLink
@@ -1249,7 +1255,7 @@ export default function WikiPageView({
               </svg>
             </button>
             <span className="crumb-sep">/</span>
-            <span className="crumb-repo mono">{repo ? repo.repo : repoId}</span>
+            <span className="crumb-repo mono">{repo ? repo.repo : repoId.replace("__", "/")}</span>
             {(!staticRuntime || hasGraph) && (
               <button
                 className={`codegraph-launch ${hasGraph ? "" : "unavailable"}`}
@@ -1284,6 +1290,14 @@ export default function WikiPageView({
             )}
             {annotationsOn && (
               <NotesButton model={notes} open={notesOpen} onClick={() => setNotesOpen((o) => !o)} />
+            )}
+            {!repo && !staticRuntime && (
+              // Notes' place is held until the repository's record arrives,
+              // so the header never moves under the reader.
+              <span className="cn-launch" aria-hidden="true" style={{ visibility: "hidden" }}>
+                <span className="cn-dot is-on" />
+                <span>Notes</span>
+              </span>
             )}
             {annotationsOn && notes.local && !notes.needsSession && page && !walking && (
               <button

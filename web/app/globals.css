@@ -957,16 +957,18 @@ pre {
 .main-path-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 26px;
+  font-size: clamp(26px, 2.4vw, 32px);
   font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: -0.022em;
+  line-height: 1.18;
+  letter-spacing: -0.028em;
   text-wrap: balance;
 }
+/* A call in the heading stays whole; the line breaks before it. */
 .main-path-title code {
   font-size: 0.84em;
   font-weight: 500;
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 .main-path-note {
   max-width: 62ch;
@@ -974,6 +976,7 @@ pre {
   color: var(--text-muted);
   font-size: var(--fs-small);
   line-height: 1.55;
+  text-wrap: pretty;
 }
 /* A call's owner steps back; its own name stands forward. */
 .main-path-owner {
@@ -985,8 +988,13 @@ pre {
 }
 /* The path as a cascade: each call a step right of its caller, joined to it
    by an elbow; where the path drops into another area, twice as far. */
+/* The stair is sized by the column it sits in, not the window: at most
+   216 px, and about a fifth of the column. */
+.main-path {
+  container-type: inline-size;
+}
 .main-path-steps {
-  --unit: var(--cascade, 36px);
+  --unit: min(var(--cascade, 36px), calc(min(216px, 21cqi) / var(--units, 5)));
   --line: var(--border-strong);
   list-style: none;
   margin: 0;
@@ -1078,10 +1086,24 @@ pre {
   margin-left: auto;
 }
 .main-path-symbol {
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 500;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
   line-height: 26px;
+  white-space: nowrap;
+}
+.main-path-name {
+  font-weight: 600;
+}
+/* Where a file:line would fall onto a line of its own, every step sets it
+   under its call. */
+.main-path-steps.is-stacked .main-path-symbol-row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.main-path-steps.is-stacked .main-path-source {
+  margin-left: 0;
 }
 /* A long call breaks after its owner, never inside a name. */
 .main-path-owner,
@@ -1185,11 +1207,12 @@ pre {
   animation: main-path-down 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: calc(var(--draw-delay, 0s) + 0.3s);
 }
-/* Below 1100 px the column is narrower: the stair stays within 160 px. */
-@media (max-width: 1100px) {
-  .main-path-steps {
-    --unit: min(var(--cascade, 36px), calc(160px / var(--units, 5)));
-  }
+/* On white the lines take the area colour whole, to stay seen. */
+[data-theme="light"] .main-path-step:not(:last-child)::before {
+  background: var(--down, var(--line));
+}
+[data-theme="light"] .main-path-step:not(:first-child)::after {
+  border-color: var(--area, var(--line));
 }
 @keyframes main-path-down {
   from { transform: scaleY(0); }
@@ -1221,6 +1244,11 @@ pre {
   }
   .main-path-symbol {
     font-size: 15px;
+    white-space: normal;
+  }
+  /* A phone's heading may break a long call after its owner. */
+  .main-path-title code {
+    white-space: normal;
   }
   .main-path-step {
     gap: 10px;
@@ -1925,7 +1953,7 @@ pre {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   padding: 2px 8px;
-  font-size: var(--fs-micro);
+  font-size: var(--fs-caption);
   color: var(--muted);
   cursor: pointer;
 }
@@ -2288,6 +2316,11 @@ pre {
 }
 .wiki-reading:has(.wiki-grid.is-workspace) .askbar-docked {
   --dock-left: 18px;
+}
+/* With the map open the page runs edge to edge; the header's brand and
+   buttons line up with the page list and the reading column's edge. */
+.wiki-reading:has(.wiki-grid.is-workspace) .site-header {
+  padding-inline: 18px;
 }
 .wiki-grid.is-workspace .wiki-toc {
   padding-bottom: 84px;
