@@ -258,13 +258,17 @@ export default function WikiGraphPane({
   const newestHopRef = useRef<SVGPathElement>(null);
 
   const byId = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph]);
+  // On a home map, the area the reader points at becomes the map's focus:
+  // its ring, its name and its pages, matching what the status line tells.
+  const pointedArea = embedded && hoverNode && byId.get(hoverNode)?.kind === "area" ? hoverNode : null;
+  const focusId = pointedArea ?? activeId;
   // While the main path plays, the areas it has reached stand forward the way
   // an active area's neighbours do in the tour.
   const near = useMemo(() => {
-    const found = neighborhood(graph, activeId);
-    if (route) for (const stop of route.stops.slice(0, route.at + 1)) found.add(stop.areaId);
+    const found = neighborhood(graph, focusId);
+    if (route && !pointedArea) for (const stop of route.stops.slice(0, route.at + 1)) found.add(stop.areaId);
     return found;
-  }, [graph, activeId, route]);
+  }, [graph, focusId, route, pointedArea]);
 
   // Room above and below the drawing for labels, the header and the status
   // line. On a narrow pane it is at least the legend plus two lines of
@@ -382,12 +386,12 @@ export default function WikiGraphPane({
     if (!view || !points.size) return [];
     return placeLabels(graph.nodes, points, view, center, size.width, (node) => {
       // The chapter being written keeps its name, so the reader can follow it.
-      if (node.id === hoverNode || node.id === activeId || states?.[node.id] === "running") return 4;
+      if (node.id === hoverNode || node.id === focusId || states?.[node.id] === "running") return 4;
       if (node.kind === "area") return 3;
       if (near.has(node.id)) return 2;
       return view.k >= 1.7 ? 1 : 0;
     });
-  }, [graph, points, view, center, size.width, hoverNode, activeId, near, states]);
+  }, [graph, points, view, center, size.width, hoverNode, focusId, near, states]);
 
   // The main path up to the current stop: the hops that crossed areas, where
   // the token travels last, and a free place for the current function's name.
@@ -682,7 +686,7 @@ export default function WikiGraphPane({
               const hoveredArea = hoverNode && byId.get(hoverNode)?.kind === "area" ? hoverNode : null;
               const hot =
                 edge === hoverEdge ||
-                (!readonly && (edge.source === activeId || edge.target === activeId)) ||
+                (!readonly && (edge.source === focusId || edge.target === focusId)) ||
                 (!!hoveredArea && edge.kind === "references" && (edge.source === hoveredArea || edge.target === hoveredArea));
               const isReference = edge.kind === "references";
               const d = edgePath(pa, pb, a.radius, b.radius, isReference);
@@ -736,7 +740,7 @@ export default function WikiGraphPane({
               </g>
             )}
             {graph.nodes.map((node, index) => {
-              const active = !readonly && node.id === activeId;
+              const active = !readonly && node.id === focusId;
               const point = points.get(node.id);
               if (!point) return null;
               const state = states?.[node.id];
@@ -813,7 +817,7 @@ export default function WikiGraphPane({
               labels.map((label) => {
                 const point = points.get(label.id)!;
                 const x = point.x + label.dx / view.k;
-                const state = `${label.id === activeId && !readonly ? " is-active" : ""}${
+                const state = `${label.id === focusId && !readonly ? " is-active" : ""}${
                   states?.[label.id] ? ` is-${states[label.id]}` : ""
                 }`;
                 return (
