@@ -121,7 +121,7 @@ export default function GenerateWikiPage({
       detail:
         freeMapOffered && !freeMap && !freeMapFailed
           ? `at ${check?.commit?.slice(0, 8)} · indexing the code for its map`
-          : `at ${check?.commit?.slice(0, 8)} · chapters take their place once planned`,
+          : `at ${check?.commit?.slice(0, 8)} · a Wiki's chapters appear here as they are planned`,
     };
   else if (check && !check.eligible)
     idle = { title: "This snapshot cannot be generated here", detail: "The reason is beside the map." };
