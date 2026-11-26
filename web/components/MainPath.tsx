@@ -46,7 +46,7 @@ export default function MainPath({
         <p className="main-path-note">
           One path selected from the code index. Each arrow is a call found in the
           source, or a base method leading to the subclass that implements it.
-          {colors && " Each colour is the area of the Wiki map where a step's code lives."}
+          {colors && " Each colour is the area of the Wiki map where a step's code lives; the line into a step takes its colour."}
         </p>
       </figcaption>
       <ol className="main-path-steps">
