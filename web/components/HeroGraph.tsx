@@ -148,7 +148,17 @@ export default function HeroGraph({
             )}
           </span>
           <span className="wg-status-short">
-            To <span className="is-code">{stops[stops.length - 1].label}</span>
+            {/* A phone names the last call by its own name when the owner
+                would push the line to a third. */}
+            To{"\u00a0"}
+            <span className="is-code">
+              {(() => {
+                const label = stops[stops.length - 1].label;
+                if (label.length <= 22) return label;
+                const cut = Math.max(label.lastIndexOf("."), label.lastIndexOf("::") + 1);
+                return cut > 0 ? label.slice(cut + 1) : label;
+              })()}
+            </span>
           </span>
         </>
       ),

@@ -81,6 +81,8 @@ function placeLabels(
   floor = Infinity,
   /** Area labels too try the other sides before they are left out. */
   retryAreas = false,
+  /** Where the header ends: a label above it would sit on the header's text. */
+  ceiling = -Infinity,
 ): PlacedLabel[] {
   const taken: { left: number; right: number; top: number; bottom: number }[] = [];
   const placed: PlacedLabel[] = [];
@@ -142,7 +144,7 @@ function placeLabels(
     const clash = taken.some(hits) || marks.some((mark) => mark.id !== node.id && hits(mark));
     // A pointed name keeps the pane's margin: it is the one name being read.
     const edge = priority(node) >= 3.5 ? LABEL_MARGIN_PX : 0;
-    const outside = box.left < edge || box.right > paneWidth - edge || box.bottom > floor;
+    const outside = box.left < edge || box.right > paneWidth - edge || box.bottom > floor || box.top < ceiling;
     const retry = retryAreas && node.kind === "area" && priority(node) >= 3;
     if ((clash || outside) && priority(node) < 4 && !retry && priority(node) !== 3.5 && !force) return null;
     if (clash || outside) {
@@ -172,6 +174,7 @@ function placeLabels(
           optionBox.left >= 0 &&
           optionBox.right <= paneWidth &&
           optionBox.bottom <= floor &&
+          optionBox.top >= ceiling &&
           !taken.some((other) => optionBox.left < other.right && optionBox.right > other.left && optionBox.top < other.bottom && optionBox.bottom > other.top) &&
           (!strict ||
           !marks.some(
@@ -258,6 +261,11 @@ function placeLabels(
           });
         }
       }
+      // What a place costs: the other areas it covers, and a little for each
+      // pixel it sits away from its own mark, so the name reads as its own.
+      const cost = (candidate: typeof box) =>
+        coverage(candidate) +
+        30 * Math.max(0, Math.hypot(Math.max(candidate.left - sx, 0, sx - candidate.right), Math.max(candidate.top - sy, 0, sy - candidate.bottom)) - radius);
       const ownMark = marks.find((mark) => mark.id === node.id);
       const overOwn = (candidate: typeof box) =>
         !!ownMark &&
@@ -270,23 +278,27 @@ function placeLabels(
         .filter(
           ({ box: candidate }) =>
             candidate.bottom <= floor &&
+            candidate.top >= ceiling &&
             !overOwn(candidate) &&
             !taken.some((other) => candidate.left < other.right && candidate.right > other.left && candidate.top < other.bottom && candidate.bottom > other.top),
         )
-        .map((entry) => ({ ...entry, cost: coverage(entry.box) }))
+        .map((entry) => ({ ...entry, cost: cost(entry.box) }))
         .sort((a, b) => a.cost - b.cost)[0];
-      if (best) return { id: node.id, lines, ...best.option, box: best.box };
-      // A one-line name with nowhere off its own mark tries itself on two lines.
+      // The name on two lines is weighed with it: a nearer, narrower place
+      // that covers less of other areas wins.
       const words = node.title.split(" ");
+      let twoLines: PlacedLabel | null = null;
       if (!linesOverride && lines.length === 1 && words.length > 1) {
         let pair: string[] = [];
         for (let split = 1; split < words.length; split += 1) {
           const candidate = [words.slice(0, split).join(" "), words.slice(split).join(" ")];
           if (!pair.length || Math.max(...candidate.map((line) => line.length)) < Math.max(...pair.map((line) => line.length))) pair = candidate;
         }
-        const twoLines = placeOne(node, factor, "force", pair);
-        if (twoLines && !overOwn(twoLines.box)) return twoLines;
+        const placed = placeOne(node, factor, "force", pair);
+        if (placed && !overOwn(placed.box)) twoLines = placed;
       }
+      if (best && (!twoLines || best.cost <= cost(twoLines.box))) return { id: node.id, lines, ...best.option, box: best.box };
+      if (twoLines) return twoLines;
     }
     if (mode === "force" || ((clash || outside) && priority(node) >= 4)) {
       // Its usual place, but never past the pane's side, and where moving in
@@ -651,6 +663,9 @@ export default function WikiGraphPane({
     if (!view || !points.size) return [];
     // The status line's text starts about 10 px below the foot's top edge.
     const floor = footHeight ? size.height - footHeight + 8 : Infinity;
+    // A phone-sized map's header wraps over the top of the map: names keep
+    // below it. Wider maps place as they always have.
+    const ceiling = header && headHeight && size.width < 520 ? headHeight + 4 : -Infinity;
     return placeLabels(graph.nodes, points, view, center, size.width, (node) => {
       // The chapter being written keeps its name, so the reader can follow it.
       if (states?.[node.id] === "running") return 4;
@@ -661,8 +676,8 @@ export default function WikiGraphPane({
       if (node.kind === "area") return 3;
       if (near.has(node.id)) return 2;
       return view.k >= 1.7 ? 1 : 0;
-    }, floor, retryAreaLabels);
-  }, [graph, points, view, center, size.width, size.height, footHeight, hoverNode, focusId, pointedArea, near, states, retryAreaLabels]);
+    }, floor, retryAreaLabels, ceiling);
+  }, [graph, points, view, center, size.width, size.height, footHeight, hoverNode, focusId, pointedArea, near, states, retryAreaLabels, header, headHeight]);
 
   // The main path up to the current stop: the hops that crossed areas, where
   // the token travels last, and a free place for the current function's name.
