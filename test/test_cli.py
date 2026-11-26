@@ -124,8 +124,11 @@ def test_source_selection_migrates_legacy_manifest_without_aliasing_policy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from codenib.compiler.manifest import (LEGACY_MANIFEST_VERSION,
-                                           MANIFEST_FILENAME, RepoManifest)
+    from codenib.compiler.manifest import (
+        LEGACY_MANIFEST_VERSION,
+        MANIFEST_FILENAME,
+        RepoManifest,
+    )
     from codenib.paths import repo_index_dir
 
     monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
@@ -2390,8 +2393,7 @@ def test_visual_failure_preserves_existing_bundle_and_explains_recovery(
     tmp_path,
     monkeypatch,
 ):
-    from codenib.repository_source_selection import \
-        DEFAULT_REPOSITORY_SOURCE_SELECTION
+    from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 
     manifest_path = tmp_path / "repo_manifest.json"
     from codenib.compiler.manifest import IndexEntry

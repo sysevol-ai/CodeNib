@@ -41,14 +41,31 @@ from pydantic import BaseModel, Field
 from ..annotations import AnnotationError, AnnotationStore, TaskStore
 from ..annotations.agents import AGENTS, agent_for, detect_agents
 from ..annotations.anchoring import context, follow, head_commit, locate
-from ..annotations.edits import (apply_edit, fold_into, page_source,
-                                 revert_page, save_page)
+from ..annotations.edits import (
+    apply_edit,
+    fold_into,
+    page_source,
+    revert_page,
+    save_page,
+)
 from ..annotations.model import HUMAN_KINDS
-from ..annotations.runner import (accept, dispatch, kept_patch, reject, review,
-                                  run_task)
-from ..annotations.sandbox import DEFAULT_BUDGET_USD, SandboxedClaude
+from ..annotations.runner import (
+    accept,
+    dispatch,
+    kept_patch,
+    reject,
+    review,
+    run_task,
+)
+from ..annotations.sandbox import (
+    DEFAULT_BUDGET_USD,
+    SandboxedClaude,
+)
 from ..annotations.sandbox import available as sandbox_available
-from ..annotations.sandbox import check_key, provider_of
+from ..annotations.sandbox import (
+    check_key,
+    provider_of,
+)
 
 log = logging.getLogger(__name__)
 
