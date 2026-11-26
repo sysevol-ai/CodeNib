@@ -115,7 +115,7 @@ code.jump-name {
 }
 .jump-meta {
   flex: 0 1 auto;
-  max-width: 55%;
+  max-width: 60%;
   margin-left: auto;
   overflow: hidden;
   color: var(--text-muted);
@@ -139,16 +139,13 @@ code.jump-name {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* The place in the file gives way last, and then with an ellipsis. */
+/* The place in the file never gives way; the area's name does first. */
 .jump-meta .mono {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
+  flex: none;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .jump-meta-page {
-  flex: 0 100 auto;
+  flex: 0 1 auto;
 }
 .jump-note,
 .jump-empty {
@@ -179,6 +176,18 @@ code.jump-name {
   /* The dot already names the area; the line keeps the place in the file. */
   .jump-meta-page {
     display: none;
+  }
+  /* A phone row is too narrow for a name and its place side by side: the
+     place goes under the name, whole. */
+  .jump-item {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .jump-meta {
+    flex-basis: 100%;
+    max-width: none;
+    margin-left: 0;
+    padding-left: 24px;
   }
   .jump-scrim {
     padding: calc(var(--safe-top, 0px) + 8px) 8px 8px;

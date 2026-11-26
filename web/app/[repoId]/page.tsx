@@ -845,6 +845,9 @@ export default function WikiPageView({
   }, [headings]);
 
   function pick(id: string) {
+    // Chosen from the drawer, the new page's heading takes the focus the
+    // drawer had, once the page is on screen.
+    if (drawerMode && tocOpen) headingFocus.current = true;
     setActiveId(id);
     setWalkAt(null);
     setTocOpen(false);
@@ -898,8 +901,9 @@ export default function WikiPageView({
   }, [drawerMode, tocOpen]);
 
   // As a drawer, the page list takes focus on the current page when it opens,
-  // closes on Esc, and hands focus back to its toggle.
+  // keeps Tab inside itself, closes on Esc, and hands focus back to its toggle.
   const tocToggleRef = useRef<HTMLButtonElement>(null);
+  const headingFocus = useRef(false);
   useEffect(() => {
     if (!drawerMode || !tocOpen) return undefined;
     const list = tocRef.current;
@@ -908,13 +912,39 @@ export default function WikiPageView({
       list?.querySelector<HTMLElement>("a[href], button");
     current?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setTocOpen(false);
-      tocToggleRef.current?.focus();
+      if (event.key === "Escape") {
+        setTocOpen(false);
+        tocToggleRef.current?.focus();
+        return;
+      }
+      if (event.key !== "Tab" || !list) return;
+      const focusable = [
+        ...list.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), select, [tabindex]:not([tabindex="-1"])'),
+      ].filter((element) => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const inside = list.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || !inside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !inside)) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [drawerMode, tocOpen]);
+
+  useEffect(() => {
+    if (!headingFocus.current || !page) return;
+    const heading = document.querySelector<HTMLElement>(".wiki-main h1");
+    if (!heading) return;
+    headingFocus.current = false;
+    heading.tabIndex = -1;
+    heading.focus({ preventScroll: true });
+  }, [page]);
 
   // Cmd/Ctrl+K anywhere, or "/" outside a text field, opens the jump palette.
   useEffect(() => {
@@ -1281,7 +1311,16 @@ export default function WikiPageView({
             : undefined
         }
       >
-        {tocOpen && <div className="toc-scrim" onClick={() => setTocOpen(false)} aria-hidden />}
+        {tocOpen && (
+          <div
+            className="toc-scrim"
+            onClick={() => {
+              setTocOpen(false);
+              tocToggleRef.current?.focus();
+            }}
+            aria-hidden
+          />
+        )}
         <aside ref={tocRef} className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
           {commits.length > 0 ? (
