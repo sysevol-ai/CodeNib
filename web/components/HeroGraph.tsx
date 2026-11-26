@@ -32,6 +32,7 @@ export default function HeroGraph({
   wikiHref,
   onPick,
   retryAreaLabels = false,
+  unit = "areas",
 }: {
   repoName: string;
   pages: WikiPageRef[];
@@ -42,6 +43,9 @@ export default function HeroGraph({
   onPick: (id: string) => void;
   /** Area labels try other sides before they are left out. */
   retryAreaLabels?: boolean;
+  /** What the map's areas are: Wiki areas, or the folder and file groups a
+   *  repository is cut into before it has a Wiki. */
+  unit?: "areas" | "parts";
 }) {
   const graph = useMemo(() => buildWikiGraph(pages, map), [pages, map]);
   // The largest areas first; they have the most to show.
@@ -163,7 +167,7 @@ export default function HeroGraph({
           {`${number.format(references)}\u00a0`}
           <span className="wg-status-more">recorded </span>
           {references === 1 ? "reference" : "references"}
-          <span className="wg-status-more"> with other areas</span>
+          <span className="wg-status-more">{` with other ${unit}`}</span>
         </>
       ) };
   }
@@ -199,7 +203,7 @@ export default function HeroGraph({
               {repoName} <span aria-hidden="true">→</span>
             </a>
             <p className="wiki-graph-stats">
-              {map.areas.length} areas · {number.format(symbols)} symbols · {number.format(total)} recorded references
+              {map.areas.length} {unit} · {number.format(symbols)} symbols · {number.format(total)} recorded references
             </p>
           </>
         }

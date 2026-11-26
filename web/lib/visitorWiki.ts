@@ -227,7 +227,55 @@ export interface WikiRepositoryCheck {
 }
 
 export const wikiGenerationAvailable = () =>
-  request<{ enabled: boolean; limits: WikiGenerationLimits }>("");
+  request<{ enabled: boolean; limits: WikiGenerationLimits; free_map?: boolean }>("");
+
+/** A part of a visitor repository: a folder, one file, its root files, or the rest. */
+export interface FreeMapArea {
+  id: string;
+  title: string;
+  symbols: number;
+  files: number;
+  /** The repository path; "" for the root files, null for the rest. */
+  path: string | null;
+  kind: "folder" | "file" | "root" | "other";
+}
+
+/** One recorded call on a visitor repository's main path. */
+export interface FreeMapStop {
+  symbol: string;
+  file: string;
+  /** 1-based. */
+  line: number | null;
+  /** The folder area the file belongs to, or null outside every area. */
+  area: string | null;
+}
+
+/** A visitor repository as the code index sees it, built without a model. */
+export interface FreeRepositoryMap extends WikiRepositoryCheck {
+  /** `reason` is "graph_language" when the repository has no language the
+   *  hosted index can graph. */
+  map?: Omit<WikiAreaMap, "reason" | "areas"> & {
+    reason?: string | null;
+    areas: FreeMapArea[];
+  };
+  path?: { title: string; stops: FreeMapStop[] } | null;
+}
+
+const freeMaps = new Map<string, Promise<FreeRepositoryMap>>();
+/** The folder map, recorded references and main path of a public repository; no key. */
+export const loadFreeRepositoryMap = (repository: string): Promise<FreeRepositoryMap> => {
+  const key = repository.toLowerCase();
+  let pending = freeMaps.get(key);
+  if (!pending) {
+    pending = request<FreeRepositoryMap>(`/map?${new URLSearchParams({ repository })}`, {}, 180000);
+    freeMaps.set(key, pending);
+    pending.then(
+      () => freeMaps.delete(key),
+      () => freeMaps.delete(key),
+    );
+  }
+  return pending;
+};
 const repositoryChecks = new Map<string, Promise<WikiRepositoryCheck>>();
 export const checkWikiRepository = (repository: string): Promise<WikiRepositoryCheck> => {
   const key = repository.toLowerCase();

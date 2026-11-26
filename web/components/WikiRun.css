@@ -603,6 +603,16 @@ button.run-step-title:hover {
   min-width: 0;
   border-right: 1px solid var(--border);
 }
+.own-start-map .hero-graph {
+  height: 100%;
+}
+.own-note {
+  max-width: 52ch;
+  margin: 14px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  line-height: 1.55;
+}
 .own-start-map .wiki-graph.is-embedded {
   height: 100%;
   min-height: 0;

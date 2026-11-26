@@ -3,17 +3,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
+import HeroGraph from "@/components/HeroGraph";
 import WikiGenerationForm from "@/components/WikiGenerationForm";
 import WikiGraphPane from "@/components/WikiGraphPane";
 import WikiStateLegend from "@/components/WikiStateLegend";
 import { parseGitHubRepository } from "@/lib/githubPreview";
 import { AppLink, navigate } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
+import { freeAreaUrl, freeMapPicture } from "@/lib/freeMap";
 import { buildSourceGraph, describeSourceNode, SOURCE_HUB } from "@/lib/sourceMap";
 import {
+  loadFreeRepositoryMap,
   newWikiAttempt,
   recentWikis,
   wikiGenerationAvailable,
+  type FreeRepositoryMap,
   type WikiAttempt,
   type WikiRepositoryCheck,
 } from "@/lib/visitorWiki";
@@ -32,6 +36,11 @@ export default function GenerateWikiPage({
   const [enabled, setEnabled] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [check, setCheck] = useState<WikiRepositoryCheck | null>(null);
+  // The map the code index draws without a model: offered when the server
+  // allows it, before any key is asked for.
+  const [freeMapOffered, setFreeMapOffered] = useState(false);
+  const [freeMap, setFreeMap] = useState<FreeRepositoryMap | null>(null);
+  const [freeMapFailed, setFreeMapFailed] = useState(false);
   useEffect(() => {
     let ignored = false;
     if (isStaticRuntime()) {
@@ -42,6 +51,7 @@ export default function GenerateWikiPage({
       .then((result) => {
         if (!ignored) {
           setEnabled(result.enabled);
+          setFreeMapOffered(!!result.free_map);
           setLoaded(true);
         }
       })
@@ -69,6 +79,23 @@ export default function GenerateWikiPage({
       );
     }
   }, [enabled, repo?.slug]);
+  useEffect(() => {
+    if (!repo || !enabled || !freeMapOffered) return;
+    let ignored = false;
+    setFreeMap(null);
+    setFreeMapFailed(false);
+    loadFreeRepositoryMap(repo.slug)
+      .then((result) => {
+        if (!ignored) setFreeMap(result);
+      })
+      .catch(() => {
+        if (!ignored) setFreeMapFailed(true);
+      });
+    return () => {
+      ignored = true;
+    };
+  }, [enabled, freeMapOffered, repo?.slug]);
+  const picture = useMemo(() => freeMapPicture(freeMap), [freeMap]);
   const previous = recentWikis().filter(
     (item) =>
       item.repository.toLowerCase() === repo?.slug.toLowerCase() &&
@@ -82,7 +109,10 @@ export default function GenerateWikiPage({
   if (tree)
     idle = {
       title: `${tree.files.toLocaleString()} code files in ${folders} ${folders === 1 ? "folder" : "folders"}`,
-      detail: `at ${check?.commit?.slice(0, 8)} · chapters take their place once planned`,
+      detail:
+        freeMapOffered && !freeMap && !freeMapFailed
+          ? `at ${check?.commit?.slice(0, 8)} · indexing the code for its map`
+          : `at ${check?.commit?.slice(0, 8)} · chapters take their place once planned`,
     };
   else if (check && !check.eligible)
     idle = { title: "This snapshot cannot be generated here", detail: "The reason is beside the map." };
@@ -107,13 +137,52 @@ export default function GenerateWikiPage({
               "Invalid repository URL"
             )}
           </h1>
-          <p className="own-lead">
-            CodeNib reads this snapshot, plans the chapters on a map, and writes
-            each one from cited source. Ready chapters open while the rest are
-            written.
-          </p>
+          {picture ? (
+            <p className="own-lead">
+              This is the repository as its code index reads it:{" "}
+              {picture.map.areas.length} parts of its code, the references
+              recorded between them{picture.route ? ", and the path a call takes" : ""}.
+              No key was needed for this. A key is needed only to write the
+              Wiki's chapters.
+            </p>
+          ) : freeMapOffered && enabled && !freeMap && !freeMapFailed ? (
+            <p className="own-lead">
+              CodeNib is reading this snapshot and indexing its code. The map
+              fills in when the index answers, usually within a minute; no key
+              is needed for it.
+            </p>
+          ) : (
+            <p className="own-lead">
+              CodeNib reads this snapshot, plans the chapters on a map, and writes
+              each one from cited source. Ready chapters open while the rest are
+              written.
+            </p>
+          )}
+          {freeMap?.map && !freeMap.map.available && freeMap.map.reason === "graph_language" && (
+            <p className="own-note">
+              The free map traces Python repositories for now. Its folders are
+              on the map; the written Wiki covers every supported language.
+            </p>
+          )}
         </div>
         <section className="own-start-map" aria-label="The snapshot as a map">
+          {picture ? (
+            <HeroGraph
+              repoName={slug}
+              pages={picture.pages}
+              map={picture.map}
+              route={picture.route}
+              unit="parts"
+              wikiHref={`https://github.com/${slug}`}
+              onPick={(id) => {
+                // A part opens on GitHub at the commit the map was drawn from.
+                const url = freeMap?.commit
+                  ? freeAreaUrl(slug, freeMap.commit, freeMap.map?.areas.find((area) => area.id === id))
+                  : null;
+                if (url) window.open(url, "_blank", "noopener");
+              }}
+            />
+          ) : (
           <WikiGraphPane
             graph={source.graph}
             activeId={SOURCE_HUB}
@@ -125,11 +194,16 @@ export default function GenerateWikiPage({
             readonly
             live
             // The repository turns while its snapshot is being checked.
-            states={enabled && !check ? { [SOURCE_HUB]: "running" } : undefined}
+            states={
+              enabled && (!check || (freeMapOffered && !freeMap && !freeMapFailed))
+                ? { [SOURCE_HUB]: "running" }
+                : undefined
+            }
             idle={idle}
             describe={(node) => describeSourceNode(node, source.facts)}
             legend={<WikiStateLegend folders />}
           />
+          )}
         </section>
         <div className="own-start-form">
           {!loaded && <p className="own-wait" role="status">Connecting to the Wiki service…</p>}
