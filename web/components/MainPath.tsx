@@ -49,15 +49,17 @@ export default function MainPath({
         </p>
       </figcaption>
       <ol className="main-path-steps">
-        {journey.stages.map((stage) => (
+        {journey.stages.map((stage, position) => {
+          const area = stage.page ? colors?.get(stage.page.id) : undefined;
+          // The line under a step is the call to the next one, in the colour
+          // of where that call lands, as on the map.
+          const nextStage = journey.stages[position + 1];
+          const next = nextStage?.page ? colors?.get(nextStage.page.id) : undefined;
+          return (
           <li
-            className={`main-path-step${stage.page && colors?.get(stage.page.id) ? " has-area" : ""}`}
+            className={`main-path-step${area ? " has-area" : ""}${next ? " has-next" : ""}`}
             key={stage.index}
-            style={
-              stage.page && colors?.get(stage.page.id)
-                ? ({ "--area": colors.get(stage.page.id) } as CSSProperties)
-                : undefined
-            }
+            style={{ ...(area ? { "--area": area } : {}), ...(next ? { "--next": next } : {}) } as CSSProperties}
           >
             <span className="main-path-index" aria-hidden="true">
               {stage.index}
@@ -73,7 +75,6 @@ export default function MainPath({
                     className="main-path-area"
                     onClick={() => onPick(stage.page!.id)}
                   >
-                    <span className="main-path-area-dot" aria-hidden="true" />
                     {stage.page.title}
                   </button>
                 )}
@@ -84,7 +85,8 @@ export default function MainPath({
               )}
             </div>
           </li>
-        ))}
+          );
+        })}
       </ol>
     </figure>
   );
