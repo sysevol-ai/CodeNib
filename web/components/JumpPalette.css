@@ -1,0 +1,225 @@
+/* SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+ * SPDX-License-Identifier: Apache-2.0 */
+
+/* One raised surface over a dimmed page: a field, a list, a line of keys. */
+.jump-scrim {
+  position: fixed;
+  inset: 0;
+  /* Over the sticky header too, so the field is never under it. */
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: max(10vh, calc(var(--safe-top, 0px) + 16px)) 16px 16px;
+  background: rgba(0, 0, 0, 0.52);
+}
+.jump {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: min(560px, 78vh);
+  overflow: hidden;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+.jump-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.jump-field input {
+  flex: 1;
+  min-width: 0;
+  height: 52px;
+  padding: 0;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--fs-body);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.jump-field input::placeholder {
+  color: var(--text-muted);
+}
+.jump kbd {
+  padding: 1px 6px;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+.jump-list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+}
+.jump-group + .jump-group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+.jump-group-label {
+  margin: 0;
+  padding: 6px 10px 4px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.jump-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+.jump-item.is-active {
+  background: var(--accent-soft);
+}
+.jump-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-inline: 3px;
+  border-radius: 50%;
+}
+.jump-glyph {
+  flex: none;
+  color: var(--text-muted);
+}
+.jump-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+code.jump-name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  background: none;
+  padding: 0;
+}
+.jump-meta {
+  flex: none;
+  max-width: 45%;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.jump-meta .mono {
+  font-family: var(--font-mono);
+}
+/* The area comes first and gives way first when the row is narrow. */
+.jump-meta {
+  display: inline-flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.jump-meta-page {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.jump-meta .mono {
+  flex: none;
+}
+.jump-note,
+.jump-empty {
+  margin: 0;
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.jump-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 9px 14px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  border-top: 1px solid var(--border-subtle);
+}
+.jump-foot span:last-child:not(:first-child) {
+  margin-left: auto;
+}
+@media (hover: none) {
+  .jump-foot {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  /* The dot already names the area; the line keeps the place in the file. */
+  .jump-meta-page {
+    display: none;
+  }
+  .jump-scrim {
+    padding: calc(var(--safe-top, 0px) + 8px) 8px 8px;
+  }
+  .jump {
+    max-height: calc(100dvh - 16px - var(--safe-top, 0px));
+  }
+  .jump-foot span:last-child:not(:first-child) {
+    margin-left: 0;
+  }
+}
+
+/* The way in, in the header: it reads as a field, not a button. */
+.jump-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 8px 0 11px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-caption);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.jump-trigger:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+.jump-trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.jump-trigger kbd {
+  padding: 0 5px;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--fs-caption);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+@media (max-width: 820px) {
+  .jump-trigger-label,
+  .jump-trigger kbd {
+    display: none;
+  }
+  .jump-trigger {
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+}

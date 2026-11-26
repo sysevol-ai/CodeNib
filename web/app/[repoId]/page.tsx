@@ -25,7 +25,8 @@ import WikiToc from "@/components/WikiToc";
 import WikiGraphPane from "@/components/WikiGraphPane";
 import Walkthrough, { WalkthroughList } from "@/components/Walkthrough";
 import type { WalkthroughSet } from "@/lib/walkthrough";
-import { buildWikiGraph } from "@/lib/wikiGraph";
+import { buildWikiGraph, NEUTRAL_COLOR } from "@/lib/wikiGraph";
+import JumpPalette, { type JumpPage } from "@/components/JumpPalette";
 import { childPages } from "@/lib/wikiNav";
 import { displaySymbol } from "@/lib/symbols";
 import AreaMap from "@/components/AreaMap";
@@ -455,6 +456,8 @@ function MultimodalMedia({
 
 // Below this width the map would squeeze the reader, so the page stays a document.
 const WORKSPACE_MEDIA = "(min-width: 1200px)";
+const DRAWER_MEDIA = "(max-width: 820px)";
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MAP_HIDDEN_KEY = "cm-wiki-map-hidden";
 const READER_WIDTH_KEY = "cm-wiki-reader-width";
 
@@ -533,6 +536,14 @@ export default function WikiPageView({
   const [pageError, setPageError] = useState<string | null>(null);
   const [tocLoading, setTocLoading] = useState(true);
   const [tocOpen, setTocOpen] = useState(false);
+  // At phone and tablet widths the page list is a drawer; closed, it is off
+  // screen and must not take keyboard focus.
+  const [drawerMode, setDrawerMode] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(DRAWER_MEDIA).matches,
+  );
+  const tocRef = useRef<HTMLElement>(null);
+  const [jumpOpen, setJumpOpen] = useState(false);
+  const jumpTriggerRef = useRef<HTMLButtonElement>(null);
   // Commit window: empty when this repo has no prebuilt snapshots, in which
   // case the rail keeps its static "Last indexed" label.
   const [commits, setCommits] = useState<CommitRef[]>([]);
@@ -874,6 +885,36 @@ export default function WikiPageView({
     setActiveHeading(id);
   }
 
+  useEffect(() => {
+    const query = window.matchMedia(DRAWER_MEDIA);
+    const update = () => setDrawerMode(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (tocRef.current) tocRef.current.inert = drawerMode && !tocOpen;
+  }, [drawerMode, tocOpen]);
+
+  // Cmd/Ctrl+K anywhere, or "/" outside a text field, opens the jump palette.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+        event.preventDefault();
+        setJumpOpen((open) => !open);
+      } else if (event.key === "/" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        setJumpOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   // Esc closes the graph explorer modal.
   useEffect(() => {
     if (!graphOpen) return;
@@ -902,6 +943,18 @@ export default function WikiPageView({
     () => buildWikiGraph(pages, areaMap),
     [pages, areaMap],
   );
+  // Every page for the jump palette, each with its area's colour and name.
+  const jumpPages = useMemo(() => {
+    const found: JumpPage[] = [];
+    const visit = (list: WikiPageRef[], area?: string) => {
+      for (const item of list) {
+        found.push({ id: item.id, title: item.title, area, color: wikiGraph.colors.get(item.id) ?? NEUTRAL_COLOR });
+        visit(item.children, area ?? (item.id === "overview" ? undefined : item.title));
+      }
+    };
+    visit(pages);
+    return found;
+  }, [pages, wikiGraph]);
 
   useEffect(() => {
     const query = window.matchMedia(WORKSPACE_MEDIA);
@@ -1075,7 +1128,26 @@ export default function WikiPageView({
     <div className="wiki wiki-reading">
       <Header
         actions={
-          repo && canAsk ? (
+          <>
+          {repo && (
+            <button
+              ref={jumpTriggerRef}
+              type="button"
+              className="jump-trigger"
+              onClick={() => setJumpOpen(true)}
+              aria-label={`Search ${repo.repo}`}
+              aria-keyshortcuts="Meta+K Control+K /"
+              title={`Jump to a page, walkthrough or function (${IS_MAC ? "⌘K" : "Ctrl+K"})`}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" />
+              </svg>
+              <span className="jump-trigger-label">Search</span>
+              <kbd>{IS_MAC ? "⌘K" : "Ctrl K"}</kbd>
+            </button>
+          )}
+          {repo && canAsk ? (
             <AppLink
               className="icon-btn header-ask"
               href={`/${encodeURIComponent(repoId)}/ask`}
@@ -1088,16 +1160,20 @@ export default function WikiPageView({
             >
               <AskIcon />
             </AppLink>
-          ) : null
+          ) : null}
+          </>
         }
         center={
           <nav className="breadcrumb" aria-label="Breadcrumb">
             <button
               className="toc-toggle"
               aria-label="Toggle section list"
+              aria-expanded={tocOpen}
               onClick={() => setTocOpen((o) => !o)}
             >
-              ☰
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
             </button>
             <span className="crumb-sep">/</span>
             <span className="crumb-repo mono">{repo ? repo.repo : repoId}</span>
@@ -1173,7 +1249,7 @@ export default function WikiPageView({
         }
       >
         {tocOpen && <div className="toc-scrim" onClick={() => setTocOpen(false)} aria-hidden />}
-        <aside className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
+        <aside ref={tocRef} className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
           {commits.length > 0 ? (
             <div className="rail-sub commit-picker">
@@ -1813,6 +1889,33 @@ export default function WikiPageView({
             </div>
           </div>
         </div>
+      )}
+
+      {jumpOpen && repo && (
+        <JumpPalette
+          repoId={repoId}
+          repoName={repo.repo}
+          pages={jumpPages}
+          walks={(walkthroughs?.walks ?? []).map((item) => ({ id: item.id, title: item.title || item.tab }))}
+          searchCode={hasGraph && !staticRuntime}
+          onClose={() => {
+            setJumpOpen(false);
+            jumpTriggerRef.current?.focus();
+          }}
+          onPage={pick}
+          onWalk={(id) => openWalk(id)}
+          onSymbol={(symbol) =>
+            setSourceCitation({
+              file: symbol.file,
+              start_line: symbol.line,
+              end_line: symbol.end_line ?? symbol.line,
+              node_name: symbol.name,
+              type: "definition",
+              score: null,
+              content: null,
+            })
+          }
+        />
       )}
 
       {/* A walkthrough's narration sits where the Ask bar floats; the header keeps Ask. */}

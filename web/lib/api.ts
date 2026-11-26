@@ -936,6 +936,35 @@ export interface WikiAreaMap {
   reason?: "outline_pending" | "graph_unavailable" | "no_cross_area_calls" | null;
 }
 
+/** A definition the index recorded, as the jump palette lists it. */
+export interface SymbolMatch {
+  name: string;
+  kind: string;
+  file: string;
+  /** 1-based, like citations. */
+  line: number;
+  end_line: number | null;
+  /** The Wiki page, top-level areas first, that cites this definition's file. */
+  page?: { id: string; title: string } | null;
+}
+
+/** Functions, methods and classes named like *query*. A published Wiki has
+ *  no index to ask, so it finds none. */
+export async function searchSymbols(
+  repoId: string,
+  query: string,
+  options: { signal?: AbortSignal; limit?: number } = {},
+): Promise<{ available: boolean; symbols: SymbolMatch[] }> {
+  if (isStaticRuntime()) return { available: false, symbols: [] };
+  const params = new URLSearchParams({ q: query, limit: String(options.limit ?? 12) });
+  const res = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/symbols?${params}`,
+    { signal: options.signal },
+  );
+  if (!res.ok) throw new Error(`Failed to search symbols (${res.status})`);
+  return res.json();
+}
+
 // How the wiki's top-level areas call each other in the indexed graph.
 export async function fetchWikiAreaMap(
   repoId: string,
