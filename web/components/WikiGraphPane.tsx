@@ -258,12 +258,35 @@ function placeLabels(
           });
         }
       }
+      const ownMark = marks.find((mark) => mark.id === node.id);
+      const overOwn = (candidate: typeof box) =>
+        !!ownMark &&
+        candidate.left < ownMark.right &&
+        candidate.right > ownMark.left &&
+        candidate.top < ownMark.bottom &&
+        candidate.bottom > ownMark.top;
       const best = ring
         .map(inPane)
-        .filter(({ box: candidate }) => candidate.bottom <= floor && !taken.some((other) => candidate.left < other.right && candidate.right > other.left && candidate.top < other.bottom && candidate.bottom > other.top))
+        .filter(
+          ({ box: candidate }) =>
+            candidate.bottom <= floor &&
+            !overOwn(candidate) &&
+            !taken.some((other) => candidate.left < other.right && candidate.right > other.left && candidate.top < other.bottom && candidate.bottom > other.top),
+        )
         .map((entry) => ({ ...entry, cost: coverage(entry.box) }))
         .sort((a, b) => a.cost - b.cost)[0];
       if (best) return { id: node.id, lines, ...best.option, box: best.box };
+      // A one-line name with nowhere off its own mark tries itself on two lines.
+      const words = node.title.split(" ");
+      if (!linesOverride && lines.length === 1 && words.length > 1) {
+        let pair: string[] = [];
+        for (let split = 1; split < words.length; split += 1) {
+          const candidate = [words.slice(0, split).join(" "), words.slice(split).join(" ")];
+          if (!pair.length || Math.max(...candidate.map((line) => line.length)) < Math.max(...pair.map((line) => line.length))) pair = candidate;
+        }
+        const twoLines = placeOne(node, factor, "force", pair);
+        if (twoLines && !overOwn(twoLines.box)) return twoLines;
+      }
     }
     if (mode === "force" || ((clash || outside) && priority(node) >= 4)) {
       // Its usual place, but never past the pane's side, and where moving in
