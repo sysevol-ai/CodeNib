@@ -320,7 +320,9 @@ export default function RepoPoster({
     () => ({
       areas: shownAreas.length,
       symbols: shownAreas.reduce((sum, area) => sum + area.symbols, 0),
-      files: repo?.file_count || shownAreas.reduce((sum, area) => sum + area.files, 0),
+      // The repository's own count only: a sum over areas would show first
+      // and then change under the reader.
+      files: repo?.file_count ?? null,
       references: map.links.reduce((sum, link) => sum + link.weight, 0),
     }),
     [shownAreas, map, repo?.file_count],
@@ -462,9 +464,19 @@ export default function RepoPoster({
     );
   };
   const hasTrace = stages.length > 1;
-  const [owner, name] = (repo?.repo || repoId).includes("/")
-    ? [(repo?.repo || repoId).split("/")[0] + "/", (repo?.repo || repoId).split("/").slice(1).join("/")]
-    : ["", repo?.repo || repoId];
+  // The snapshot's commit, its room held until the repository's record
+  // arrives so the footer never rewraps under the reader.
+  const commitAt = repo ? (
+    repo.commit_short ? ` at ${repo.commit_short}` : ""
+  ) : (
+    <span aria-hidden="true" style={{ visibility: "hidden" }}> at 0000000</span>
+  );
+  // The address names the repository ("psf__requests"), so the title is
+  // right before the repository's record arrives.
+  const slug = repo?.repo || repoId.replace("__", "/");
+  const [owner, name] = slug.includes("/")
+    ? [slug.split("/")[0] + "/", slug.split("/").slice(1).join("/")]
+    : ["", slug];
 
   return (
     <section
@@ -482,7 +494,15 @@ export default function RepoPoster({
         <dl className="poster-stats">
           <div><dt>areas</dt><dd>{number.format(totals.areas)}</dd></div>
           <div><dt>symbols</dt><dd>{number.format(totals.symbols)}</dd></div>
-          <div><dt>files</dt><dd>{number.format(totals.files)}</dd></div>
+          {/* Until the repository's count arrives its place is held, so the
+              line never rewraps under the reader. */}
+          <div
+            aria-hidden={totals.files === null ? true : undefined}
+            style={totals.files === null ? { visibility: "hidden" } : undefined}
+          >
+            <dt>files</dt>
+            <dd>{number.format(totals.files ?? shownAreas.reduce((sum, area) => sum + area.files, 0))}</dd>
+          </div>
           <div><dt>recorded references</dt><dd>{number.format(totals.references)}</dd></div>
         </dl>
       </header>
@@ -794,12 +814,12 @@ export default function RepoPoster({
       <footer className="poster-foot">
         {mode === "network" ? (
           <span>
-            Every line is a reference recorded in the code index{repo?.commit_short ? ` at ${repo.commit_short}` : ""}.
+            Every line is a reference recorded in the code index{commitAt}.
             No model drew this map.<span className="poster-no-export"> Click a line to see one.</span>
           </span>
         ) : (
           <span>
-            Area sizes are the symbols the code index{repo?.commit_short ? ` at ${repo.commit_short}` : ""} assigns
+            Area sizes are the symbols the code index{commitAt} assigns
             to each area. No model drew this map.
           </span>
         )}
@@ -807,11 +827,11 @@ export default function RepoPoster({
           <span className="poster-actions">
             {wikiHref ? (
               <a className="poster-link" href={wikiHref}>
-                Open the {repo?.repo || repoId} Wiki →
+                Open the {slug} Wiki
               </a>
             ) : (
               <AppLink className="poster-link" href={wikiRoute(repoId)}>
-                Open the {repo?.repo || repoId} Wiki →
+                Open the {slug} Wiki
               </AppLink>
             )}
           </span>
@@ -822,7 +842,10 @@ export default function RepoPoster({
           </button>
           {onOpenGraph && (
             <button type="button" className="poster-link" onClick={onOpenGraph}>
-              Open the symbol-level map →
+              Open the symbol-level map
+              <svg className="poster-link-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
             </button>
           )}
         </span>

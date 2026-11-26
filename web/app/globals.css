@@ -1175,20 +1175,21 @@ pre {
 .main-path-steps.is-armed .main-path-step:not(.is-drawn)::after {
   clip-path: inset(0 100% 100% 0);
 }
-.main-path-steps.is-armed .main-path-step:not(:first-child):not(.is-drawn) .main-path-index {
-  opacity: 0.35;
-}
+
 .main-path-steps.is-armed .main-path-step.is-drawn::after {
   animation: main-path-turn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: var(--draw-delay, 0s);
 }
-.main-path-steps.is-armed .main-path-step.is-drawn:not(:first-child) .main-path-index {
-  animation: main-path-arrive 0.3s ease-out both;
-  animation-delay: calc(var(--draw-delay, 0s) + 0.22s);
-}
+
 .main-path-steps.is-armed .main-path-step.is-drawn::before {
   animation: main-path-down 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: calc(var(--draw-delay, 0s) + 0.3s);
+}
+/* Below 1100 px the column is narrower: the stair stays within 160 px. */
+@media (max-width: 1100px) {
+  .main-path-steps {
+    --unit: min(var(--cascade, 36px), calc(160px / var(--units, 5)));
+  }
 }
 @keyframes main-path-down {
   from { transform: scaleY(0); }

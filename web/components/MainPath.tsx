@@ -5,6 +5,7 @@
 import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
 
 import type { Citation } from "@/lib/api";
+import { callLabel } from "@/lib/mapRoute";
 import { displaySymbol } from "@/lib/symbols";
 import { isBareHandoff, type Journey } from "@/lib/wikiPresentation";
 
@@ -93,36 +94,42 @@ export default function MainPath({
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
     list.classList.add("is-armed");
     const steps = [...list.querySelectorAll<HTMLElement>(".main-path-step")];
-    let batch = 0;
+    const draw = (step: HTMLElement, delay: number) => {
+      step.style.setProperty("--draw-delay", `${delay}s`);
+      step.classList.add("is-drawn");
+    };
+    // Every step whose ring is on screen at load draws, in order, once the
+    // page settles; the rest draw as they reach three quarters of the screen.
+    const later = steps.filter((step) => {
+      const ring = step.querySelector(".main-path-index")?.getBoundingClientRect();
+      return !ring || ring.top > window.innerHeight;
+    });
+    steps.filter((step) => !later.includes(step)).forEach((step, order) => draw(step, 0.35 + order * 0.24));
     const observer = new IntersectionObserver(
       (entries) => {
-        const arriving = entries
+        entries
           .filter((entry) => entry.isIntersecting)
           .map((entry) => entry.target as HTMLElement)
-          .sort((a, b) => steps.indexOf(a) - steps.indexOf(b));
-        // The first report holds every step on screen at load: they draw in
-        // order after the page settles. Later ones draw as they arrive.
-        const start = batch === 0 ? 0.35 : 0;
-        batch += 1;
-        arriving.forEach((step, order) => {
-          step.style.setProperty("--draw-delay", `${start + order * 0.24}s`);
-          step.classList.add("is-drawn");
-          observer.unobserve(step);
-        });
+          .sort((a, b) => steps.indexOf(a) - steps.indexOf(b))
+          .forEach((step, order) => {
+            draw(step, order * 0.24);
+            observer.unobserve(step);
+          });
       },
       { rootMargin: "0px 0px -22% 0px" },
     );
-    steps.forEach((step) => observer.observe(step));
+    later.forEach((step) => observer.observe(step));
     return () => observer.disconnect();
   }, [journey]);
   return (
     <figure className="main-path" aria-label={journey.title}>
       <figcaption className="main-path-head">
         <h2 className="main-path-title">{titleWithCode(journey.title)}</h2>
-        <p className="main-path-note">
-          One path selected from the code index: each step is a call found in the
-          source, or a base method leading to the subclass that implements it.
-          {colors && " The colours are the Wiki map's areas; a line turns where the call lands in another."}
+        <p
+          className="main-path-note"
+          title="Each step is a call found in the source, or a base method leading to the subclass that implements it."
+        >
+          One selected path from the code index{colors ? "; each line takes the colour of the area it enters." : "."}
         </p>
       </figcaption>
       <ol
@@ -178,7 +185,7 @@ export default function MainPath({
               <div className="main-path-body">
                 <div className="main-path-symbol-row">
                   <code className="main-path-symbol" title={stage.symbol}>
-                    <Call symbol={displaySymbol(stage.symbol, { short: true })} />
+                    <Call symbol={callLabel(displaySymbol(stage.symbol, { short: true }))} />
                   </code>
                   {source && file && (
                     <button

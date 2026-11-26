@@ -1340,7 +1340,7 @@ export default function WikiPageView({
             ? { role: "dialog", "aria-modal": true, "aria-label": "Pages in this Wiki" }
             : {})}
         >
-          <div className="rail-title">{repo ? repo.repo : repoId}</div>
+          <div className="rail-title">{repo ? repo.repo : repoId.replace("__", "/")}</div>
           {commits.length > 0 ? (
             <div className="rail-sub commit-picker">
               <label className="commit-picker-label" htmlFor="commit-select">
@@ -1362,8 +1362,11 @@ export default function WikiPageView({
               {commitCost && <div className="commit-evidence">{commitCost}</div>}
             </div>
           ) : (
-            repo?.commit_short && (
+            repo?.commit_short ? (
               <div className="rail-sub mono">Last indexed {repo.commit_short}</div>
+            ) : (
+              // Its room is kept until the record arrives, so the list never moves.
+              !repo && <div className="rail-sub mono" aria-hidden="true" style={{ visibility: "hidden" }}>Last indexed 0000000</div>
             )
           )}
           {error ? (
@@ -1509,6 +1512,16 @@ export default function WikiPageView({
                         ? titleOverviewLead(wikiMarkdown.lead, repo?.repo ?? repoId.replace("__", "/"))
                         : wikiMarkdown.lead}
                     </Markdown>
+                  )}
+                  {!overviewFacts && overviewTitled && !areaMapError && (!areaMap || (areaMap.available && !repo)) && (
+                    // The facts' line is kept while its counts arrive, so the
+                    // path below never moves.
+                    <dl className="wiki-repo-facts" aria-hidden="true" style={{ visibility: "hidden" }}>
+                      <div>
+                        <dt>files</dt>
+                        <dd>0</dd>
+                      </div>
+                    </dl>
                   )}
                   {overviewFacts && (
                     <dl className="wiki-repo-facts">

@@ -611,3 +611,30 @@
 .wiki-main .repo-poster:not(.is-exporting) .poster-steps {
   display: none;
 }
+
+/* In a Wiki the poster's heading is the main path's own, just below; it keeps
+   its label and Play here, and the exported image keeps the heading. */
+.wiki-main .repo-poster:not(.is-exporting) .poster-trace-title {
+  display: none;
+}
+/* Read on the page, the poster's text meets the reading column's floor. */
+.wiki-main .repo-poster:not(.is-exporting) :is(
+    .poster-play,
+    .poster-isolated-label,
+    .poster-chip,
+    .poster-cell-share,
+    .poster-foot,
+    .poster-link,
+    .poster-callout-meta,
+    .poster-callout-label,
+    .poster-code-head
+  ) {
+  font-size: 13px;
+}
+.wiki-main .repo-poster:not(.is-exporting) :is(.poster-chip span, .poster-callout-example code, .poster-code pre) {
+  font-size: 13px;
+}
+.poster-link-arrow {
+  margin-left: 4px;
+  vertical-align: -1px;
+}
