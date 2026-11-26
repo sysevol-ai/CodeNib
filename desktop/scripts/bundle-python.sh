@@ -34,7 +34,7 @@ trap 'rm -rf "$WORK"' EXIT
 curl --fail --location --silent --show-error --output "$WORK/$ARCHIVE" "$URL"
 echo "$SHA256  $WORK/$ARCHIVE" | shasum -a 256 --check --status
 
-find "$TARGET" -mindepth 1 ! -name .gitkeep -exec rm -rf {} +
+find "$TARGET" -mindepth 1 -maxdepth 1 ! -name .gitkeep -exec rm -rf {} +
 tar -xzf "$WORK/$ARCHIVE" -C "$WORK"
 cp -R "$WORK/python/." "$TARGET/"
 

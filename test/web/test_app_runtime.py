@@ -2534,3 +2534,130 @@ def test_wiki_page_boundary_reports_missing_graph(monkeypatch):
         assert exc.status_code == 404
     else:  # pragma: no cover - the endpoint must reject unknown pages
         raise AssertionError("unknown page should 404")
+
+
+def test_written_pages_reads_only_the_cache() -> None:
+    from codenib.web.app import _written_pages
+
+    class Builder:
+        def __init__(self):
+            self.asked = []
+
+        def cached_page_tree(self):
+            return [
+                {"id": "overview", "children": []},
+                {"id": "a", "children": [{"id": "a-1"}, {"id": "a-2"}]},
+            ]
+
+        def cached_page(self, page_id):
+            self.asked.append(page_id)
+            if page_id == "a-2":
+                raise ValueError("unreadable")
+            return {"id": page_id} if page_id in {"overview", "a-1"} else None
+
+        def page(self, page_id):  # pragma: no cover - must never be called
+            raise AssertionError("progress must not generate pages")
+
+    builder = Builder()
+    assert _written_pages(builder) == {
+        "writing": True,
+        "pages": ["overview", "a", "a-1", "a-2"],
+        "written": ["overview", "a-1"],
+    }
+    assert builder.asked == ["overview", "a", "a-1", "a-2"]
+
+
+def test_written_pages_without_a_writer() -> None:
+    from codenib.web.app import _written_pages
+
+    assert _written_pages(object()) == {"writing": False, "pages": [], "written": []}
+
+
+def test_retrying_a_page_needs_a_local_session(monkeypatch) -> None:
+    import pytest
+    from fastapi import HTTPException
+
+    from codenib.web import annotations as local
+    from codenib.web.app import _require_local_session
+
+    class Req:
+        headers = {"host": "127.0.0.1:8000", "X-CodeNib-Session": "k"}
+
+    monkeypatch.delenv(local.TOKEN_ENV, raising=False)
+    with pytest.raises(HTTPException) as hosted:
+        _require_local_session(Req())
+    assert hosted.value.status_code == 403
+
+
+def test_a_changed_repository_is_reread_and_the_caller_retries(monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    from codenib.source_fingerprint import RepositoryChangedError
+    from codenib.web import app as web_app
+
+    refreshed = []
+
+    class Registry:
+        def refresh(self, repo_id):
+            refreshed.append(repo_id)
+
+    def stale():
+        raise RepositoryChangedError("repository source inventory changed")
+
+    web_app.app.add_api_route("/api/repos/{repo_id}/stale-test", stale)
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    web_app._rebound_at.clear()
+    try:
+        client = TestClient(web_app.app, raise_server_exceptions=False)
+        first = client.get("/api/repos/req/stale-test")
+        second = client.get("/api/repos/req/stale-test")
+    finally:
+        web_app.app.router.routes = [
+            r
+            for r in web_app.app.router.routes
+            if getattr(r, "path", "") != "/api/repos/{repo_id}/stale-test"
+        ]
+    assert first.status_code == 503 and first.headers["retry-after"] == "2"
+    assert "re-read" in first.json()["detail"]
+    # A second failure within the interval does not refresh again.
+    assert second.status_code == 503
+    assert refreshed == ["req"]
+
+
+def test_files_list_the_pages_that_cite_them(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    from codenib.web import app as web_app
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "a.py").write_text("x = 1\n")
+    (tmp_path / "pkg" / "b.py").write_text("y = 2\n")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "skip.js").write_text("")
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), base_commit="")
+    )
+    monkeypatch.setattr(
+        web_app,
+        "_annotation_pages",
+        lambda repo_id: [
+            {
+                "id": "p1",
+                "title": "One",
+                "citations": [{"file": "pkg/a.py", "start_line": 1, "end_line": 1}],
+            },
+            {
+                "id": "p2",
+                "title": "Two",
+                "citations": [{"file": "pkg/a.py", "start_line": 3, "end_line": 9}],
+            },
+        ],
+    )
+    files = {
+        f["path"]: f["cited_by"]
+        for f in web_app._files_with_pages("r", bundle)["files"]
+    }
+    assert set(files) == {"pkg/a.py", "pkg/b.py"}, "ignored folders stay out"
+    assert [c["page"] for c in files["pkg/a.py"]] == ["p1", "p2"]
+    assert files["pkg/a.py"][1]["lines"] == [[3, 9]]
+    assert files["pkg/b.py"] == []

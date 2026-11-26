@@ -2025,6 +2025,149 @@ def test_wiki_without_generate_suggests_claude_code(
     assert rejected != 0
 
 
+@pytest.mark.parametrize(
+    ("writer", "model", "said"),
+    [
+        ("claude-code", "claude-code/sonnet", "written by your Claude Code"),
+        ("codex", "codex/default", "written by your Codex"),
+    ],
+)
+def test_wiki_writer_picks_the_local_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    writer: str,
+    model: str,
+    said: str,
+) -> None:
+    manifest_path = _bm25_manifest(tmp_path)
+    captured: dict = {}
+    checked: list = []
+    monkeypatch.setattr(
+        cli, "_check_module", lambda module: checked.append(module) or True
+    )
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+    monkeypatch.setattr("codenib.llm.claude_code.available", lambda: True)
+    monkeypatch.setattr("codenib.llm.codex_cli.available", lambda: True)
+    monkeypatch.setattr(
+        "codenib.web.local.prepare_local_wiki",
+        lambda *_a, **kwargs: captured.update(kwargs) or SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "codenib.web.launcher.launch_local_wiki", lambda *_args, **_kwargs: 0
+    )
+
+    argv = ["wiki", str(tmp_path), "--no-index", "--writer", writer, "--no-open"]
+    assert cli.run(argv) == 0
+    assert captured["agent_wiki"] is True
+    assert captured["model"] == model
+    assert captured["api_key_env"] is None and captured["api_base"] is None
+    assert captured["prewarm"] is True
+    assert "litellm" not in checked
+    assert said in capsys.readouterr().out
+
+
+def test_wiki_writer_explains_a_missing_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest_path = _bm25_manifest(tmp_path)
+    monkeypatch.setattr(cli, "_check_module", lambda _module: True)
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+    monkeypatch.setattr("codenib.llm.codex_cli.available", lambda: False)
+
+    argv = ["wiki", str(tmp_path), "--no-index", "--writer", "codex", "--no-open"]
+    assert cli.run(argv) != 0
+    assert "codex login" in capsys.readouterr().err
+    both = argv + ["--model", "openai/gpt-5"]
+    assert cli.run(both) != 0
+
+
+def test_auto_graph_needs_the_graph_extra_and_a_graph_language(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cli, "_check_module", lambda module: module == "igraph")
+    assert cli._auto_graph_available(["python"]) is True
+    assert cli._auto_graph_available(["markdown"]) is False
+    monkeypatch.setattr(cli, "_check_module", lambda _module: False)
+    assert cli._auto_graph_available(["python"]) is False
+
+
+def _wiki_with_failed_views(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failed: list[str],
+    extra_args: list[str],
+    installed=lambda _module: True,
+) -> tuple[int, dict, list]:
+    from codenib.compiler.manifest import RepoManifest
+
+    manifest_path = _bm25_manifest(tmp_path)
+    captured: dict = {}
+    requested: list = []
+    monkeypatch.setattr(cli, "_check_module", installed)
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+    monkeypatch.setattr("codenib.llm.claude_code.available", lambda: False)
+
+    def fake_index(_repo, **kwargs):
+        requested.append(list(kwargs["views"]))
+        return RepoManifest.load(str(manifest_path)), list(failed)
+
+    monkeypatch.setattr(cli, "index_repository", fake_index)
+    monkeypatch.setattr(cli, "_print_index_summary", lambda *_args: None)
+    monkeypatch.setattr(
+        "codenib.web.local.prepare_local_wiki",
+        lambda *_a, **kwargs: captured.update(kwargs) or SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "codenib.web.launcher.launch_local_wiki", lambda *_args, **_kwargs: 0
+    )
+    result = cli.run(["wiki", str(tmp_path), "--no-open", *extra_args])
+    return result, captured, requested
+
+
+def test_wiki_auto_preset_builds_the_symbol_graph(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result, captured, requested = _wiki_with_failed_views(
+        tmp_path, monkeypatch, [], [], installed=lambda module: module != "faiss"
+    )
+    assert result == 0
+    assert "symbol_graph" in requested[0]
+    assert "adding the symbol graph" in capsys.readouterr().out
+    assert "symbol_graph" in captured["reindex_argv"]
+
+
+def test_wiki_opens_without_auto_views_that_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result, captured, _requested = _wiki_with_failed_views(
+        tmp_path, monkeypatch, ["vector", "symbol_graph"], []
+    )
+    assert result == 0
+    out = capsys.readouterr().out
+    assert "opens without semantic search and the symbol graph" in out
+    assert "vector" not in captured["reindex_argv"]
+    assert "symbol_graph" not in captured["reindex_argv"]
+
+
+def test_wiki_still_stops_when_a_requested_view_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result, _captured, _requested = _wiki_with_failed_views(
+        tmp_path, monkeypatch, ["symbol_graph"], ["--preset", "graph"]
+    )
+    assert result == 2
+    assert "requested views failed: symbol_graph" in capsys.readouterr().err
+
+
 def test_wiki_visual_facts_publish_current_indexed_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

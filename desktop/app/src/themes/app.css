@@ -514,10 +514,82 @@ mark.anchor.is-focus {
   text-decoration-color: currentColor;
 }
 
+/* Fits the window: as wide as code needs up to 680px, and never taller than
+   the room the popover has, with its code scrolling inside. */
 .src-pop {
-  width: 560px;
+  width: min(680px, calc(100vw - 48px));
+  max-height: min(560px, var(--radix-popover-content-available-height, 560px));
   padding: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.src-pop-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.src-pop-file {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.src-pop-lines {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.src-pop-icon {
+  flex: none;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 5px;
+  color: var(--muted-ink);
+  cursor: pointer;
+}
+
+.src-pop-icon:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.src-pop-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.src-pop-more {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px;
+  border-bottom: 1px solid var(--line-soft, var(--line));
+  font-size: 12.5px;
+  color: var(--muted-ink);
+  background: var(--well);
+  cursor: pointer;
+}
+
+.src-pop-body + .src-pop-more {
+  border-top: 1px solid var(--line-soft, var(--line));
+  border-bottom: 0;
+}
+
+.src-pop-more:hover {
+  color: var(--ink);
+}
+
+.src-pop-more svg {
+  width: 13px;
+  height: 13px;
 }
 
 .src-pop-head,
@@ -588,13 +660,113 @@ mark.anchor.is-focus {
   user-select: none;
 }
 
-.tok-kw {
-  color: var(--ink);
-  font-weight: 600;
+/* Syntax colour: restrained, from the Paper & Ink palette. Keywords and
+   names carry the weight; strings, numbers and comments step back. */
+.hljs {
+  --hl-kw: #8a2be2;
+  --hl-fn: #1d4fd8;
+  --hl-str: #0f7b4a;
+  --hl-num: #b45309;
+  --hl-com: #7b8592;
+  --hl-type: #a3123b;
+  --hl-attr: #0e6e8a;
 }
 
-.tok-str,
-.tok-com {
+.dark .hljs {
+  --hl-kw: #c79bff;
+  --hl-fn: #8ab4f8;
+  --hl-str: #7fd3a3;
+  --hl-num: #f5b971;
+  --hl-com: #868c95;
+  --hl-type: #ff8fa8;
+  --hl-attr: #7fd0e6;
+}
+
+.hljs .hljs-keyword,
+.hljs .hljs-literal,
+.hljs .hljs-built_in,
+.hljs .hljs-meta .hljs-keyword {
+  color: var(--hl-kw);
+}
+
+.hljs .hljs-title,
+.hljs .hljs-title.function_,
+.hljs .hljs-section {
+  color: var(--hl-fn);
+}
+
+.hljs .hljs-title.class_,
+.hljs .hljs-type {
+  color: var(--hl-type);
+}
+
+.hljs .hljs-string,
+.hljs .hljs-regexp,
+.hljs .hljs-char {
+  color: var(--hl-str);
+}
+
+.hljs .hljs-number,
+.hljs .hljs-symbol {
+  color: var(--hl-num);
+}
+
+.hljs .hljs-comment,
+.hljs .hljs-quote,
+.hljs .hljs-doctag {
+  color: var(--hl-com);
+  font-style: italic;
+}
+
+.hljs .hljs-attr,
+.hljs .hljs-attribute,
+.hljs .hljs-params,
+.hljs .hljs-variable,
+.hljs .hljs-property {
+  color: var(--hl-attr);
+}
+
+.hljs .hljs-meta {
+  color: var(--hl-com);
+}
+
+/* ---------- diagrams ---------- */
+.mermaid-diagram {
+  margin: 6px 0;
+  padding: 24px 20px;
+  overflow-x: auto;
+  border: 1px solid var(--line-soft, var(--line));
+  border-radius: 12px;
+  background: var(--sheet);
+}
+
+/* Centred with margins, not flex: a centred flex row clips its left side
+   when the diagram is wider than the card. */
+.mermaid-diagram svg {
+  display: block;
+  margin: 0 auto;
+}
+
+/* Rounded boxes, as Notion draws them. */
+.mermaid-diagram svg .node rect,
+.mermaid-diagram svg rect.basic,
+.mermaid-diagram svg rect.label-container {
+  rx: 8px;
+  ry: 8px;
+}
+
+/* An edge label sits on the card's colour, so the line stops at its text. */
+.mermaid-diagram svg .edgeLabel rect,
+.mermaid-diagram svg .edgeLabel .background,
+.mermaid-diagram svg .labelBkg {
+  fill: var(--sheet) !important;
+  opacity: 1 !important;
+  rx: 4px;
+  ry: 4px;
+}
+
+.mermaid-diagram.is-loading {
+  font-size: 13px;
   color: var(--muted-ink);
 }
 
@@ -782,6 +954,35 @@ mark.anchor.is-focus {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+/* Which agent a question or change goes to. */
+.agent-pick {
+  display: inline-flex;
+  padding: 1px;
+  margin-right: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.agent-pick-option {
+  padding: 1px 7px;
+  border-radius: 5px;
+  font: inherit;
+  color: var(--muted-ink);
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-pick-option.is-on {
+  color: var(--ink);
+  background: var(--nib-soft);
+  box-shadow: 0 0 0 1px var(--nib-line);
+}
+
+.agent-pick-option.is-off {
+  text-decoration: line-through;
+  text-decoration-color: var(--muted-ink);
 }
 
 /* ---------- status marks ---------- */

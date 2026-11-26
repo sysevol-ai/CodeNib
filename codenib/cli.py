@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Iterator, Sequence
 
 from ._version import package_version
+from .parser_errors import ParserUnavailableError
 from .provider_routes import (
     InferenceRoute,
     normalize_provider,
@@ -582,6 +583,16 @@ def _selected_views(preset: str, explicit: Iterable[str]) -> list[str]:
     if unknown:
         raise CLIError(f"unsupported view: {', '.join(unknown)}")
     return list(dict.fromkeys(views))
+
+
+def _auto_graph_available(languages: Iterable[str]) -> bool:
+    """True when the graph extra is installed and a language has a backend."""
+
+    from .languages import graph_indexer_path
+
+    if not _check_module("igraph"):
+        return False
+    return any(graph_indexer_path(language) is not None for language in languages)
 
 
 def _selected_views_for_args(args: argparse.Namespace) -> list[str]:
@@ -1977,6 +1988,24 @@ def _reindex_argv(
     return argv
 
 
+def _prepare_state_folder(repo_path: Path) -> None:
+    """Create the repository's ``.codenib/`` before anything reads its source.
+
+    The served Wiki binds the repository root, directory times included, and
+    refuses every source read once the root changes. Notes, tasks and
+    walkthroughs live in ``.codenib/``, which the working-tree follower
+    ignores; creating it later, on the first note, changed the root's time
+    and left Impact, Walkthrough and citations failing until a restart.
+    Writes inside an existing ``.codenib/`` do not touch the root.
+    """
+
+    try:
+        (repo_path / ".codenib").mkdir(exist_ok=True)
+    except OSError:
+        # A read-only checkout serves the Wiki; it just cannot take notes.
+        pass
+
+
 def _run_wiki(args: argparse.Namespace) -> int:
     try:
         args.port, args.api_port = validate_local_wiki_ports(
@@ -1987,6 +2016,7 @@ def _run_wiki(args: argparse.Namespace) -> int:
         raise CLIError(str(exc)) from exc
 
     repo_path = resolve_repo_path(args.repo)
+    _prepare_state_folder(repo_path)
     resolved_selection = _resolve_repository_source_selection(repo_path, args)
     if args.no_index and resolved_selection.action in {"replace", "clear"}:
         raise CLIError(
@@ -2003,12 +2033,47 @@ def _run_wiki(args: argparse.Namespace) -> int:
         print("Auto preset: reuse manifest capabilities")
     else:
         views = _selected_views_for_args(args)
+    # Views the auto preset chose on its own are extras: if one cannot be
+    # built here, the Wiki still opens without it. The Wiki's Map and Impact
+    # read the symbol graph, so it is built by default when the graph extra
+    # is installed and a detected language has a graph backend.
+    optional_views: set[str] = set()
+    if not args.no_index and args.preset == "auto" and not _split_values(args.view):
+        if not _embedding_identity_is_configured(args):
+            optional_views.update(view for view in views if view != "bm25")
+        if "symbol_graph" not in views and _auto_graph_available(languages):
+            views.append("symbol_graph")
+            optional_views.add("symbol_graph")
+            print("Auto preset: adding the symbol graph (graph extra available)")
     audit = bool(args.audit or args.audit_json)
     model_options = _model_options_for_args(args)
     visual_facts_backend = _visual_facts_backend_for_args(args)
     from .llm.claude_code import DEFAULT_MODEL as CLAUDE_CODE_MODEL
     from .llm.claude_code import available as claude_code_available
     from .llm.claude_code import is_claude_code_model
+    from .llm.codex_cli import DEFAULT_MODEL as CODEX_MODEL
+    from .llm.codex_cli import available as codex_available
+    from .llm.codex_cli import is_codex_model
+
+    writer = getattr(args, "writer", None)
+    if writer:
+        if args.model or args.model_provider:
+            raise CLIError("--writer chooses the model; drop --model/--model-provider")
+        args.agent_wiki = True
+        if writer == "codex":
+            if not codex_available():
+                raise CLIError(
+                    "--writer codex needs Codex: install it with "
+                    "`npm install -g @openai/codex` and sign in with `codex login`"
+                )
+            args.model = CODEX_MODEL
+        else:
+            if not claude_code_available():
+                raise CLIError(
+                    "--writer claude-code needs Claude Code: install it and sign "
+                    "in with `claude auth login`"
+                )
+            args.model = CLAUDE_CODE_MODEL
 
     named_model = (
         args.model
@@ -2024,10 +2089,12 @@ def _run_wiki(args: argparse.Namespace) -> int:
                 "pass --model with --api-key-env"
             )
         args.model = CLAUDE_CODE_MODEL
-    claude_pages = is_claude_code_model(args.model or named_model)
+    codex_pages = is_codex_model(args.model or named_model)
+    # Pages written by a coding agent on this machine, on its own sign-in.
+    claude_pages = is_claude_code_model(args.model or named_model) or codex_pages
     if claude_pages and (args.model_provider or args.api_base or args.api_key_env):
         raise CLIError(
-            "a claude-code/ model runs on the local Claude Code; it takes no "
+            "a claude-code/ or codex/ model runs on the local agent; it takes no "
             "--model-provider, --api-base or --api-key-env"
         )
     if not claude_pages and (
@@ -2085,6 +2152,20 @@ def _run_wiki(args: argparse.Namespace) -> int:
             )
         manifest, failed = index_repository(repo_path, **index_kwargs)
         _print_index_summary(manifest, views)
+        skipped = [view for view in failed if view in optional_views]
+        if skipped:
+            # Open the Wiki without the extras rather than not at all.
+            failed = [view for view in failed if view not in optional_views]
+            views = [view for view in views if view not in skipped]
+            labels = {
+                "symbol_graph": "the symbol graph (Map and Impact)",
+                "vector": "semantic search",
+            }
+            print(
+                "The Wiki opens without "
+                + " and ".join(labels.get(view, view) for view in skipped)
+                + ": it could not be built here. Run `codenib doctor` for details."
+            )
         if failed:
             raise CLIError(
                 "the Wiki was not started because requested views failed: "
@@ -2143,7 +2224,12 @@ def _run_wiki(args: argparse.Namespace) -> int:
             f"{fact_count} artifact(s) -> {destination}"
         )
 
-    if claude_pages and (args.agent_wiki or audit):
+    if codex_pages and (args.agent_wiki or audit):
+        print(
+            f"Pages are written by your Codex ({args.model or named_model}) "
+            "on this machine, on your Codex sign-in; no API key is used."
+        )
+    elif claude_pages and (args.agent_wiki or audit):
         print(
             f"Pages are written by your Claude Code ({args.model or named_model}) "
             "on this machine, on your Claude Code plan; no API key is used."
@@ -3934,6 +4020,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="generate conceptual, source-grounded pages with the configured LLM",
     )
     wiki_parser.add_argument(
+        "--writer",
+        choices=("claude-code", "codex"),
+        help=(
+            "write the pages with this local coding agent, on its own sign-in "
+            "and no API key; implies --generate"
+        ),
+    )
+    wiki_parser.add_argument(
         "--model",
         help="LiteLLM model string used for Wiki generation and Ask",
     )
@@ -4713,6 +4807,9 @@ def run(argv: Sequence[str] | None = None) -> int:
         activate_managed_toolchain()
         return int(args.handler(args) or 0)
     except CLIError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except ParserUnavailableError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

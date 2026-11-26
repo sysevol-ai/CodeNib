@@ -3,16 +3,45 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { backend, listen, message, type Progress, type RepoView, type Setup } from "./backend";
+import {
+  backend,
+  listen,
+  message,
+  type AgentStatus,
+  type GitHubStatus,
+  type Progress,
+  type RepoView,
+  type Setup,
+  type WriterId,
+} from "./backend";
 import { deriveFileAreas, type FileAreas, type FileEdge, type FileNode, type MapArea } from "./areas";
-import type { NotesState, RepoInfo, Tree } from "./model";
+import type { NotesState, RepoInfo, Revision, Tree } from "./model";
 
 export type View =
   | { kind: "home" }
   | { kind: "inbox" }
   | { kind: "page"; repo: string; page: string }
   | { kind: "review"; repo: string; task: string }
+  | { kind: "revision"; repo: string; id: string }
+  /** The repository's files, as a mode of the page the person came from. */
+  | { kind: "files"; repo: string; page: string; file?: string }
   | { kind: "map" | "impact" | "walkthrough"; repo: string; page: string };
+
+export interface RepoFile {
+  path: string;
+  cited_by: { page: string; title: string; lines: [number, number][] }[];
+}
+
+export interface WikiProgress {
+  writing: boolean;
+  pages: string[];
+  written: string[];
+}
+
+/** True while an agent is still writing some of a repository's pages. */
+export function stillWriting(progress: WikiProgress | undefined): boolean {
+  return !!progress?.writing && progress.written.length < progress.pages.length;
+}
 
 export interface RepoData {
   info?: RepoInfo;
@@ -21,6 +50,13 @@ export interface RepoData {
   mapAreas?: MapArea[] | null;
   /** Without an outline: areas derived from the file call graph. */
   fileAreas?: FileAreas | null;
+  /** The repository's files and the pages that cite each one. */
+  files?: RepoFile[];
+  /** Better paragraphs proposed from comments. */
+  revisions?: Revision[];
+  /** Which pages a writing agent has finished. */
+  progress?: WikiProgress;
+  progressAt?: number;
   error?: string;
   loadedAt?: number;
 }
@@ -35,16 +71,33 @@ interface Store {
   open: (path: string) => void;
   reload: (path: string) => Promise<void>;
   refreshNotes: (path: string) => Promise<void>;
+  loadFiles: (path: string) => Promise<void>;
   call: <T>(path: string, method: string, apiPath: string, body?: unknown) => Promise<T>;
-  addFolder: string | null;
-  setAddFolder: (path: string | null) => void;
+  /** The add-a-repository dialog, when it is open. */
+  adding: Adding | null;
+  setAdding: (adding: Adding | null) => void;
+  /** Pick a folder, then show the dialog for it. */
   chooseFolder: () => Promise<void>;
-  addRepository: (path: string, analysis: boolean, generate: boolean) => Promise<void>;
+  /** Show the dialog on its GitHub side, with a name or address filled in. */
+  openFromGitHub: (input?: string) => void;
+  addRepository: (path: string, analysis: boolean, writer: WriterId | null) => Promise<void>;
+  /** Claude Code and Codex on this Mac; null until first checked. */
+  agents: AgentStatus[] | null;
+  github: GitHubStatus | null;
+  setGithub: (status: GitHubStatus) => void;
+  refreshAccounts: () => Promise<void>;
+  accountsOpen: boolean;
+  setAccountsOpen: (open: boolean) => void;
+  /** The agent questions and changes go to. */
+  taskAgent: WriterId;
+  setTaskAgent: (id: WriterId) => void;
   removeRepository: (path: string) => Promise<void>;
   restart: (path: string) => Promise<void>;
   palette: { open: boolean; ask?: string };
   setPalette: (palette: { open: boolean; ask?: string }) => void;
 }
+
+export type Adding = { tab: "folder"; folder: string | null } | { tab: "github"; input: string };
 
 const StoreContext = createContext<Store | null>(null);
 
@@ -56,6 +109,7 @@ export function useStore(): Store {
 
 const LAST = "codenib.last-view";
 const LINES = 40;
+const TASK_AGENT = "codenib.task-agent";
 
 function savedView(): View {
   try {
@@ -80,7 +134,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<Record<string, RepoData>>({});
   const [lines, setLines] = useState<Record<string, string[]>>({});
   const [view, setView] = useState<View>(savedView);
-  const [addFolder, setAddFolder] = useState<string | null>(null);
+  const [adding, setAdding] = useState<Adding | null>(null);
+  const [agents, setAgents] = useState<AgentStatus[] | null>(null);
+  const [github, setGithub] = useState<GitHubStatus | null>(null);
+  const [accountsOpen, setAccountsOpen] = useState(false);
+  const [chosenAgent, setChosenAgent] = useState<WriterId | null>(() => {
+    try {
+      const saved = localStorage.getItem(TASK_AGENT);
+      return saved === "claude-code" || saved === "codex" ? saved : null;
+    } catch {
+      return null;
+    }
+  });
+  // Without a choice: the first agent that is signed in, Claude Code first.
+  const taskAgent: WriterId =
+    chosenAgent ?? agents?.find((a) => a.installed && a.signed_in)?.id ?? "claude-code";
+  const setTaskAgent = useCallback((id: WriterId) => {
+    setChosenAgent(id);
+    try {
+      localStorage.setItem(TASK_AGENT, id);
+    } catch {
+      // The choice still holds until the app quits.
+    }
+  }, []);
   const [palette, setPalette] = useState<{ open: boolean; ask?: string }>({ open: false });
   const loading = useRef(new Set<string>());
   const dataRef = useRef(data);
@@ -110,8 +186,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const notesPath = repoPath(dataRef.current[path], "/annotations");
       if (!notesPath) return;
       try {
-        const notes = await backend.api<NotesState>(path, "GET", notesPath);
-        patchData(path, { notes });
+        const [notes, revisions] = await Promise.all([
+          backend.api<NotesState>(path, "GET", notesPath),
+          backend
+            .api<{ revisions: Revision[] }>(path, "GET", notesPath.replace(/\/annotations$/, "/revisions"))
+            .then((r) => r.revisions)
+            .catch(() => undefined),
+        ]);
+        patchData(path, { notes, ...(revisions ? { revisions } : {}) });
       } catch {
         // The next poll tries again.
       }
@@ -128,12 +210,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const info = infos[0];
         if (!info) throw new Error("CodeNib found no repository in this folder");
         const base = `/api/repos/${encodeURIComponent(info.id)}`;
-        const [tree, notes, map] = await Promise.all([
+        const [tree, notes, map, progress] = await Promise.all([
           backend.api<Tree>(path, "GET", `${base}/wiki`),
           backend.api<NotesState>(path, "GET", `${base}/annotations`).catch(() => undefined),
           backend
             .api<{ available: boolean; areas: MapArea[] }>(path, "GET", `${base}/wiki-map`)
             .catch(() => ({ available: false, areas: [] })),
+          backend.api<WikiProgress>(path, "GET", `${base}/wiki-progress`).catch(() => undefined),
         ]);
         let fileAreas: FileAreas | null = null;
         if (!map.available) {
@@ -148,6 +231,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           notes,
           mapAreas: map.available ? map.areas : null,
           fileAreas,
+          progress,
+          progressAt: Date.now(),
           error: undefined,
           loadedAt: Date.now(),
         });
@@ -155,6 +240,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         patchData(path, { error: message(error) });
       } finally {
         loading.current.delete(path);
+      }
+    },
+    [patchData],
+  );
+
+  const loadFiles = useCallback(
+    async (path: string) => {
+      const filesPath = repoPath(dataRef.current[path], "/files");
+      if (!filesPath) return;
+      try {
+        const r = await backend.api<{ files: RepoFile[] }>(path, "GET", filesPath);
+        patchData(path, { files: r.files });
+      } catch {
+        patchData(path, { files: [] });
       }
     },
     [patchData],
@@ -222,11 +321,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (repo.status !== "ready") continue;
         const d = dataRef.current[repo.path];
         if (!d?.info) continue;
-        const busy = d.notes?.tasks.some((t) => t.status === "queued" || t.status === "running");
+        const busy =
+          d.notes?.tasks.some((t) => t.status === "queued" || t.status === "running") ||
+          d.revisions?.some((r) => r.status === "working");
         const age = Date.now() - (d.loadedAt ?? 0);
         if (busy || age > 15000) {
           patchData(repo.path, { loadedAt: Date.now() });
           void refreshNotes(repo.path);
+        }
+        // While an agent writes pages, check every few seconds which are done.
+        const progressPath = repoPath(d, "/wiki-progress");
+        if (progressPath && stillWriting(d.progress) && Date.now() - (d.progressAt ?? 0) > 8000) {
+          patchData(repo.path, { progressAt: Date.now() });
+          void backend
+            .api<WikiProgress>(repo.path, "GET", progressPath)
+            .then((progress) => patchData(repo.path, { progress }))
+            .catch(() => undefined);
         }
       }
     }, 2500);
@@ -235,12 +345,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const chooseFolder = useCallback(async () => {
     const folder = await backend.pickFolder();
-    if (folder) setAddFolder(folder);
+    if (folder) setAdding({ tab: "folder", folder });
   }, []);
 
+  const openFromGitHub = useCallback((input = "") => setAdding({ tab: "github", input }), []);
+
+  const refreshAccounts = useCallback(async () => {
+    await Promise.all([
+      backend
+        .agents()
+        .then(setAgents)
+        .catch(() => setAgents([])),
+      backend
+        .github()
+        .then(setGithub)
+        .catch(() => setGithub(null)),
+    ]);
+  }, []);
+
+  // Sign-ins change outside the app (in Terminal, on github.com): check on
+  // start and whenever the window comes back to the front.
+  useEffect(() => {
+    void refreshAccounts();
+    const onFocus = () => void refreshAccounts();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshAccounts]);
+
   const addRepository = useCallback(
-    async (path: string, analysis: boolean, generate: boolean) => {
-      const added = await backend.add(path, analysis, generate);
+    async (path: string, analysis: boolean, writer: WriterId | null) => {
+      const added = await backend.add(path, analysis, writer);
       setRepos((all) => [...all.filter((r) => r.path !== path), added]);
       setLines((all) => ({ ...all, [path]: [] }));
       setData((all) => {
@@ -280,17 +414,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       open,
       reload,
       refreshNotes,
+      loadFiles,
       call,
-      addFolder,
-      setAddFolder,
+      adding,
+      setAdding,
       chooseFolder,
+      openFromGitHub,
       addRepository,
+      agents,
+      github,
+      setGithub,
+      refreshAccounts,
+      accountsOpen,
+      setAccountsOpen,
+      taskAgent,
+      setTaskAgent,
       removeRepository,
       restart,
       palette,
       setPalette,
     }),
-    [setup, repos, data, lines, view, go, open, reload, refreshNotes, call, addFolder, chooseFolder, addRepository, removeRepository, restart, palette],
+    [
+      setup,
+      repos,
+      data,
+      lines,
+      view,
+      go,
+      open,
+      reload,
+      refreshNotes,
+      loadFiles,
+      call,
+      adding,
+      chooseFolder,
+      openFromGitHub,
+      addRepository,
+      agents,
+      github,
+      refreshAccounts,
+      accountsOpen,
+      taskAgent,
+      setTaskAgent,
+      removeRepository,
+      restart,
+      palette,
+    ],
   );
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;

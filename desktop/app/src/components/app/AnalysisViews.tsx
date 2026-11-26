@@ -2,7 +2,7 @@
 // name and line comes from the local service; where it has nothing to say,
 // the view says so instead of filling in.
 
-import { ArrowLeft, ArrowRight, ChevronDown } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,13 +15,15 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { message } from "@/lib/backend";
 import { hueFor } from "@/lib/areas";
-import { flattenPages, type Source } from "@/lib/model";
+import { agentName, flattenPages, type Source } from "@/lib/model";
 import { repoPath, useStore } from "@/lib/store";
 import { useAreas } from "@/lib/useAreas";
 import { BOX_H, routeMap, type MapBox, type MapColumn, type MapLink } from "@/lib/mapRoute";
 import { cn } from "@/lib/utils";
 import { CodeLines } from "./CodeLines";
+import { Markdown } from "./markdown";
 import { SourceMark } from "./SourceMark";
+import { StatusMark } from "./StatusMark";
 
 interface Anchor {
   file: string;
@@ -100,7 +102,14 @@ function Name({ text, className }: { text: string; className?: string }) {
   );
 }
 
-const shortName = (name: string) => name.split(":").pop() ?? name;
+/** A symbol's name as a person reads it: no file path, and no internal scope
+ *  marker such as "(_codenib_l375_c4)" that the index adds to nested code. */
+const shortName = (name: string) =>
+  (name.split(":").pop() ?? name).replace(/\(_codenib_l\d+_c\d+\)/g, "()").replace(/\(\)\(\)$/, "()");
+
+/** Calls lead from function to function; a field or type alias (str, _VT)
+ *  is not a step a reader can follow. */
+const isStep = (node: { kind?: string }) => !["field", "variable", "attribute", "type_alias"].includes(node.kind ?? "");
 
 function Empty({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -108,6 +117,33 @@ function Empty({ title, children }: { title: string; children: React.ReactNode }
       <h1 className="view-title">
         {title} <span className="two-tone">{children}</span>
       </h1>
+    </div>
+  );
+}
+
+/** A view whose data could not be read: say so, never "nothing here". */
+function Failed({ title, repo, error }: { title: string; repo: string; error: string }) {
+  const { restart } = useStore();
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="view">
+      <h1 className="view-title">
+        {title} <span className="two-tone">CodeNib could not read this page's code.</span>
+      </h1>
+      <p className="view-sub">{error}</p>
+      <div>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            void restart(repo).finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "Restarting…" : "Restart CodeNib for this repository"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -451,6 +487,7 @@ export function ImpactView({ repo, pageId }: { repo: string; pageId: string }) {
   }, [rows, focus]);
 
   if (boundary.loading) return <Empty title="Impact.">Reading the index…</Empty>;
+  if (boundary.error) return <Failed title="Impact." repo={repo} error={boundary.error} />;
   if (!boundary.value?.available || !boundary.value.focus?.length)
     return <Empty title="Impact.">This page names no symbols the symbol graph knows, so there is nothing to trace yet.</Empty>;
 
@@ -629,7 +666,7 @@ interface Step {
 
 /** The longest chain of calls through the page's own graph, at most six. */
 function chainOf(graph: Graph): Step[] {
-  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const byId = new Map(graph.nodes.filter(isStep).map((n) => [n.id, n]));
   const out = new Map<string, GraphEdge[]>();
   const into = new Set<string>();
   for (const e of graph.edges) {
@@ -643,8 +680,9 @@ function chainOf(graph: Graph): Step[] {
     if (path.length >= 6) return;
     for (const e of out.get(id) ?? []) if (!path.includes(e.target)) walk(e.target, [...path, e.target]);
   };
-  const starts = graph.nodes.filter((n) => out.has(n.id) && !into.has(n.id));
-  for (const s of starts.length ? starts : graph.nodes.filter((n) => out.has(n.id))) walk(s.id, [s.id]);
+  const nodes = [...byId.values()];
+  const starts = nodes.filter((n) => out.has(n.id) && !into.has(n.id));
+  for (const s of starts.length ? starts : nodes.filter((n) => out.has(n.id))) walk(s.id, [s.id]);
   return best.map((id, i) => {
     const nextId = best[i + 1];
     const edge = nextId ? (out.get(id) ?? []).find((e) => e.target === nextId) : undefined;
@@ -655,9 +693,10 @@ function chainOf(graph: Graph): Step[] {
   });
 }
 
-function StepCode({ repo, node }: { repo: string; node: GraphNode }) {
+function StepCode({ repo, node, marked = [] }: { repo: string; node: GraphNode; marked?: number[] }) {
   const { data } = useStore();
-  const end = Math.min(node.end_line && node.end_line >= node.line ? node.end_line : node.line + 20, node.line + 30);
+  // Long enough to reach the call that leads on, in most functions.
+  const end = Math.min(node.end_line && node.end_line >= node.line ? node.end_line : node.line + 20, node.line + 60);
   const source = useFetch<Source>(
     repo,
     repoPath(data[repo], `/source?file=${encodeURIComponent(node.file)}&start=${node.line}&end=${end}`),
@@ -677,12 +716,85 @@ function StepCode({ repo, node }: { repo: string; node: GraphNode }) {
           start={source.value.start_line}
           from={Math.max(node.line, source.value.start_line)}
           to={Math.min(end, source.value.end_line)}
+          file={node.file}
+          highlight={marked}
         />
       ) : (
         <p className="src-pop-wait">{source.error || "Reading the code…"}</p>
       )}
     </div>
   );
+}
+
+interface Narration {
+  agent: string;
+  title: string;
+  overview: string;
+  steps: { text: string; lines: number[] }[];
+  recap: string;
+}
+
+/** The words for a page's chain of calls: saved ones, or written on request
+ *  by the person's own agent and kept in the repository's .codenib/. */
+function useNarration(repo: string, pageId: string, steps: Step[]) {
+  const { data, call, agents, taskAgent, setAccountsOpen } = useStore();
+  const [narration, setNarration] = useState<Narration | null>(null);
+  const [state, setState] = useState<"checking" | "none" | "writing" | "ready" | "failed">("checking");
+  const [error, setError] = useState("");
+  const path = repoPath(data[repo], "/walk-narration");
+  const body = useMemo(
+    () => ({
+      page: pageId,
+      agent: taskAgent,
+      steps: steps.map((s) => ({ name: s.node.name, file: s.node.file, line: s.node.line, end_line: s.node.end_line ?? null })),
+    }),
+    [pageId, steps, taskAgent],
+  );
+  const ready = steps.length >= 2 && !!path;
+  useEffect(() => {
+    if (!ready) return;
+    let live = true;
+    setState("checking");
+    call<{ narration: Narration | null }>(repo, "POST", path!, body)
+      .then((r) => {
+        if (!live) return;
+        setNarration(r.narration);
+        setState(r.narration ? "ready" : "none");
+      })
+      .catch(() => live && setState("none"));
+    return () => {
+      live = false;
+    };
+    // The steps' identity is in `body`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo, path, ready, pageId, steps]);
+  const write = useCallback(async () => {
+    const agent = agents?.find((a) => a.id === taskAgent);
+    if (agents && (!agent?.installed || !agent.signed_in)) {
+      setAccountsOpen(true);
+      return;
+    }
+    setState("writing");
+    setError("");
+    try {
+      const r = await call<{ narration: Narration | null }>(repo, "POST", `${path}?write=1`, body);
+      setNarration(r.narration);
+      setState(r.narration ? "ready" : "failed");
+    } catch (e) {
+      setError(message(e));
+      setState("failed");
+    }
+  }, [agents, taskAgent, setAccountsOpen, call, repo, path, body]);
+  return { narration, state, error, write, who: agentName(taskAgent) };
+}
+
+function WritingClock() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <span className="walk-clock">{`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`}</span>;
 }
 
 export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string }) {
@@ -692,6 +804,8 @@ export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string
   const [at, setAt] = useState(0);
   const areaOf = useAreaOf(repo);
   const move = useCallback((delta: number) => setAt((i) => Math.max(0, Math.min(steps.length - 1, i + delta))), [steps.length]);
+  const told = useNarration(repo, pageId, steps);
+  const words = told.narration;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -705,6 +819,7 @@ export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string
   }, [move]);
 
   if (graph.loading) return <Empty title="Walkthrough.">Reading the page's calls…</Empty>;
+  if (graph.error) return <Failed title="Walkthrough." repo={repo} error={graph.error} />;
   if (steps.length < 2)
     return (
       <Empty title="Walkthrough.">
@@ -718,15 +833,53 @@ export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string
   return (
     <div className="view walk">
       <h1 className="view-title">
-        Walkthrough.{" "}
-        <span className="two-tone">
-          From {first} to {last}.
-        </span>
+        {words?.title ? (
+          <>{words.title}</>
+        ) : (
+          <>
+            Walkthrough.{" "}
+            <span className="two-tone">
+              From {first} to {last}.
+            </span>
+          </>
+        )}
       </h1>
-      <p className="view-sub">
-        Built from this page's call graph: {steps.length} functions, one step each, each with the code it runs and
-        the call that leads on. The code is read from the repository on this Mac.
-      </p>
+      {words ? (
+        <div className="walk-overview">
+          <Markdown text={words.overview} />
+          <p className="view-sub">
+            {steps.length} steps along calls the index recorded, explained by {agentName(words.agent)} from each
+            step's code.
+          </p>
+        </div>
+      ) : (
+        <p className="view-sub">
+          Built from this page's call graph: {steps.length} functions, one step each, each with the code it runs and
+          the call that leads on. The code is read from the repository on this Mac.
+        </p>
+      )}
+      {!words && told.state !== "checking" && (
+        <div className="walk-cta" role="status">
+          {told.state === "writing" ? (
+            <p className="walk-cta-status">
+              <StatusMark status="working" /> {told.who} is reading the {steps.length} functions and explaining each
+              step. This usually takes under a minute. <WritingClock />
+            </p>
+          ) : (
+            <>
+              <p>
+                Have {told.who} explain each step: what the function does here and why it makes the next call. It
+                reads only these functions' code and keeps the result in the repository's <code>.codenib/</code>.
+              </p>
+              <Button size="sm" onClick={() => void told.write()}>
+                <Sparkles />
+                Explain this walkthrough
+              </Button>
+              {told.state === "failed" && told.error && <p className="add-warn">{told.error}</p>}
+            </>
+          )}
+        </div>
+      )}
       <div className="walk-body">
         <ol className="walk-rail" aria-label="Steps">
           {steps.map((s, i) => (
@@ -760,7 +913,12 @@ export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string
           <h2 className="walk-name">
             <code>{shortName(step.node.name)}</code>
           </h2>
-          <StepCode key={step.node.id} repo={repo} node={step.node} />
+          {words?.steps[at]?.text && (
+            <div className="walk-text">
+              <Markdown text={words.steps[at].text} />
+            </div>
+          )}
+          <StepCode key={step.node.id} repo={repo} node={step.node} marked={words?.steps[at]?.lines ?? []} />
           <div className="walk-next">
             {step.next ? (
               <span>
@@ -772,6 +930,10 @@ export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string
                   </>
                 )}
                 .
+              </span>
+            ) : words?.recap ? (
+              <span className="walk-recap">
+                <strong>In short.</strong> {words.recap}
               </span>
             ) : (
               <span>This is where the page's chain of calls ends.</span>

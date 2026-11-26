@@ -31,7 +31,7 @@ from contextlib import asynccontextmanager, contextmanager, nullcontext
 from functools import partial
 from html import escape
 from pathlib import Path, PurePosixPath
-from time import perf_counter
+from time import monotonic, perf_counter
 from urllib.parse import quote, unquote
 
 from fastapi import FastAPI, HTTPException, Request
@@ -44,6 +44,7 @@ from ..annotations.edits import apply_edit
 from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
+from ..source_fingerprint import RepositoryChangedError
 from ..wiki import WikiBuilder
 from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
 from ..wiki.media_context import visual_document_contexts
@@ -63,6 +64,7 @@ from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
 from ..wiki.visual_ir import page_visual_contract_report
 from . import annotations as wiki_annotations
+from . import walk_narration, wiki_revise
 from .card_summary import card_summary
 from .config import load_config
 from .experience import router as experience_router
@@ -80,7 +82,11 @@ from .prerender import (
     standalone_document,
 )
 from .repo_registry import RepoRegistry
-from .repository_files import bound_source_slice, safe_repo_relative_path
+from .repository_files import (
+    bound_source_slice,
+    git_tree_paths,
+    safe_repo_relative_path,
+)
 from .request_limits import RequestBodyLimitMiddleware
 from .schemas import (
     ChatRequest,
@@ -95,7 +101,7 @@ from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
 from .visitor_wikis import router as visitor_wiki_router
-from .walkthroughs import load_walkthroughs
+from .walkthroughs import load_walkthroughs, walkthrough_path
 from .worktree import WorktreeFollower
 
 _WIKI_MEDIA_TYPES = {
@@ -292,10 +298,46 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
 
+_rebound_at: dict[str, float] = {}
+_REBIND_INTERVAL_SECONDS = 10.0
+
+
+@app.exception_handler(RepositoryChangedError)
+async def _rebind_changed_repository(request: Request, exc: RepositoryChangedError):
+    """Re-read a repository whose source binding no longer matches it.
+
+    A binding refuses every later read once it sees the repository differ
+    from what it pinned, so one stale binding used to fail Impact,
+    Walkthrough and citations until a restart. Publish a fresh generation
+    (at most every few seconds per repository) and ask the caller to retry.
+    """
+
+    match = re.match(r"^/api/repos/([^/]+)/", request.url.path)
+    repo_id = match.group(1) if match else ""
+    if repo_id:
+        now = monotonic()
+        if now - _rebound_at.get(repo_id, 0.0) >= _REBIND_INTERVAL_SECONDS:
+            _rebound_at[repo_id] = now
+            registry = getattr(app.state, "registry", None)
+            if registry is not None:
+                try:
+                    await asyncio.to_thread(registry.refresh, repo_id)
+                    logger.info("Re-read %s after its source changed: %s", repo_id, exc)
+                except Exception as refresh_error:  # noqa: BLE001 - still answer
+                    logger.warning("Could not re-read %s: %s", repo_id, refresh_error)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "The repository changed; CodeNib re-read it. Try again."},
+        headers={"Retry-After": "2"},
+    )
+
+
 app.include_router(visitor_wiki_router)
 app.include_router(experience_router)
 app.include_router(share_router)
 app.include_router(wiki_annotations.router)
+app.include_router(walk_narration.router)
+app.include_router(wiki_revise.router)
 
 app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(
@@ -604,6 +646,39 @@ def _wiki_visual_evidence_path(bundle) -> Path | None:
     if not root.is_dir():
         return None
     return root / ".codenib" / "multimodal-knowledge.json"
+
+
+def _optional_artifacts(repo_id: str, bundle) -> dict[str, bool]:
+    """Whether a repository's optional artifacts exist at all.
+
+    Walkthroughs, visual evidence and the code-activity overlay are built
+    separately, and each route answers 404 without one. Saying up front that
+    a file is absent lets the Wiki skip the request, which a browser would
+    otherwise report as an error. A present file is still validated by its
+    own route.
+    """
+
+    from ..threads.log_store import ThreadStore
+    from ..threads.wiki_overlay import OVERLAY_FILE
+
+    found = {"walkthroughs": False, "visual_evidence": False, "code_activity": False}
+    try:
+        path = walkthrough_path(load_config().data_dir, repo_id)
+        found["walkthroughs"] = bool(path and path.is_file())
+    except OSError:
+        pass
+    try:
+        evidence = _wiki_visual_evidence_path(bundle)
+        found["visual_evidence"] = bool(evidence and evidence.is_file())
+    except OSError:
+        pass
+    repo = getattr(getattr(bundle, "entry", None), "repo", None)
+    if repo:
+        try:
+            found["code_activity"] = (ThreadStore(repo).dir / OVERLAY_FILE).is_file()
+        except (OSError, ValueError):
+            pass
+    return found
 
 
 def _load_wiki_visual_evidence(bundle) -> dict | None:
@@ -1129,6 +1204,15 @@ async def list_repos() -> list[RepoInfo]:
         except Exception:  # noqa: BLE001 - a summary must not break the list
             info.summary = getattr(info, "summary", "")
         try:
+            artifacts = await asyncio.to_thread(
+                _optional_artifacts,
+                info.id,
+                bundle if bundle is not None else _bundle(info.id),
+            )
+            info.capabilities = {**info.capabilities, **artifacts}
+        except Exception:  # noqa: BLE001 - unknown means the Wiki still asks
+            pass
+        try:
             if bundle is None:
                 info.incremental = await asyncio.to_thread(
                     _window_stats_for,
@@ -1302,17 +1386,75 @@ async def wiki_tree(repo_id: str, cached_only: bool = False) -> dict:
         return tree
 
 
+def _require_local_session(request: Request) -> None:
+    """Only the person at a local Wiki, with its session key, may continue."""
+
+    if wiki_annotations.hosted_enabled() or not wiki_annotations.enabled():
+        raise HTTPException(status_code=403, detail="Only a local Wiki can do this")
+    wiki_annotations._authorize(request)
+
+
+def _written_pages(builder) -> dict:
+    """Which pages a writing agent has finished, read from the cache only.
+
+    A page that is not written yet is written when it is first opened, which
+    can take minutes with a local coding agent; the window uses this to say so
+    and to show progress. Nothing here generates or refreshes a page.
+    """
+
+    cached_page_tree = getattr(builder, "cached_page_tree", None)
+    cached_page = getattr(builder, "cached_page", None)
+    if not callable(cached_page_tree) or not callable(cached_page):
+        return {"writing": False, "pages": [], "written": []}
+
+    def flatten(pages):
+        for page in pages or []:
+            yield page["id"]
+            yield from flatten(page.get("children"))
+
+    ids = list(flatten(cached_page_tree() or []))
+    written = []
+    for page_id in ids:
+        try:
+            if cached_page(page_id) is not None:
+                written.append(page_id)
+        except Exception:  # noqa: BLE001 - an unreadable entry is unwritten
+            continue
+    return {"writing": True, "pages": ids, "written": written}
+
+
+@app.get("/api/repos/{repo_id}/wiki-progress")
+async def wiki_progress(repo_id: str) -> dict:
+    with _pinned_bundle(repo_id) as bundle:
+        builder = await _run_pinned_thread(_wiki, repo_id, bundle)
+        return await _run_pinned_thread(_written_pages, builder)
+
+
 @app.get("/api/repos/{repo_id}/wiki/{page_id}")
 async def wiki_page(
     repo_id: str,
     page_id: str,
+    request: Request = None,  # type: ignore[assignment] - FastAPI passes it
     materialize_media: bool = True,
+    retry: bool = False,
 ) -> dict:
     with _pinned_bundle(repo_id) as bundle:
         builder = await _run_pinned_thread(_wiki, repo_id, bundle)
         if is_doc_id(page_id) and _repo_docs_enabled():
             page = await _run_pinned_thread(
                 doc_page, Path(bundle.entry.repo_dir), page_id
+            )
+        elif retry and callable(getattr(builder, "cached_page", None)):
+            # Write a page whose writer failed again now, instead of after its
+            # cooldown. It spends the person's own agent, so only a local
+            # Wiki's session may ask.
+            if request is None:
+                raise HTTPException(
+                    status_code=403, detail="Only a local Wiki can do this"
+                )
+            _require_local_session(request)
+            page = await _run_pinned_thread(
+                partial(builder.page, page_id, retry_degraded_now=True)
             )
         else:
             page = await _run_pinned_thread(builder.page, page_id)
@@ -1846,6 +1988,53 @@ async def wiki_page_boundary(repo_id: str, page_id: str) -> dict:
             repo_dir=bundle.entry.repo_dir,
             source_reader=getattr(bundle, "source_reader", None),
         )
+
+
+def _files_with_pages(repo_id: str, bundle) -> dict:
+    """The repository's files, each with the Wiki pages that cite it.
+
+    The other half of the Wiki's mapping to code: a page cites lines of a
+    file, and a file lists the pages (and line ranges) that talk about it.
+    """
+
+    repo_dir = str(bundle.entry.repo_dir)
+    commit = str(getattr(bundle.entry, "base_commit", "") or "")
+    paths = git_tree_paths(repo_dir, commit) if commit else None
+    if paths is None:
+        root = Path(repo_dir)
+        paths = frozenset(
+            path.relative_to(root).as_posix()
+            for path in root.rglob("*")
+            if path.is_file()
+        )
+    visible = sorted(p for p in paths if repository_path_is_visible(p))[:20000]
+    cited: dict[str, list] = {}
+    try:
+        pages = _annotation_pages(repo_id)
+    except Exception:  # noqa: BLE001 - files still list without pages
+        pages = []
+    for page in pages:
+        ranges: dict[str, list] = {}
+        for cite in page.get("citations") or []:
+            file = str(cite.get("file") or "")
+            if not file:
+                continue
+            start = int(cite.get("start_line") or 0)
+            end = int(cite.get("end_line") or start)
+            ranges.setdefault(file, []).append([start, end])
+        for file, spans in ranges.items():
+            cited.setdefault(file, []).append(
+                {"page": page.get("id"), "title": page.get("title"), "lines": spans}
+            )
+    return {
+        "files": [{"path": p, "cited_by": cited.get(p, [])} for p in visible],
+    }
+
+
+@app.get("/api/repos/{repo_id}/files")
+async def list_repository_files(repo_id: str) -> dict:
+    with _pinned_bundle(repo_id) as bundle:
+        return await _run_pinned_thread(_files_with_pages, repo_id, bundle)
 
 
 @app.get("/api/repos/{repo_id}/source")

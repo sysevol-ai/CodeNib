@@ -7,6 +7,8 @@
     name: r.name,
     analysis: true,
     generate: false,
+    writer: null,
+    remote: r.remote || null,
     status: "ready",
     error: "",
     line: "",
@@ -15,7 +17,32 @@
   }));
   const handlers = {};
   const emit = (event, payload) => (handlers[event] || []).forEach((h) => h({ payload }));
-  const view = (r) => ({ path: r.path, name: r.name, analysis: r.analysis, generate: r.generate, status: r.status, error: r.error, line: r.line });
+  const view = (r) => ({
+    path: r.path,
+    name: r.remote || r.name,
+    analysis: r.analysis,
+    generate: !!r.writer,
+    writer: r.writer || null,
+    remote: r.remote || null,
+    status: r.status,
+    error: r.error,
+    line: r.line,
+  });
+  // Accounts: window.__MOCK_ACCOUNTS__ may override any of these.
+  const accounts = Object.assign(
+    {
+      agents: [
+        { id: "claude-code", name: "Claude Code", installed: true, signed_in: true, detail: "Claude Max plan", path: "/usr/local/bin/claude", install: "curl -fsSL https://claude.ai/install.sh | bash", docs: "https://code.claude.com/docs/en/setup" },
+        { id: "codex", name: "Codex", installed: false, signed_in: false, detail: null, path: null, install: "npm install -g @openai/codex", docs: "https://developers.openai.com/codex/cli" },
+      ],
+      github: { signed_in: true, login: "octocat", name: "The Octocat", source: "git", device_sign_in: false, problem: null },
+      mine: [
+        { full_name: "octocat/Hello-World", description: "My first repository on GitHub!", private: false, pushed_at: "2026-11-20T10:00:00Z", language: null },
+        { full_name: "octocat/private-notes", description: "Notes", private: true, pushed_at: "2026-11-24T10:00:00Z", language: "Python" },
+      ],
+    },
+    window.__MOCK_ACCOUNTS__ || {},
+  );
   const commands = {
     setup_status: () => ({ codenib: "/Applications/CodeNib.app/Contents/Resources/python/bin/python3.12", version: "codenib 0.2.7", bundled: true }),
     repositories: () => repos.map(view),
@@ -37,6 +64,41 @@
       return null;
     },
     open_external: () => null,
+    agents_status: () => accounts.agents,
+    agent_sign_in: () => null,
+    agent_install: () => null,
+    github_status: () => accounts.github,
+    github_use_token: ({ token }) => {
+      if (!token.startsWith("ghp_")) throw "GitHub rejected this token (it may have expired or been revoked)";
+      accounts.github = { signed_in: true, login: "octocat", name: null, source: "codenib", device_sign_in: false, problem: null };
+      return accounts.github;
+    },
+    github_sign_out: () => (accounts.github = { signed_in: false, login: null, name: null, source: null, device_sign_in: false, problem: null }),
+    github_device_start: () => { throw "GitHub sign-in is not configured in this build"; },
+    github_device_wait: () => accounts.github,
+    github_device_cancel: () => null,
+    github_repositories: () => {
+      if (!accounts.github.signed_in) throw "Sign in to GitHub to list your repositories";
+      return accounts.mine;
+    },
+    github_lookup: ({ input }) => {
+      const m = /([\w.-]+)\/([\w.-]+?)(\.git)?\/?$/.exec(input.trim().replace(/^https?:\/\/github\.com\//, ""));
+      if (!m) throw "Enter a GitHub repository as owner/repo or its github.com address";
+      const slug = `${m[1]}/${m[2]}`;
+      const known = accounts.mine.find((r) => r.full_name === slug);
+      return {
+        repository: known || { full_name: slug, description: null, private: false, pushed_at: null, language: null },
+        destination: `/Users/me/CodeNib/${slug}`,
+        present: false,
+      };
+    },
+    clone_repository: async ({ input }) => {
+      for (const line of ["Cloning into '/Users/me/CodeNib/x'...", "Receiving objects:  52% (120/230)", "Resolving deltas: 100% (80/80), done."]) {
+        emit("codenib://clone", { slug: input, line });
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      return window.__MOCK_CLONE_TO__ || `/Users/me/CodeNib/${input}`;
+    },
     show_in_finder: () => null,
     api: async ({ repo, method, path, body }) => {
       const r = repos.find((x) => x.path === repo);

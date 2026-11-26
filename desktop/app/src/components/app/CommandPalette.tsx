@@ -1,4 +1,4 @@
-import { FileText, FolderGit2, Inbox, MessageCircleQuestion, Plus } from "lucide-react";
+import { FileText, FolderGit2, Github, Inbox, MessageCircleQuestion, Plus, UserRound } from "lucide-react";
 import { useState } from "react";
 import {
   CommandDialog,
@@ -9,11 +9,12 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
-import { flattenPages } from "@/lib/model";
+import { agentName, flattenPages } from "@/lib/model";
 import { useStore } from "@/lib/store";
 
 export function CommandPalette() {
-  const { palette, setPalette, view, repos, data, go, open, chooseFolder } = useStore();
+  const { palette, setPalette, view, repos, data, go, open, chooseFolder, openFromGitHub, setAccountsOpen, taskAgent } =
+    useStore();
   const [query, setQuery] = useState("");
   const here = "repo" in view ? view.repo : repos[0]?.path;
   const d = here ? data[here] : undefined;
@@ -32,15 +33,15 @@ export function CommandPalette() {
       open={palette.open}
       onOpenChange={(o) => (o ? setPalette({ open: true }) : close())}
       title="Search and run"
-      description="Jump to a page, open a repository, or ask Claude Code"
+      description="Jump to a page, open a repository, or ask your agent"
       className="palette"
       showCloseButton={false}
     >
-      <CommandInput placeholder="Jump to a page, or ask Claude Code" value={query} onValueChange={setQuery} />
+      <CommandInput placeholder="Jump to a page, or ask a question" value={query} onValueChange={setQuery} />
       <CommandList>
-        <CommandEmpty>{onPage ? "Nothing matches. Ask Claude Code instead." : "Nothing matches."}</CommandEmpty>
+        <CommandEmpty>{onPage ? `Nothing matches. Ask ${agentName(taskAgent)} instead.` : "Nothing matches."}</CommandEmpty>
         {onPage && (
-          <CommandGroup heading="Ask Claude Code">
+          <CommandGroup heading={`Ask ${agentName(taskAgent)}`}>
             <CommandItem
               value={`ask ${query}`}
               onSelect={() => {
@@ -106,7 +107,27 @@ export function CommandPalette() {
             }}
           >
             <Plus />
-            Add a repository…
+            Add a folder…
+          </CommandItem>
+          <CommandItem
+            value="open from github clone"
+            onSelect={() => {
+              close();
+              openFromGitHub(query.includes("/") ? query : "");
+            }}
+          >
+            <Github />
+            Open from GitHub…
+          </CommandItem>
+          <CommandItem
+            value="accounts github claude codex sign in"
+            onSelect={() => {
+              close();
+              setAccountsOpen(true);
+            }}
+          >
+            <UserRound />
+            Accounts…
           </CommandItem>
         </CommandGroup>
       </CommandList>

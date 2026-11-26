@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ago, flattenPages, taskNeed, taskTitle, type Annotation, type Need, type Task } from "@/lib/model";
 import { useStore, type RepoData } from "@/lib/store";
 import { StatusMark } from "./StatusMark";
+import { agentName } from "@/lib/model";
 
 const GROUPS: { key: Need; label: string }[] = [
   { key: "needs", label: "Needs you" },
@@ -63,7 +64,12 @@ export function InboxView() {
   const rows = repos
     .flatMap((r) => rowsOf(r.path, r.name, data[r.path]))
     .sort((a, b) => (a.task.created < b.task.created ? 1 : -1));
-  const count = (need: Need) => rows.filter((r) => r.need === need).length;
+  const proposals = repos
+    .flatMap((r) => (data[r.path]?.revisions ?? []).map((revision) => ({ repo: r.path, repoName: r.name, revision })))
+    .filter((p) => p.revision.status === "needs_review" || p.revision.status === "working" || p.revision.status === "failed")
+    .sort((a, b) => b.revision.created - a.revision.created);
+  const waiting = proposals.filter((p) => p.revision.status === "needs_review").length;
+  const count = (need: Need) => rows.filter((r) => r.need === need).length + (need === "needs" ? waiting : 0);
   const open = (row: Row) =>
     row.task.status === "needs_review"
       ? go({ kind: "review", repo: row.repo, task: row.task.id })
@@ -115,11 +121,44 @@ export function InboxView() {
         </div>
         <p className="inbox-sub">
           {rows.length === 0
-            ? "Ask about a paragraph or request a change on any page; Claude Code's answers and changes land here."
+            ? "Ask about a paragraph or request a change on any page; your agent's answers and changes land here."
             : `Tasks from ${repos.length === 1 ? "your repository" : `your ${repos.length} repositories`} on this Mac, newest first.`}
         </p>
 
         <TabsContent value="list" className="inbox-list">
+          {proposals.length > 0 && (
+            <section className="inbox-group" aria-label="Wiki proposals">
+              <h2 className="inbox-group-head">
+                Wiki proposals <span className="inbox-n">{proposals.length}</span>
+              </h2>
+              {proposals.map(({ repo, repoName, revision }) => (
+                <button
+                  key={revision.id}
+                  type="button"
+                  className="task-row"
+                  onClick={() => go({ kind: "revision", repo, id: revision.id })}
+                >
+                  <StatusMark
+                    status={revision.status === "needs_review" ? "needs" : revision.status === "failed" ? "failed" : "working"}
+                  />
+                  <span className="task-main">
+                    <span className="task-title">Improve “{revision.quote.slice(0, 70)}”</span>
+                    <span className="task-where">
+                      {repoName} · {revision.page_title} · {agentName(revision.agent)}
+                    </span>
+                  </span>
+                  <span className={revision.status === "needs_review" ? "task-what is-needs" : "task-what"}>
+                    {revision.status === "needs_review"
+                      ? "Review the paragraph"
+                      : revision.status === "working"
+                        ? "Writing"
+                        : "Did not finish"}
+                  </span>
+                  <span className="task-age" />
+                </button>
+              ))}
+            </section>
+          )}
           {GROUPS.map((g) => {
             const group = rows.filter((r) => r.need === g.key);
             if (!group.length) return null;

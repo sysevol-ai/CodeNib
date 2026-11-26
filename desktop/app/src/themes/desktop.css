@@ -525,3 +525,844 @@ body {
   min-width: 0;
   max-width: 100%;
 }
+
+/* ---------- segmented choices (add dialog tabs, page writer) ---------- */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--well);
+  max-width: 100%;
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.segment svg {
+  width: 14px;
+  height: 14px;
+}
+
+.segment:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.segment[data-active="yes"] {
+  background: var(--sheet);
+  color: var(--ink);
+  box-shadow: var(--shadow-box);
+}
+
+.segment:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.segment-note {
+  font-size: 12.5px;
+  font-weight: 450;
+  color: var(--muted-ink);
+}
+
+.add-tabs {
+  align-self: flex-start;
+}
+
+.add-option.is-block {
+  flex-direction: column;
+  gap: 8px;
+  cursor: default;
+}
+
+.add-warn {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--danger);
+}
+
+.add-progress {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--muted-ink);
+}
+
+/* ---------- GitHub side of the add dialog ---------- */
+.gh-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.gh-search-icon {
+  position: absolute;
+  left: 10px;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-ink);
+  pointer-events: none;
+}
+
+.gh-search input {
+  padding-left: 30px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+}
+
+.gh-search-busy {
+  position: absolute;
+  right: 10px;
+  width: 14px;
+  height: 14px;
+  color: var(--muted-ink);
+}
+
+.gh-picked {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--nib-line);
+  border-radius: 8px;
+  background: var(--nib-soft);
+  font-size: 13px;
+}
+
+.gh-picked p {
+  margin: 0;
+}
+
+.gh-picked-name,
+.gh-row-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gh-picked-name svg,
+.gh-row-name svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--muted-ink);
+}
+
+.gh-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 232px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+}
+
+.gh-list > li.add-sub,
+.gh-list > li.add-warn {
+  padding: 6px 8px;
+}
+
+.gh-row {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.gh-row:hover,
+.gh-row:focus-visible {
+  background: var(--hover);
+}
+
+.gh-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.gh-row-meta {
+  flex: none;
+  font-size: 12.5px;
+  color: var(--muted-ink);
+}
+
+/* ---------- accounts ---------- */
+.accounts-dialog {
+  gap: 14px;
+}
+
+.acct-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sheet);
+}
+
+.acct-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.acct-icon svg {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  color: var(--ink-2);
+}
+
+.acct-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.acct-title strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.acct-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-ink);
+}
+
+.acct-state[data-ok="yes"] {
+  color: var(--add-fg);
+}
+
+.acct-state svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.acct-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 30px;
+}
+
+.acct-body p {
+  margin: 0;
+}
+
+.acct-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.acct-cmd {
+  flex-basis: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--code-bg);
+  font-size: 12.5px;
+  user-select: all;
+}
+
+.acct-token,
+.acct-device {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.acct-code {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.acct-code code {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--well);
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+}
+
+.acct-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.acct-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sb-link svg {
+  display: inline;
+  vertical-align: -2px;
+}
+
+/* ---------- sidebar footer and welcome ---------- */
+button.sb-service {
+  width: 100%;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.sb-service:hover {
+  background: var(--hover);
+}
+
+.sb-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--muted-ink);
+}
+
+.sb-dot[data-ok="yes"] {
+  background: #22a06b;
+}
+
+.sb-service-sub.is-failed {
+  color: var(--danger);
+}
+
+.welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ---------- pages an agent has not written yet ---------- */
+[data-unwritten="yes"] {
+  color: var(--muted-ink);
+}
+
+[data-unwritten="yes"] .area-mark {
+  opacity: 0.45;
+}
+
+.page-wait h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.page-wait p {
+  margin: 0;
+  max-width: 520px;
+  color: var(--ink-2);
+  line-height: 24px;
+}
+
+.page-wait .page-wait-meta {
+  font-size: 13px;
+  color: var(--muted-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- citations: [E1](#evidence-E1) opens the code it names ---------- */
+.src-mark.cite,
+.cite.is-plain {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 1px;
+  padding: 0 5px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--well);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+  line-height: 16px;
+  color: var(--muted-ink);
+  vertical-align: 1px;
+  text-decoration: none;
+  /* Labels are names ("Store.get", "load → parse"); keep them on one line. */
+  white-space: nowrap;
+  max-width: 24em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.src-mark.cite:hover,
+.src-mark.cite[data-state="open"] {
+  border-color: var(--nib-line);
+  background: var(--nib-soft);
+  color: var(--nib);
+}
+
+/* ---------- walkthrough words ---------- */
+.walk-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 720px;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--ink-2);
+}
+
+.walk-overview p {
+  margin: 0;
+}
+
+.walk-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 720px;
+  margin: 4px 0 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--nib-line);
+  border-radius: 10px;
+  background: var(--nib-soft);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-2);
+}
+
+.walk-cta p {
+  margin: 0;
+}
+
+/* Only the progress line lays its mark, words and clock out in a row; a
+   sentence stays a sentence, so inline code keeps its place in it. */
+.walk-cta p.walk-cta-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.walk-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-ink);
+}
+
+.walk-text {
+  font-size: 15px;
+  line-height: 25px;
+  color: var(--ink-2);
+}
+
+.walk-text p {
+  margin: 0 0 8px;
+}
+
+.walk-recap strong {
+  color: var(--ink);
+}
+
+/* ---------- a page its writer did not finish ---------- */
+.page-degraded {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 4px 0 20px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in oklab, var(--danger) 35%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--danger) 6%, var(--sheet));
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--ink-2);
+}
+
+.page-degraded p {
+  margin: 0;
+}
+
+.page-degraded strong {
+  color: var(--ink);
+}
+
+.page-degraded .page-wait-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- the margin before there are notes: outline and cited code ---------- */
+.page-rail {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 260px;
+}
+
+.rail-group h3 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-ink);
+}
+
+.rail-group ol,
+.rail-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rail-link {
+  display: block;
+  width: 100%;
+  padding: 4px 0 4px 10px;
+  border-left: 2px solid var(--line);
+  font-size: 13.5px;
+  line-height: 20px;
+  text-align: left;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.rail-link:hover {
+  color: var(--ink);
+}
+
+.rail-link.is-here {
+  border-left-color: var(--nib);
+  color: var(--ink);
+  font-weight: 550;
+}
+
+.rail-group li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.src-mark.rail-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--ink-2);
+}
+
+.src-mark.rail-source:hover {
+  color: var(--nib);
+}
+
+.rail-count {
+  flex: none;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--well);
+  font-size: 12.5px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--muted-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.page-rail .notes-empty {
+  margin: 0;
+}
+
+.rail-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.rail-actions [data-slot="button"] {
+  justify-content: flex-start;
+}
+
+.inline-grip {
+  display: inline;
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+}
+
+/* A long citation is marked by a bar in the margin, not a block of grey. */
+.src-pop-body.is-long-cite .code-row.is-hl {
+  background: transparent;
+  box-shadow: inset 3px 0 0 var(--nib-line);
+}
+
+.rail-actions {
+  margin-bottom: 6px;
+}
+
+/* ---------- comment on selected words, as in a shared document ---------- */
+.select-bar {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  transform: translate(-50%, calc(-100% - 8px));
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--sheet);
+  box-shadow: var(--shadow-card);
+}
+
+.select-bar[data-below="yes"] {
+  transform: translate(-50%, 8px);
+}
+
+.select-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.select-bar button:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.select-bar svg {
+  width: 14px;
+  height: 14px;
+}
+
+::highlight(note-anchor) {
+  background-color: color-mix(in oklab, #f5c542 32%, transparent);
+}
+
+::highlight(note-anchor-focus) {
+  background-color: color-mix(in oklab, #f5c542 62%, transparent);
+}
+
+.note.is-focus {
+  box-shadow: inset 3px 0 0 #e0a800;
+}
+
+/* ---------- a proposed paragraph, beside the one it replaces ---------- */
+.revision-comment {
+  margin: 0;
+  max-width: 720px;
+  padding: 8px 14px;
+  border-left: 3px solid #e0a800;
+  background: color-mix(in oklab, #f5c542 12%, var(--sheet));
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.revision-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  max-width: 1040px;
+}
+
+.revision-pair h2 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-ink);
+}
+
+.revision-pair .article {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 15px;
+  line-height: 25px;
+}
+
+.revision-old {
+  background: color-mix(in oklab, var(--del-bg) 60%, var(--sheet));
+}
+
+.revision-new {
+  background: color-mix(in oklab, var(--add-bg) 70%, var(--sheet));
+}
+
+/* ---------- files, and the pages that cite them ---------- */
+.files-split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  /* minmax(0, …): a long code line scrolls inside its card instead of
+     widening the column past the window. */
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+}
+
+.files-tree {
+  min-height: 0;
+  height: 100%;
+  border-right: 1px solid var(--line-soft);
+}
+
+.files-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 10px 6px 40px;
+}
+
+.ft-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ft-row:hover {
+  background: var(--hover);
+}
+
+.ft-row.is-on {
+  background: var(--nib-soft);
+  color: var(--nib);
+}
+
+@media (max-width: 720px) {
+  .files-split {
+    grid-template-columns: 1fr;
+  }
+  .files-tree {
+    max-height: 40vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+}
+
+.sb-folder .sb-chev {
+  width: 12px;
+  height: 12px;
+}
+
+.sb-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12.5px;
+}
+
+.sb-file-cites {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--nib);
+  font-variant-numeric: tabular-nums;
+}
+
+.file-title .mono {
+  font-size: 0.8em;
+}
+
+.file-cited {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-cited-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted-ink);
+  margin-right: 4px;
+}
+
+.file-cited-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.file-cited-page:hover {
+  border-color: var(--nib-line);
+  color: var(--nib);
+}
+
+.file-cited-page svg {
+  width: 13px;
+  height: 13px;
+}
+
+.file-code .code-row.is-hl {
+  background: transparent;
+  box-shadow: inset 3px 0 0 var(--nib-line);
+}

@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Crosshair, Footprints, Network, Sparkles } from "lucide-react";
+import { BookOpen, ChevronRight, Crosshair, Footprints, FolderTree, Network, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -17,13 +17,14 @@ export function Crumbs({ parts }: { parts: string[] }) {
   );
 }
 
-export type Mode = "page" | "map" | "impact" | "walkthrough";
+export type Mode = "page" | "map" | "impact" | "walkthrough" | "files";
 
 export const MODES: { key: Mode; label: string; icon: ReactNode; tip: string }[] = [
   { key: "page", label: "Wiki", icon: <BookOpen />, tip: "Read the page" },
   { key: "map", label: "Map", icon: <Network />, tip: "The repository's areas and the calls between them" },
   { key: "impact", label: "Impact", icon: <Crosshair />, tip: "Every caller a change here reaches" },
   { key: "walkthrough", label: "Walkthrough", icon: <Footprints />, tip: "Follow the call path one function at a time" },
+  { key: "files", label: "Files", icon: <FolderTree />, tip: "The repository's files, each with the pages that cite it" },
 ];
 
 /** The page's ways of looking at the same code, as one switcher. */

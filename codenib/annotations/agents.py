@@ -267,17 +267,141 @@ class CommandAgent(_ProcessAgent):
         }
 
 
+class Codex:
+    """``codex exec`` on the person's own Codex sign-in.
+
+    A question runs in Codex's read-only sandbox; a change runs with
+    workspace-write inside the task's own worktree. Structured output comes
+    from ``--output-schema``; no session is saved.
+    """
+
+    name = "codex"
+    label = "Codex"
+
+    def __init__(
+        self,
+        *,
+        model: Optional[str] = None,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    ):
+        self.model = model
+        self.timeout = timeout
+
+    def run(
+        self,
+        prompt: str,
+        *,
+        cwd: Path,
+        system: str,
+        schema: Dict[str, Any],
+        edit: bool,
+        log_dir: Path,
+    ) -> AgentRun:
+        from ..llm.codex_cli import exec_codex
+
+        log_dir.mkdir(parents=True, exist_ok=True)
+        attempt = len(list(log_dir.glob("prompt-*.txt"))) + 1
+        (log_dir / f"prompt-{attempt}.txt").write_text(
+            f"# system\n{system}\n\n# prompt\n{prompt}", encoding="utf-8"
+        )
+        env = agent_env()
+        env["CODENIB_TASK_EDIT"] = "1" if edit else "0"
+        result = exec_codex(
+            f"{system}\n\n{prompt}",
+            cwd=cwd,
+            sandbox="workspace-write" if edit else "read-only",
+            model=self.model,
+            json_schema=schema,
+            timeout=self.timeout,
+            log_dir=log_dir,
+            env=env,
+        )
+        text = str(result.get("text") or "")
+        structured = result.get("structured")
+        if not isinstance(structured, dict):
+            structured = _last_json_object(text)
+        usage = result.get("usage") or {}
+        return AgentRun(
+            structured,
+            text=text,
+            error=str(result.get("error") or ""),
+            usage={
+                "input_tokens": int(usage.get("input_tokens") or 0),
+                "output_tokens": int(usage.get("output_tokens") or 0),
+            },
+        )
+
+
+_SIGN_IN_CACHE_SECONDS = 60.0
+_sign_in_cache: Dict[str, Any] = {}
+
+
+def _signed_in(agent_id: str, executable: Optional[str]) -> bool:
+    """Whether the agent's own CLI says it is signed in (cached briefly)."""
+
+    if not executable:
+        return False
+    import time
+
+    cached = _sign_in_cache.get(agent_id)
+    now = time.monotonic()
+    if cached and now - cached[0] < _SIGN_IN_CACHE_SECONDS:
+        return cached[1]
+    argv = (
+        [executable, "auth", "status", "--json"]
+        if agent_id == "claude-code"
+        else [executable, "login", "status"]
+    )
+    try:
+        completed = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        signed = False
+    else:
+        if agent_id == "claude-code":
+            try:
+                signed = bool(json.loads(completed.stdout).get("loggedIn"))
+            except (ValueError, AttributeError):
+                signed = False
+        else:
+            said = f"{completed.stdout}\n{completed.stderr}".lower()
+            signed = completed.returncode == 0 and "not logged in" not in said
+    _sign_in_cache[agent_id] = (now, signed)
+    return signed
+
+
 def detect_agents() -> List[Dict[str, Any]]:
     """The agent CLIs on this machine, in the order the picker shows them."""
 
+    from ..llm.codex_cli import executable as codex_executable
+
+    claude = shutil.which("claude")
+    codex = shutil.which(codex_executable())
     return [
         {
             "id": "claude-code",
             "name": "Claude Code",
-            "available": shutil.which("claude") is not None,
-            "install": "npm install -g @anthropic-ai/claude-code",
-        }
+            "available": claude is not None,
+            "signed_in": _signed_in("claude-code", claude),
+            "install": "curl -fsSL https://claude.ai/install.sh | bash",
+        },
+        {
+            "id": "codex",
+            "name": "Codex",
+            "available": codex is not None,
+            "signed_in": _signed_in("codex", codex),
+            "install": "npm install -g @openai/codex",
+        },
     ]
+
+
+AGENTS = ("claude-code", "codex")
 
 
 def agent_for(name: str = "claude-code") -> Agent:
@@ -286,8 +410,10 @@ def agent_for(name: str = "claude-code") -> Agent:
         import shlex
 
         return CommandAgent(shlex.split(command), name="command")
+    model = os.environ.get("CODENIB_TASK_MODEL") or None
+    if name == "codex":
+        return Codex(model=os.environ.get("CODENIB_TASK_CODEX_MODEL") or None)
     if name != "claude-code":
         raise ValueError(f"no adapter for agent {name!r}")
-    model = os.environ.get("CODENIB_TASK_MODEL") or None
     budget = os.environ.get("CODENIB_TASK_MAX_BUDGET_USD")
     return ClaudeCode(model=model, max_budget_usd=float(budget) if budget else None)

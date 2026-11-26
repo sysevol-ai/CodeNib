@@ -8,8 +8,8 @@ import RepositoryEntry from "@/components/RepositoryEntry";
 import FirstVisitExplorer from "@/components/FirstVisitExplorer";
 import HomeMap from "@/components/HomeMap";
 import MapThumb from "@/components/MapThumb";
-import { AppLink, useBrowserLocation } from "@/lib/router";
-import { isStaticRuntime } from "@/lib/runtime";
+import { AppLink, navigate, useBrowserLocation } from "@/lib/router";
+import { isLocalWiki, isStaticRuntime } from "@/lib/runtime";
 import {
   recentWikis,
   loadPublicWikis,
@@ -210,7 +210,81 @@ function LibraryCard({ item }: { item: LibraryWiki }) {
 // Enough for whole rows at every home grid width: two of four, three of three.
 const HOME_CARDS = 9;
 
+/**
+ * The home of a Wiki that `codenib wiki` serves on this machine. With one
+ * repository it opens that repository's Wiki; with several it lists them.
+ * The hosted landing (GitHub entry, community Wikis, featured map) does not
+ * apply here.
+ */
+function LocalHome() {
+  const [repos, setRepos] = useState<RepoInfo[] | null>(null);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setError("");
+    fetchRepos()
+      .then((value) => {
+        if (!active) return;
+        if (value.length === 1) navigate(`/${encodeURIComponent(value[0].id)}`, true);
+        else setRepos(value);
+      })
+      .catch(() => {
+        if (active) setError("CodeNib on this machine did not answer.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [retry]);
+  return (
+    <div className="landing">
+      <Header />
+      <section className="landing-catalog" aria-label="Repositories on this machine">
+        <div className="landing-catalog-heading">
+          <h2>Repositories on this machine</h2>
+        </div>
+        {error && (
+          <p role="alert" className="browse-error">
+            {error}{" "}
+            <button className="btn-ghost" onClick={() => setRetry((value) => value + 1)}>
+              Retry
+            </button>
+          </p>
+        )}
+        {!error && repos === null && (
+          <div className="repo-grid" aria-label="Loading repositories" aria-busy="true">
+            <div className="repo-card wiki-catalog-skeleton">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        )}
+        {repos?.length === 0 && (
+          <div className="browse-empty">
+            <h2>No repository is indexed yet</h2>
+            <p>
+              Run <code>codenib wiki &lt;folder&gt;</code> to index a repository and open its Wiki.
+            </p>
+          </div>
+        )}
+        {repos && repos.length > 1 && (
+          <div className="repo-grid">
+            {repos.map((r) => (
+              <RepoCard key={r.id} r={r} />
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export default function Landing({ browse = false }: { browse?: boolean }) {
+  return isLocalWiki() ? <LocalHome /> : <HostedLanding browse={browse} />;
+}
+
+function HostedLanding({ browse = false }: { browse?: boolean }) {
   const staticRuntime = isStaticRuntime();
   const location = useBrowserLocation();
   const selected = new URLSearchParams(location.search).get("tab") || "all";

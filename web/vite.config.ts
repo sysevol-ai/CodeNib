@@ -1,4 +1,4 @@
-import { defineConfig, searchForWorkspaceRoot } from "vite";
+import { defineConfig, searchForWorkspaceRoot, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
@@ -12,9 +12,30 @@ const apiProxy = {
   },
 };
 
+// `codenib wiki` serves one machine's repositories: tell the page so its home
+// is those repositories rather than the hosted landing. The hosted demo never
+// sets this variable and keeps public/runtime-config.js as it is.
+function localWikiRuntime(): Plugin {
+  return {
+    name: "codenib-local-wiki-runtime",
+    configureServer(server) {
+      if (process.env.CODENIB_LOCAL_WIKI !== "1") return;
+      server.middlewares.use((request, response, next) => {
+        if (request.url?.split("?")[0] !== "/runtime-config.js") return next();
+        response.setHeader("Content-Type", "text/javascript; charset=utf-8");
+        response.setHeader("Cache-Control", "no-store");
+        response.end(
+          'window.__CODENIB_RUNTIME__ = Object.freeze({ mode: "api", basePath: "/", local: true });\n' +
+            'window.__CODENIB_API_BASE__ = "";\n',
+        );
+      });
+    },
+  };
+}
+
 export default defineConfig({
   base: "./",
-  plugins: [react()],
+  plugins: [react(), localWikiRuntime()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname),

@@ -35,12 +35,29 @@ export interface Citation {
   type?: string;
 }
 
+/** What a claim on a page rests on: E# is code, R# a recorded call. */
+export interface EvidenceItem {
+  id: string;
+  file: string;
+  start_line: number;
+  end_line: number;
+  symbol?: string;
+}
+
+export interface EvidenceRelation {
+  id: string;
+  source: string;
+  target: string;
+  anchors: string[];
+}
+
 export interface Page {
   id: string;
   title: string;
   markdown: string;
   citations?: Citation[];
-  generation?: { mode?: string; model?: string | null };
+  evidence?: { items?: EvidenceItem[]; relations?: EvidenceRelation[] };
+  generation?: { mode?: string; model?: string | null; renderer?: string | null; reason?: string | null };
 }
 
 export type AnnotationKind = "question" | "change" | "note" | "answer" | "summary";
@@ -71,6 +88,8 @@ export interface Annotation {
 
 export interface Task {
   id: string;
+  /** The agent that ran it: "claude-code" or "codex". */
+  agent?: string;
   inputs: string[];
   kind: "question" | "change";
   status: "queued" | "running" | "needs_review" | "done" | "rejected" | "failed";
@@ -82,11 +101,35 @@ export interface Task {
   diff?: { files?: string[]; stat?: string };
 }
 
+const AGENT_NAMES: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex" };
+
+/** "Claude Code" or "Codex" for an agent id. */
+export function agentName(id: string | undefined | null): string {
+  return AGENT_NAMES[id ?? ""] ?? "Claude Code";
+}
+
 export interface Agent {
   id: string;
   name: string;
   available: boolean;
   install?: string;
+}
+
+/** A better paragraph the agent proposed from a comment, waiting for review. */
+export interface Revision {
+  id: string;
+  page: string;
+  page_title: string;
+  quote: string;
+  comment: string;
+  agent: string;
+  original: string;
+  replacement?: string;
+  summary?: string;
+  error?: string;
+  status: "working" | "needs_review" | "applied" | "rejected" | "failed";
+  created: number;
+  finished?: number;
 }
 
 export interface NotesState {
