@@ -101,8 +101,12 @@ function placeLabels(
     }
     const left = sx + dx - (anchor === "middle" ? width / 2 : anchor === "end" ? width : 0);
     const box = { left, right: left + width, top: sy + dy - 11, bottom: sy + dy - 11 + LABEL_HEIGHT_PX + extra };
+    // Widths are estimated from character counts and can run short; page
+    // labels keep a few pixels apart so they never touch. Area labels place
+    // as they always have.
+    const pad = priority(node) <= 2 ? 4 : 0;
     const hits = (other: typeof box) =>
-      box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top;
+      box.left - pad < other.right && box.right + pad > other.left && box.top < other.bottom && box.bottom > other.top;
     const clash = taken.some(hits) || marks.some((mark) => mark.id !== node.id && hits(mark));
     const outside = box.left < 0 || box.right > paneWidth || box.bottom > floor;
     if ((clash || outside) && priority(node) < 4) continue;
@@ -369,7 +373,9 @@ export default function WikiGraphPane({
     const top = (header ? HEADER_PX : 0) + (reserve - 40) / 2;
     // A pane whose legend fits one line keeps the layout it always had;
     // only a wrapped legend needs the extra room.
-    const wrapped = legendHeight > 26;
+    // Only an embedded map: the workspace keeps the fit it always had, and
+    // its labels keep clear of the status line by the label floor instead.
+    const wrapped = embedded && legendHeight > 26;
     const base = wrapped ? Math.max(20 + reserve / 2, legendHeight + 2 * 19 + 22 + 34) : 20 + reserve / 2;
     // Only an embedded map reserves room for its note: in the workspace a
     // note comes and goes while loading, and the map must not jump.
@@ -673,7 +679,7 @@ export default function WikiGraphPane({
                 <>
                   {`\u00a0·\u00a0${number.format(references)}\u00a0`}
                   <span className="wg-status-more">recorded </span>
-                  references
+                  {references === 1 ? "reference" : "references"}
                 </>
               ) : null}
               {summary && `\u00a0·\u00a0${summary}`}

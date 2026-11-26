@@ -110,7 +110,7 @@ export default function HeroGraph({
       code: true,
       detail: (
         <>
-          {`Step\u00a0${at + 1}\u00a0of\u00a0${stops.length}`}
+          {`Step\u00a0${stop.index}\u00a0of\u00a0${route.total}`}
           {place && (
             <>
               {"\u00a0·\u00a0"}
@@ -123,14 +123,24 @@ export default function HeroGraph({
   } else if (route && hasRoute && phase.kind === "hold") {
     // Code names in the heading stay in the code face, as in the steps.
     idle = {
-      title: routeHeading({ ...route, stops }).split(/`([^`]+)`/).map((part, index) =>
-        index % 2 ? (
-          <span key={index} className="is-code">
-            {part}
+      // A phone-sized map names only where the path ends.
+      title: (
+        <>
+          <span className="wg-status-full">
+            {routeHeading({ ...route, stops }).split(/`([^`]+)`/).map((part, index) =>
+              index % 2 ? (
+                <span key={index} className="is-code">
+                  {part}
+                </span>
+              ) : (
+                part
+              ),
+            )}
           </span>
-        ) : (
-          part
-        ),
+          <span className="wg-status-short">
+            To <span className="is-code">{stops[stops.length - 1].label}</span>
+          </span>
+        </>
       ),
       // Some of the Overview's steps may lie outside the mapped areas; say so.
       detail: (
@@ -149,7 +159,8 @@ export default function HeroGraph({
         <>
           {`${number.format(references)}\u00a0`}
           <span className="wg-status-more">recorded </span>
-          references<span className="wg-status-more"> with other areas</span>
+          {references === 1 ? "reference" : "references"}
+          <span className="wg-status-more"> with other areas</span>
         </>
       ) };
   }
