@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { displaySymbol } from "@/lib/symbols";
 import { isBareHandoff, type Journey } from "@/lib/wikiPresentation";
@@ -31,10 +31,13 @@ export default function MainPath({
   journey,
   onPick,
   renderText,
+  colors,
 }: {
   journey: Journey;
   onPick: (pageId: string) => void;
   renderText: (markdown: string) => ReactNode;
+  /** Each page's colour on the Wiki map, so a step shows where its code lives. */
+  colors?: Map<string, string>;
 }) {
   return (
     <figure className="main-path" aria-label={journey.title}>
@@ -43,11 +46,22 @@ export default function MainPath({
         <p className="main-path-note">
           One path selected from the code index. Each arrow is a call found in the
           source, or a base method leading to the subclass that implements it.
+          {colors && " Each colour is the area of the Wiki map where a step's code lives; the line into a step takes its colour."}
         </p>
       </figcaption>
-      <ol className="main-path-steps">
-        {journey.stages.map((stage) => (
-          <li className="main-path-step" key={stage.index}>
+      <ol className={`main-path-steps${colors ? " is-coloured" : ""}`}>
+        {journey.stages.map((stage, position) => {
+          const area = stage.page ? colors?.get(stage.page.id) : undefined;
+          // The line under a step is the call to the next one, in the colour
+          // of where that call lands, as on the map.
+          const nextStage = journey.stages[position + 1];
+          const next = nextStage?.page ? colors?.get(nextStage.page.id) : undefined;
+          return (
+          <li
+            className={`main-path-step${area ? " has-area" : ""}${next ? " has-next" : ""}`}
+            key={stage.index}
+            style={{ ...(area ? { "--area": area } : {}), ...(next ? { "--next": next } : {}) } as CSSProperties}
+          >
             <span className="main-path-index" aria-hidden="true">
               {stage.index}
             </span>
@@ -72,7 +86,8 @@ export default function MainPath({
               )}
             </div>
           </li>
-        ))}
+          );
+        })}
       </ol>
     </figure>
   );
