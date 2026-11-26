@@ -11,6 +11,13 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A Wiki or repository card for a project whose README is in Chinese or
+  Japanese now opens with the README's first paragraph. Words were counted
+  by spaces, so those paragraphs looked too short and a later line that
+  happened to hold spaced-out numbers was shown instead.
+
 ## [0.2.7] - 2026-11-25
 
 ### Added

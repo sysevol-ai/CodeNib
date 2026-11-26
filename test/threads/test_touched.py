@@ -89,3 +89,45 @@ def test_impl_header_is_not_a_shared_symbol(repo):
     _branch(repo, "edit-impl", "impl Foo {", "impl Foo {\n    const N: u32 = 1;\n")
     touched = _touched(repo, "edit-impl")
     assert not any(symbol.endswith(":impl") for symbol in touched.symbols)
+
+
+def test_parse_unified_diff_unquotes_c_style_paths():
+    diff = (
+        'diff --git "a/say \\"hi\\".rs" "b/say \\"hi\\".rs"\n'
+        '--- "a/say \\"hi\\".rs"\n'
+        '+++ "b/say \\"hi\\".rs"\n'
+        "@@ -2 +2 @@\n"
+        "-old\n"
+        "+new\n"
+        'diff --git "a/tab\\there\\\\x.rs" "b/tab\\there\\\\x.rs"\n'
+        '--- "a/tab\\there\\\\x.rs"\n'
+        '+++ "b/tab\\there\\\\x.rs"\n'
+        "@@ -5 +5 @@\n"
+        "-old\n"
+        "+new\n"
+        'diff --git "a/new\\303\\251.rs" "b/new\\303\\251.rs"\n'
+        "--- /dev/null\n"
+        '+++ "b/new\\303\\251.rs"\n'
+        "@@ -0,0 +1 @@\n"
+        "+added\n"
+    )
+    changes = parse_unified_diff(diff)
+    assert len(changes) == 3
+    assert changes[0].old_path == changes[0].new_path == 'say "hi".rs'
+    assert changes[1].old_path == changes[1].new_path == "tab\there\\x.rs"
+    assert changes[2].old_path is None
+    assert changes[2].new_path == "newé.rs"
+
+
+def test_touched_between_handles_quoted_git_paths(repo):
+    path = repo / "src" / "café.rs"
+    path.write_text("pub fn helper() -> u32 {\n    1\n}\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add-cafe")
+    _git(repo, "checkout", "-q", "-b", "edit-cafe")
+    path.write_text("pub fn helper() -> u32 {\n    2\n}\n", encoding="utf-8")
+    _git(repo, "commit", "-qam", "edit-cafe")
+    touched = touched_between(repo, "HEAD~1", "HEAD")
+    assert touched is not None
+    assert "src/café.rs" in touched.files
+    assert "src/café.rs:helper()" in touched.symbols

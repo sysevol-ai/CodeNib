@@ -7,6 +7,7 @@ import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, Optional
 
 import pytest
 
@@ -16,6 +17,8 @@ from codenib.wiki.carry_forward import (
     carry_forward,
     changed_files,
     page_files,
+    page_symbols,
+    parse_symbols,
     save_snapshot,
 )
 from codenib.wiki.sqlite_store import SQLiteWikiStore
@@ -34,7 +37,10 @@ OUTLINE = {
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+        ["git", "-c", "core.hooksPath=", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
 
@@ -46,10 +52,10 @@ def repo(tmp_path):
     for name in ("a.py", "b.py", "c.py"):
         (root / "src" / name).write_text(f"# {name}\n")
     _git(root, "add", "-A")
-    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "one")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "one")
     first = _git(root, "rev-parse", "HEAD")
     (root / "src" / "a.py").write_text("# a.py changed\n")
-    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qam", "two")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qam", "two")
     return root, first, _git(root, "rev-parse", "HEAD")
 
 
@@ -235,10 +241,328 @@ def test_changed_files_keeps_non_ascii_names_unquoted(repo):
     root, _, second = repo
     (root / "src" / "café.py").write_text("# new\n")
     _git(root, "add", "-A")
-    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "three")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "three")
     third = _git(root, "rev-parse", "HEAD")
 
     assert changed_files(root, second, third) == {"src/café.py"}
+
+
+def _page_sym(page_id: str, file: str, symbol: Optional[str] = None) -> dict:
+    citation: dict[str, Any] = {"file": file, "start_line": 1, "end_line": 1}
+    if symbol is not None:
+        citation["symbol"] = symbol
+    return {
+        "id": page_id,
+        "title": page_id.title(),
+        "markdown": f"# {page_id.title()}\n\nWhat {page_id} does.",
+        "citations": [citation],
+        "generation": {"mode": "generated", "model": "fixture-model"},
+        "quality": {"valid": True},
+    }
+
+
+def test_symbol_carry_forward_case_a_isolated_function_change(tmp_path):
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    _git(tmp_path, "init", "-q", str(root))
+    (root / "src" / "service.py").write_text(
+        "def func_a():\n    return 'original a'\n\n\ndef func_b():\n    return 'original b'\n"
+    )
+    (root / "src" / "b.py").write_text("# b.py\n")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "one")
+    first = _git(root, "rev-parse", "HEAD")
+
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    old = _wiki(store, root, first)
+    pages = {
+        "overview": _page_sym("overview", "src/b.py"),
+        "core": _page_sym("core", "src/service.py", symbol="func_a"),
+        "auth": _page_sym("auth", "src/service.py", symbol="func_b"),
+    }
+    _publish(old, pages)
+    snapshot = tmp_path / "carry-forward.json"
+    assert save_snapshot(old, snapshot, first) == 3
+
+    # In second commit, modify ONLY func_a in src/service.py
+    (root / "src" / "service.py").write_text(
+        "def func_a():\n    return 'modified a'\n\n\ndef func_b():\n    return 'original b'\n"
+    )
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qam", "two")
+    second = _git(root, "rev-parse", "HEAD")
+
+    new = _wiki(store, root, second)
+    result = carry_forward(new, snapshot, root, second)
+
+    assert result.outline_reused and result.previous_commit == first
+    # auth cites func_b (unaffected) and overview cites src/b.py -> both carried forward
+    assert sorted(result.reused) == ["auth", "overview"]
+    # core cites func_a (modified) -> rewritten
+    assert result.rewritten == ["core"]
+    assert new.cached_page("auth")["markdown"] == pages["auth"]["markdown"]
+    assert new.cached_page("overview")["markdown"] == pages["overview"]["markdown"]
+    assert new.cached_page("core") is None
+
+
+@pytest.mark.parametrize(
+    "module_change",
+    [
+        "docstring",
+        "import",
+        "constant",
+    ],
+)
+def test_symbol_carry_forward_case_b_module_level_changes_invalidate_all(tmp_path, module_change):
+    root = tmp_path / f"repo_{module_change}"
+    (root / "src").mkdir(parents=True)
+    _git(tmp_path, "init", "-q", str(root))
+    base_code = (
+        '"""Module docstring."""\n'
+        "import math\n\n"
+        "CONFIG_VAL = 10\n\n\n"
+        "def func_a():\n"
+        "    return 'a'\n\n\n"
+        "def func_b():\n"
+        "    return 'b'\n"
+    )
+    (root / "src" / "service.py").write_text(base_code)
+    (root / "src" / "b.py").write_text("# b.py\n")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "one")
+    first = _git(root, "rev-parse", "HEAD")
+
+    store = SQLiteWikiStore(tmp_path / f"wiki_{module_change}.sqlite3")
+    old = _wiki(store, root, first)
+    pages = {
+        "overview": _page_sym("overview", "src/b.py"),
+        "core": _page_sym("core", "src/service.py", symbol="func_a"),
+        "auth": _page_sym("auth", "src/service.py", symbol="func_b"),
+    }
+    _publish(old, pages)
+    snapshot = tmp_path / f"snap_{module_change}.json"
+    save_snapshot(old, snapshot, first)
+
+    if module_change == "docstring":
+        new_code = base_code.replace('"""Module docstring."""', '"""Updated docstring."""')
+    elif module_change == "import":
+        new_code = base_code.replace("import math\n", "import math\nimport os\n")
+    else:  # constant
+        new_code = base_code.replace("CONFIG_VAL = 10", "CONFIG_VAL = 99")
+
+    (root / "src" / "service.py").write_text(new_code)
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qam", "two")
+    second = _git(root, "rev-parse", "HEAD")
+
+    new = _wiki(store, root, second)
+    result = carry_forward(new, snapshot, root, second)
+
+    assert result.outline_reused
+    # All pages citing service.py (even func_b which wasn't touched directly) must be invalidated
+    assert sorted(result.rewritten) == ["auth", "core"]
+    assert result.reused == ["overview"]
+    assert new.cached_page("auth") is None
+    assert new.cached_page("core") is None
+    assert new.cached_page("overview") is not None
+
+
+def test_symbol_carry_forward_case_c_deleted_function(tmp_path):
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    _git(tmp_path, "init", "-q", str(root))
+    (root / "src" / "service.py").write_text(
+        "def func_a():\n    return 'a'\n\n\ndef func_b():\n    return 'b'\n"
+    )
+    (root / "src" / "b.py").write_text("# b.py\n")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "one")
+    first = _git(root, "rev-parse", "HEAD")
+
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    old = _wiki(store, root, first)
+    pages = {
+        "overview": _page_sym("overview", "src/b.py"),
+        "core": _page_sym("core", "src/service.py", symbol="func_a"),
+        "auth": _page_sym("auth", "src/service.py", symbol="func_b"),
+    }
+    _publish(old, pages)
+    snapshot = tmp_path / "carry-forward.json"
+    save_snapshot(old, snapshot, first)
+
+    # In commit two, delete func_b completely
+    (root / "src" / "service.py").write_text(
+        "def func_a():\n    return 'a'\n"
+    )
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qam", "two")
+    second = _git(root, "rev-parse", "HEAD")
+
+    new = _wiki(store, root, second)
+    result = carry_forward(new, snapshot, root, second)
+
+    assert result.outline_reused
+    # func_a untouched -> core carried forward; b.py untouched -> overview carried forward
+    assert sorted(result.reused) == ["core", "overview"]
+    # func_b deleted -> auth rewritten cleanly without exception
+    assert result.rewritten == ["auth"]
+    assert new.cached_page("auth") is None
+    assert new.cached_page("core") is not None
+
+
+def test_symbol_carry_forward_case_c_deleted_file(tmp_path):
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    _git(tmp_path, "init", "-q", str(root))
+    (root / "src" / "service.py").write_text("def func_a():\n    return 'a'\n")
+    (root / "src" / "deleted.py").write_text("# to be deleted\n")
+    (root / "src" / "b.py").write_text("# b.py\n")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "one")
+    first = _git(root, "rev-parse", "HEAD")
+
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    old = _wiki(store, root, first)
+    pages = {
+        "overview": _page_sym("overview", "src/b.py"),
+        "core": _page_sym("core", "src/service.py", symbol="func_a"),
+        "auth": _page_sym("auth", "src/deleted.py"),
+    }
+    _publish(old, pages)
+    snapshot = tmp_path / "carry-forward.json"
+    save_snapshot(old, snapshot, first)
+
+    # In commit two, delete src/deleted.py using git rm
+    _git(root, "rm", "src/deleted.py")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "two")
+    second = _git(root, "rev-parse", "HEAD")
+
+    new = _wiki(store, root, second)
+    result = carry_forward(new, snapshot, root, second)
+
+    assert result.outline_reused
+    assert sorted(result.reused) == ["core", "overview"]
+    assert result.rewritten == ["auth"]
+    assert new.cached_page("auth") is None
+
+
+def test_symbol_carry_forward_case_c_renamed_file(tmp_path):
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    _git(tmp_path, "init", "-q", str(root))
+    (root / "src" / "service.py").write_text("def func_a():\n    return 'a'\n")
+    (root / "src" / "old.py").write_text("# old file\n")
+    (root / "src" / "b.py").write_text("# b.py\n")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "one")
+    first = _git(root, "rev-parse", "HEAD")
+
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    old = _wiki(store, root, first)
+    pages = {
+        "overview": _page_sym("overview", "src/b.py"),
+        "core": _page_sym("core", "src/service.py", symbol="func_a"),
+        "auth": _page_sym("auth", "src/old.py"),
+    }
+    _publish(old, pages)
+    snapshot = tmp_path / "carry-forward.json"
+    save_snapshot(old, snapshot, first)
+
+    # In commit two, git mv src/old.py -> src/new.py
+    _git(root, "mv", "src/old.py", "src/new.py")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "two")
+    second = _git(root, "rev-parse", "HEAD")
+
+    new = _wiki(store, root, second)
+    result = carry_forward(new, snapshot, root, second)
+
+    assert result.outline_reused
+    assert sorted(result.reused) == ["core", "overview"]
+    assert result.rewritten == ["auth"]
+    assert new.cached_page("auth") is None
+
+
+def test_symbol_carry_forward_case_c_renamed_and_nonexistent_functions(tmp_path):
+    root = tmp_path / "repo"
+    (root / "src").mkdir(parents=True)
+    _git(tmp_path, "init", "-q", str(root))
+    (root / "src" / "service.py").write_text(
+        "def func_a():\n    return 'a'\n\n\ndef func_b():\n    return 'b'\n"
+    )
+    (root / "src" / "b.py").write_text("# b.py\n")
+    _git(root, "add", "-A")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qm", "one")
+    first = _git(root, "rev-parse", "HEAD")
+
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    old = _wiki(store, root, first)
+    pages = {
+        "overview": _page_sym("overview", "src/service.py", symbol="ghost_func"),
+        "core": _page_sym("core", "src/service.py", symbol="func_a"),
+        "auth": _page_sym("auth", "src/service.py", symbol="func_b"),
+    }
+    _publish(old, pages)
+    snapshot = tmp_path / "carry-forward.json"
+    save_snapshot(old, snapshot, first)
+
+    # Rename func_a to func_a_new in service.py
+    (root / "src" / "service.py").write_text(
+        "def func_a_new():\n    return 'a'\n\n\ndef func_b():\n    return 'b'\n"
+    )
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "--no-verify", "-qam", "two")
+    second = _git(root, "rev-parse", "HEAD")
+
+    new = _wiki(store, root, second)
+    result = carry_forward(new, snapshot, root, second)
+
+    assert result.outline_reused
+    # func_b is untouched -> auth reused
+    assert result.reused == ["auth"]
+    # core cites old name func_a (now missing/renamed), overview cites nonexistent ghost_func -> rewritten cleanly
+    assert sorted(result.rewritten) == ["core", "overview"]
+    assert new.cached_page("auth") is not None
+    assert new.cached_page("core") is None
+    assert new.cached_page("overview") is None
+
+
+def test_page_symbols_various_citation_formats():
+    page = {
+        "citations": [
+            {"file": "./src/module.py", "symbol": "foo()"},
+            {"file": "src/module.py", "anchor": "::BarClass.method"},
+            {"symbol": "src/other.py:stand_alone_fn"},
+        ],
+        "symbols": {"src/third.py": ["sym1", "sym2"]},
+        "anchors": [{"file": "src/fourth.py", "name": "named_anchor"}],
+    }
+    syms = page_symbols(page)
+    assert syms["src/module.py"] == {"foo", "BarClass.method"}
+    assert syms["src/other.py"] == {"stand_alone_fn"}
+    assert syms["src/third.py"] == {"sym1", "sym2"}
+    assert syms["src/fourth.py"] == {"named_anchor"}
+
+
+def test_parse_symbols_extracts_classes_functions_and_methods():
+    source = (
+        "@decorator\n"
+        "def top_func():\n"
+        "    pass\n\n"
+        "class MyClass:\n"
+        "    def method(self):\n"
+        "        pass\n\n"
+        "    async def async_method(self):\n"
+        "        pass\n"
+    )
+    spans = parse_symbols(source)
+    assert spans is not None
+    names = {s.name for s in spans}
+    qualnames = {s.qualname for s in spans}
+    assert "top_func" in names
+    assert "MyClass" in names
+    assert "method" in names
+    assert "async_method" in names
+    assert "MyClass.method" in qualnames
+    assert "MyClass.async_method" in qualnames
+    top = next(s for s in spans if s.name == "top_func")
+    assert top.start_line == 1  # includes @decorator
+    assert top.end_line == 3
 
 
 def test_uncommitted_changes_name_the_pages_to_write_again(repo, tmp_path):
@@ -265,3 +589,4 @@ def test_uncommitted_changes_name_the_pages_to_write_again(repo, tmp_path):
     assert sorted(result.reused) == ["auth", "core"]
     assert result.rewritten == ["overview"]
     assert new.cached_page("overview") is None
+

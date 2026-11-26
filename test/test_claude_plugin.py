@@ -38,9 +38,10 @@ def test_marketplace_lists_the_plugin_under_its_own_name():
     assert entry["name"] == manifest["name"] == "codenib"
     assert (ROOT / entry["source"]).resolve() == PLUGIN
     assert re.fullmatch(r"\d+\.\d+\.\d+", manifest["version"])
-    assert (PLUGIN / ".claude-plugin" / "icon.png").read_bytes()[:8] == (
-        b"\x89PNG\r\n\x1a\n"
-    )
+    icon = (PLUGIN / ".claude-plugin" / "icon.png").read_bytes()
+    assert icon[:8] == b"\x89PNG\r\n\x1a\n"
+    # The Codex plugin catalog rejects an icon above 50 KB.
+    assert len(icon) <= 50 * 1024
 
 
 def test_the_mcp_server_runs_the_bundled_launcher_for_the_project():
@@ -93,6 +94,8 @@ def test_skills_describe_when_to_use_them_and_side_effects_need_the_user():
 
     assert set(skills) == {"explain", "impact", "setup", "thread", "wiki"}
     for name, front in skills.items():
+        # The directory already names the skill; a different name would rename it.
+        assert front["name"] == name
         assert len(front["description"]) > 40, name
     # Installing software or starting servers happens only when asked.
     assert skills["setup"].get("disable-model-invocation") is True
@@ -100,6 +103,12 @@ def test_skills_describe_when_to_use_them_and_side_effects_need_the_user():
     assert "disable-model-invocation" not in skills["explain"]
     # Reading a thread changes nothing, so the agent may do it unasked.
     assert "disable-model-invocation" not in skills["thread"]
+
+
+def test_each_plugin_directory_carries_the_repository_license():
+    # A plugin is installed as a copy of its directory, without the root.
+    for plugin in (PLUGIN, ROOT / "plugins" / "dsh"):
+        assert (plugin / "LICENSE").read_bytes() == (ROOT / "LICENSE").read_bytes()
 
 
 def _subcommands(parser) -> dict:
