@@ -764,6 +764,15 @@ button.run-step-title:hover {
 .wgf-check.is-admitted .wgf-check-mark {
   background: var(--own-ok);
 }
+/* Waiting out a rate limit is not an error: a quiet mark and plain text. */
+.wgf-check.is-limited .wgf-check-mark {
+  border: 1.5px solid var(--text-muted);
+}
+.wgf-check-actions .btn-ghost:disabled {
+  opacity: 1;
+  color: var(--text-muted);
+  cursor: default;
+}
 .wgf-check.is-rejected .wgf-check-mark {
   border: 1.5px solid var(--own-error);
 }

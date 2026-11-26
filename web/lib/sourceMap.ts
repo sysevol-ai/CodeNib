@@ -31,12 +31,14 @@ export function buildSourceGraph(
   repository: string,
   outline: SourceOutline | null | undefined,
 ): { graph: WikiGraph; facts: Map<string, SourceNodeFacts> } {
-  const name = repository.split("/").pop() || repository;
   const facts = new Map<string, SourceNodeFacts>();
   const nodes: WikiGraphNode[] = [
     {
       id: SOURCE_HUB,
-      title: outline?.root ? `${outline.root}/` : `${name}/`,
+      // An opened folder keeps its path; the repository root is named as
+      // GitHub names it, so a top folder of the same name (httpx/) is not
+      // mistaken for it.
+      title: outline?.root ? `${outline.root}/` : repository,
       kind: "area",
       areaId: SOURCE_HUB,
       color: HUB_COLOR,

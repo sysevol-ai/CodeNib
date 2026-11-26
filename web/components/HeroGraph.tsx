@@ -33,6 +33,7 @@ export default function HeroGraph({
   onPick,
   retryAreaLabels = false,
   unit = "areas",
+  neutral,
 }: {
   repoName: string;
   pages: WikiPageRef[];
@@ -46,8 +47,10 @@ export default function HeroGraph({
   /** What the map's areas are: Wiki areas, or the folder and file groups a
    *  repository is cut into before it has a Wiki. */
   unit?: "areas" | "parts";
+  /** Groups drawn grey because they are not an area of their own. */
+  neutral?: ReadonlySet<string>;
 }) {
-  const graph = useMemo(() => buildWikiGraph(pages, map), [pages, map]);
+  const graph = useMemo(() => buildWikiGraph(pages, map, neutral), [pages, map, neutral]);
   // The largest areas first; they have the most to show.
   const tour = useMemo(
     () =>

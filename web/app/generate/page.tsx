@@ -23,6 +23,9 @@ import {
 } from "@/lib/visitorWiki";
 import "@/components/WikiRun.css";
 
+/** The free map's catch-all group is grey: it is not a part of its own. */
+const OTHER_PART: ReadonlySet<string> = new Set(["other"]);
+
 export default function GenerateWikiPage({
   owner,
   name,
@@ -176,6 +179,7 @@ export default function GenerateWikiPage({
               map={picture.map}
               route={picture.route}
               unit="parts"
+              neutral={OTHER_PART}
               wikiHref={`https://github.com/${slug}`}
               onPick={(id) => {
                 // A part opens on GitHub at the commit the map was drawn from.

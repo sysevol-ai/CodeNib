@@ -14,7 +14,8 @@ import type { FreeMapArea, FreeRepositoryMap } from "@/lib/visitorWiki";
 export function freeMapPicture(
   result: FreeRepositoryMap | null,
 ): { pages: WikiPageRef[]; map: WikiAreaMap; route: MapRoute | null } | null {
-  const map = result?.map;
+  const folded = foldParts(result?.map);
+  const map = folded;
   if (!map?.available || map.areas.length < 2) return null;
   const names = partNames(map.areas);
   const pages: WikiPageRef[] = map.areas.map((area) => ({
@@ -24,7 +25,11 @@ export function freeMapPicture(
     children: [],
   }));
   const areaIds = new Set(map.areas.map((area) => area.id));
-  const all = result?.path?.stops ?? [];
+  const into = folded?.into ?? new Map<string, string>();
+  const all = (result?.path?.stops ?? []).map((stop) => ({
+    ...stop,
+    area: stop.area ? (into.get(stop.area) ?? stop.area) : null,
+  }));
   const stops = all
     .map((stop, index) => ({ stop, index }))
     .filter(({ stop }) => stop.area && areaIds.has(stop.area))
@@ -49,6 +54,53 @@ export function freeMapPicture(
       reason: null,
     },
     route,
+  };
+}
+
+/** The map has eight area colours; a ninth part would be grey like "Other". */
+export const MAX_PARTS = 8;
+
+/**
+ * At most eight parts: the largest seven keep their place and the rest join
+ * "Other", with their references summed and references inside Other dropped.
+ */
+export function foldParts(
+  map: FreeRepositoryMap["map"] | undefined,
+): (NonNullable<FreeRepositoryMap["map"]> & { into: Map<string, string> }) | undefined {
+  if (!map) return undefined;
+  const into = new Map<string, string>();
+  if (map.areas.length <= MAX_PARTS) return { ...map, into };
+  const own = map.areas.filter((area) => area.kind !== "other").sort((a, b) => b.symbols - a.symbols);
+  const kept = own.slice(0, MAX_PARTS - 1);
+  const keptIds = new Set(kept.map((area) => area.id));
+  const rest = map.areas.filter((area) => !keptIds.has(area.id));
+  for (const area of rest) into.set(area.id, "other");
+  const other: FreeMapArea = {
+    id: "other",
+    title: "Other",
+    symbols: rest.reduce((sum, area) => sum + area.symbols, 0),
+    files: rest.reduce((sum, area) => sum + area.files, 0),
+    path: null,
+    kind: "other",
+  };
+  const links = new Map<string, (typeof map.links)[number]>();
+  for (const link of map.links) {
+    const source = into.get(link.source) ?? link.source;
+    const target = into.get(link.target) ?? link.target;
+    if (source === target) continue;
+    const key = `${source}>${target}`;
+    const found = links.get(key);
+    if (!found) links.set(key, { ...link, source, target });
+    else {
+      const heavier = link.weight > found.weight ? link.example : found.example;
+      links.set(key, { ...found, weight: found.weight + link.weight, calls: found.calls + link.calls, example: heavier });
+    }
+  }
+  return {
+    ...map,
+    areas: [...map.areas.filter((area) => keptIds.has(area.id)), other],
+    links: [...links.values()],
+    into,
   };
 }
 

@@ -62,6 +62,13 @@ export default function WikiGenerationForm({
   const [eligibility, setEligibility] = useState<WikiRepositoryCheck | null>(null);
   const [checkError, setCheckError] = useState("");
   const [checkLimited, setCheckLimited] = useState(false);
+  // Seconds until the server takes another check from this address.
+  const [retryLeft, setRetryLeft] = useState(0);
+  useEffect(() => {
+    if (retryLeft <= 0) return undefined;
+    const timer = window.setTimeout(() => setRetryLeft((value) => value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [retryLeft]);
   const [checkRetry, setCheckRetry] = useState(0);
   const admitted = resume || eligibility?.eligible === true;
   const checked = useRef(onChecked);
@@ -86,7 +93,9 @@ export default function WikiGenerationForm({
         const message = reason instanceof Error ? reason.message : "Could not check this repository.";
         setCheckError(message);
         failed.current?.(message);
-        setCheckLimited(reason instanceof WikiRequestError && reason.status === 429);
+        const limited = reason instanceof WikiRequestError && reason.status === 429;
+        setCheckLimited(limited);
+        setRetryLeft(limited ? Math.max(1, Math.ceil(reason.retryAfter ?? 60)) : 0);
       });
     return () => { active = false; };
   }, [attempt.repository, resume, checkRetry]);
@@ -163,8 +172,10 @@ export default function WikiGenerationForm({
       )}
       {!resume && (
         <div
-          className={`wgf-check${rejected ? " is-rejected" : eligibility ? " is-admitted" : " is-checking"}`}
-          role={rejected ? "alert" : "status"}
+          className={`wgf-check${
+            checkLimited ? " is-limited" : rejected ? " is-rejected" : eligibility ? " is-admitted" : " is-checking"
+          }`}
+          role={rejected && !checkLimited ? "alert" : "status"}
         >
           <span className="wgf-check-mark" aria-hidden="true" />
           <div>
@@ -172,7 +183,13 @@ export default function WikiGenerationForm({
               <p>Checking the repository size and source languages… No API key or model call is needed.</p>
             ) : (
               <>
-                <p>{checkError || eligibility?.message}</p>
+                <p>
+                  {checkLimited
+                    ? retryLeft > 0
+                      ? `This address checked a repository moments ago. You can check again in ${retryLeft} s.`
+                      : "You can check again now."
+                    : checkError || eligibility?.message}
+                </p>
                 {eligibility?.eligible && (
                   <p className="wgf-quiet">
                     Checked {eligibility.source_files?.toLocaleString()} files at{" "}
@@ -205,7 +222,12 @@ export default function WikiGenerationForm({
                         Run CodeNib locally ↗
                       </a>
                     )}
-                    <button type="button" className="btn-ghost" onClick={() => setCheckRetry((value) => value + 1)}>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={checkLimited && retryLeft > 0}
+                      onClick={() => setCheckRetry((value) => value + 1)}
+                    >
                       Check again
                     </button>
                   </p>

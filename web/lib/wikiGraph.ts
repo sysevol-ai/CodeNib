@@ -54,7 +54,12 @@ const PAGE_RADIUS: Record<string, number> = { primary: 6.5, key: 6, more: 4.5, d
  * The index records references, so these include calls, field reads and type uses.
  * The Overview is not a node: the whole map already is the overview.
  */
-export function buildWikiGraph(pages: WikiPageRef[], map: WikiAreaMap | null): WikiGraph {
+export function buildWikiGraph(
+  pages: WikiPageRef[],
+  map: WikiAreaMap | null,
+  /** Groups that are not an area of their own ("Other"): grey, and they take no colour. */
+  neutral: ReadonlySet<string> = new Set(),
+): WikiGraph {
   const symbols = new Map((map?.available ? map.areas : []).map((area) => [area.id, area.symbols]));
   const files = new Map((map?.available ? map.areas : []).map((area) => [area.id, area.files]));
   const mostSymbols = Math.max(1, ...symbols.values());
@@ -86,7 +91,7 @@ export function buildWikiGraph(pages: WikiPageRef[], map: WikiAreaMap | null): W
       colors.set(page.id, NEUTRAL_COLOR);
       continue;
     }
-    const color = AREA_COLORS[colorSlot++] ?? NEUTRAL_COLOR;
+    const color = neutral.has(page.id) ? NEUTRAL_COLOR : (AREA_COLORS[colorSlot++] ?? NEUTRAL_COLOR);
     colors.set(page.id, color);
     const share = Math.sqrt((symbols.get(page.id) ?? mostSymbols / 3) / mostSymbols);
     nodes.push({

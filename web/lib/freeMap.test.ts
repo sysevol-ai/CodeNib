@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { freeAreaUrl, freeMapPicture, partNames } from "@/lib/freeMap";
+import { foldParts, freeAreaUrl, freeMapPicture, MAX_PARTS, partNames } from "@/lib/freeMap";
 import type { FreeRepositoryMap } from "@/lib/visitorWiki";
 
 const base: FreeRepositoryMap = {
@@ -78,5 +78,33 @@ describe("partNames", () => {
   it("keeps whole paths when parts share nothing", () => {
     const names = partNames([part("a", "folder", "src"), part("b", "folder", "docs")]);
     expect([...names.values()]).toEqual(["src/", "docs/"]);
+  });
+});
+
+describe("foldParts", () => {
+  const part = (id: string, symbols: number, kind: "folder" | "file" | "other" = "file") =>
+    ({ id, title: id, symbols, files: 1, kind, path: kind === "other" ? null : id });
+  const areas = [...Array.from({ length: 10 }, (_, index) => part(`p${index}`, 100 - index)), part("other", 5, "other")];
+  const link = (source: string, target: string, weight: number) =>
+    ({ source, target, weight, calls: weight, example: { source, target, anchor: null } });
+
+  it("keeps the seven largest parts and folds the rest into Other", () => {
+    const folded = foldParts({
+      available: true,
+      areas,
+      links: [link("p0", "p8", 3), link("p0", "p9", 4), link("p8", "p9", 9), link("p1", "p0", 2)],
+    })!;
+    expect(folded.areas.map((area) => area.id)).toEqual(["p0", "p1", "p2", "p3", "p4", "p5", "p6", "other"]);
+    expect(folded.areas.length).toBe(MAX_PARTS);
+    expect(folded.links.map((item) => [item.source, item.target, item.weight])).toEqual([
+      ["p0", "other", 7],
+      ["p1", "p0", 2],
+    ]);
+    expect(folded.into.get("p9")).toBe("other");
+  });
+
+  it("leaves a map of eight parts or fewer alone", () => {
+    const small = { available: true, areas: areas.slice(0, 3), links: [] };
+    expect(foldParts(small)!.areas).toEqual(small.areas);
   });
 });

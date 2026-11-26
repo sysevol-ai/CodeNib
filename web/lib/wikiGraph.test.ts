@@ -103,3 +103,15 @@ describe("labelLines", () => {
     expect(labelLines(word)).toEqual([word]);
   });
 });
+
+describe("neutral groups", () => {
+  it("draws a catch-all group grey without taking an area colour", () => {
+    const pages = [
+      { id: "other", title: "Other", children: [] },
+      { id: "a", title: "A", children: [] },
+    ];
+    const graph = buildWikiGraph(pages, null, new Set(["other"]));
+    expect(graph.colors.get("other")).toBe(NEUTRAL_COLOR);
+    expect(graph.colors.get("a")).toBe(AREA_COLORS[0]);
+  });
+});
