@@ -22,3 +22,9 @@ describe("code in titles", () => {
     expect(sentenceCase("How Gin Finds The Handler For GET /ping")).toBe("How gin finds the handler for GET /ping");
   });
 });
+
+describe("dotted names", () => {
+  it("keeps a dotted name as code when setting case", () => {
+    expect(sentenceCase("How R.GET Registers A Route")).toBe("How R.GET registers a route");
+  });
+});

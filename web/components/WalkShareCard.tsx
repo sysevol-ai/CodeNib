@@ -41,7 +41,8 @@ function rowsOf(set: WalkthroughSet, walk: Walk): (Row | { gap: number })[] {
 }
 
 // A call (requests.get()) or an HTTP route (GET /ping) is code in a title.
-const CODE_IN_TITLE = /((?:[\w.]+\([^)]*\))|(?:\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) \/\S*))/;
+const CODE_IN_TITLE =
+  /((?:[\w.]+\([^)]*\))|(?:\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) \/\S*)|(?:\b[A-Za-z_]\w*\.[A-Za-z_][\w.]*\b))/;
 
 /**
  * A title in sentence case. Generated titles sometimes arrive in Title Case
@@ -64,7 +65,8 @@ export function sentenceCase(title: string): string {
       return part.replace(/[A-Za-z]+/g, (word) => {
         const keep = first;
         first = false;
-        return keep || !/^[A-Z][a-z]+$/.test(word) ? word : word.toLowerCase();
+        // The article "A" too; a capitalised word otherwise needs a lowercase rest.
+        return keep || !/^(?:[A-Z][a-z]+|A)$/.test(word) ? word : word.toLowerCase();
       });
     })
     .join("");
