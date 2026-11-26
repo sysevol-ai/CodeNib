@@ -111,9 +111,9 @@ on only needs an Apple Developer Program membership and five secrets.
 
 6. Run the **Desktop app** workflow on `main` (Actions, then Desktop app, then
    Run workflow). It signs the bundled Python and the app with your Developer
-   ID, has Apple notarize the app and then the disk image, staples the
-   ticket to the disk image, and checks both with `spctl`. Pull requests keep
-   building ad hoc.
+   ID, has Apple notarize the app and staples its ticket, builds the disk
+   image around it, notarizes and staples that too, and checks both with
+   `spctl`. Pull requests keep building ad hoc.
 
 To sign on your own Mac, pass the identity to both steps:
 `CODENIB_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"

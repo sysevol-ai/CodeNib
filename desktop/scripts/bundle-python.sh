@@ -45,6 +45,7 @@ PY="$TARGET/bin/python3.12"
 # Drop what the app never runs.
 rm -rf "$TARGET"/lib/python3.12/{test,idlelib,tkinter,turtledemo,ensurepip}
 rm -rf "$TARGET"/lib/{tcl*,tk*,itcl*,thread*} "$TARGET"/share
+rm -f "$TARGET"/lib/libtcl* "$TARGET"/lib/libtk* "$TARGET"/lib/python3.12/lib-dynload/_tkinter.*
 find "$TARGET" -name "__pycache__" -type d -prune -exec rm -rf {} +
 
 # Compile the bytecode now, before signing: the app runs with

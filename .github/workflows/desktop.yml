@@ -104,14 +104,11 @@ jobs:
       - name: Bundle Python and this CodeNib into the app
         run: desktop/scripts/bundle-python.sh
 
+      # Tauri signs the app as APPLE_SIGNING_IDENTITY when the certificate was
+      # imported. The notary credentials stay out of this step: it runs npm
+      # packages' code, and Tauri would try to notarize even with empty values.
       - name: Build the app and disk image
         working-directory: desktop
-        env:
-          # Tauri signs the app as APPLE_SIGNING_IDENTITY and, with these set,
-          # notarizes and staples it before it makes the disk image.
-          APPLE_ID: ${{ env.DEVELOPER_ID == 'true' && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ env.DEVELOPER_ID == 'true' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ env.DEVELOPER_ID == 'true' && secrets.APPLE_TEAM_ID || '' }}
         run: |
           npm ci
           npm --prefix app ci
@@ -143,22 +140,51 @@ jobs:
       - name: Run the app's own CodeNib on a repository
         run: desktop/scripts/smoke-bundle.sh desktop/src-tauri/target/release/bundle/macos/CodeNib.app
 
-      - name: Sign, notarize and staple the disk image
+      - name: Notarize and staple the app and its disk image
         if: env.DEVELOPER_ID == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          APP="desktop/src-tauri/target/release/bundle/macos/CodeNib.app"
-          DMG="$(ls desktop/src-tauri/target/release/bundle/dmg/*.dmg)"
+          BUNDLE="desktop/src-tauri/target/release/bundle"
+          APP="$BUNDLE/macos/CodeNib.app"
+          DMG="$(ls "$BUNDLE"/dmg/*.dmg)"
+          notarize() {
+            local result="$RUNNER_TEMP/notary.json" id status
+            xcrun notarytool submit "$1" --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+              --wait --timeout 30m --output-format json > "$result" || true
+            cat "$result"
+            id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id", ""))' "$result" 2>/dev/null || true)"
+            status="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status", ""))' "$result" 2>/dev/null || true)"
+            if [[ "$status" != "Accepted" ]]; then
+              # The log names each file Apple refused and why.
+              if [[ -n "$id" ]]; then
+                xcrun notarytool log "$id" --apple-id "$APPLE_ID" \
+                  --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"
+              fi
+              echo "notarization of $1 ended as '${status:-unknown}'" >&2
+              exit 1
+            fi
+          }
+          # The app first, so its ticket is stapled to it before it goes into
+          # the disk image: it then opens without asking Apple, even offline.
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/CodeNib.zip"
+          notarize "$RUNNER_TEMP/CodeNib.zip"
+          xcrun stapler staple "$APP"
+          spctl --assess --type execute --verbose=2 "$APP"
+          # Then the disk image, made again around the stapled app.
+          STAGE="$RUNNER_TEMP/dmg"
+          rm -rf "$STAGE" && mkdir "$STAGE"
+          ditto "$APP" "$STAGE/CodeNib.app"
+          ln -s /Applications "$STAGE/Applications"
+          rm -f "$DMG"
+          hdiutil create -volname CodeNib -srcfolder "$STAGE" -ov -format UDZO "$DMG"
           codesign --force --timestamp --sign "$CODENIB_SIGN_IDENTITY" "$DMG"
-          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" \
-            --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 30m
+          notarize "$DMG"
           xcrun stapler staple "$DMG"
           xcrun stapler validate "$DMG"
-          spctl --assess --type execute --verbose=2 "$APP"
           spctl --assess --type open --context context:primary-signature \
             --verbose=2 "$DMG"
 
