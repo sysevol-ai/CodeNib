@@ -39,15 +39,51 @@ function rowsOf(set: WalkthroughSet, walk: Walk): (Row | { gap: number })[] {
   return [...head, { gap: all.length - head.length - tail.length }, ...tail];
 }
 
-/** Code in a title, such as `requests.get()`, set as code. */
+const CODE_IN_TITLE = /([\w.]+\([^)]*\))/;
+
+/**
+ * A title in sentence case. Generated titles sometimes arrive in Title Case
+ * ("Builds the Tree"); when most longer words are capitalised, the ones that
+ * are plain capitalised words are lowered. Code is left alone.
+ */
+export function sentenceCase(title: string): string {
+  const parts = title.split(CODE_IN_TITLE);
+  const words = parts.filter((_, index) => index % 2 === 0).join(" ").split(/\s+/).slice(1);
+  const long = words.filter((word) => /^[A-Za-z]{4,}$/.test(word));
+  const capitalised = long.filter((word) => /^[A-Z][a-z]+$/.test(word));
+  if (long.length < 2 || capitalised.length / long.length < 0.6) return title;
+  let first = true;
+  return parts
+    .map((part, index) => {
+      if (index % 2) {
+        first = false;
+        return part;
+      }
+      return part.replace(/[A-Za-z]+/g, (word) => {
+        const keep = first;
+        first = false;
+        return keep || !/^[A-Z][a-z]+$/.test(word) ? word : word.toLowerCase();
+      });
+    })
+    .join("");
+}
+
+/** Code in a title, such as `requests.get()`, set as code that never breaks. */
 function titleWithCode(title: string): ReactNode[] {
-  return title.split(/([\w.]+\([^)]*\))/).map((part, index) =>
+  return sentenceCase(title).split(CODE_IN_TITLE).map((part, index) =>
     index % 2 ? (
       <code key={index}>{part}</code>
     ) : (
       part
     ),
   );
+}
+
+/** A title size at which its longest piece of code fits the 500 px column. */
+function titleSize(title: string): number {
+  const longest = Math.max(0, ...(title.match(new RegExp(CODE_IN_TITLE, "g")) ?? []).map((code) => code.length));
+  // Geist Mono at 0.86em is about 0.52 em per character.
+  return Math.min(46, Math.floor(500 / Math.max(1, longest * 0.52)));
 }
 
 /** The line below a stop is the call that leaves it, in the colour of where it lands. */
@@ -102,9 +138,13 @@ export default function WalkShareCard({ repoId, walkId, host }: { repoId: string
           <img src={assetUrl("/codenib-icon.svg")} alt="" /> CodeNib Wiki
         </span>
         <p className="walk-card-repo">{set?.repo.slug}</p>
-        <h1>{walk ? titleWithCode(walk.title) : null}</h1>
+        <h1 style={walk ? { fontSize: titleSize(walk.title) } : undefined}>{walk ? titleWithCode(walk.title) : null}</h1>
         {areas.length > 0 && (
           <ul className="walk-card-areas" aria-label="Areas of the code it passes through">
+            <li className="is-own">
+              <span className="walk-card-dot" aria-hidden="true" />
+              Your call
+            </li>
             {areas.map((area) => (
               <li key={area.name} style={{ "--area": area.color } as CSSProperties}>
                 <span className="walk-card-dot" aria-hidden="true" />
@@ -117,9 +157,7 @@ export default function WalkShareCard({ repoId, walkId, host }: { repoId: string
           <span>
             {calls} {calls === 1 ? "step" : "steps"} traced in the code index
           </span>
-          <span className="walk-card-url">
-            {host}/{repoId}?walk={walkId}
-          </span>
+
         </p>
       </div>
       <ol className="walk-card-trace">
