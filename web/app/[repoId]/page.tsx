@@ -1256,6 +1256,19 @@ export default function WikiPageView({
             </button>
             <span className="crumb-sep">/</span>
             <span className="crumb-repo mono">{repo ? repo.repo : repoId.replace("__", "/")}</span>
+            {walking ? (
+              <>
+                <span className="crumb-sep">/</span>
+                <span className="crumb-page">{walk ? `Walkthrough: ${walk.tab}` : "Walkthrough"}</span>
+              </>
+            ) : (
+              page && (
+                <>
+                  <span className="crumb-sep">/</span>
+                  <span className="crumb-page">{page.title}</span>
+                </>
+              )
+            )}
             {(!staticRuntime || hasGraph) && (
               <button
                 className={`codegraph-launch ${hasGraph ? "" : "unavailable"}`}
@@ -1309,19 +1322,6 @@ export default function WikiPageView({
               >
                 {editing ? "Editing" : "Edit page"}
               </button>
-            )}
-            {walking ? (
-              <>
-                <span className="crumb-sep">/</span>
-                <span className="crumb-page">{walk ? `Walkthrough: ${walk.tab}` : "Walkthrough"}</span>
-              </>
-            ) : (
-              page && (
-                <>
-                  <span className="crumb-sep">/</span>
-                  <span className="crumb-page">{page.title}</span>
-                </>
-              )
             )}
           </nav>
         }

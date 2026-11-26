@@ -20,29 +20,43 @@ export function splitCall(symbol: string): [string, string] {
   return [symbol.slice(0, cut + 1), symbol.slice(cut + 1)];
 }
 
-function Call({ symbol }: { symbol: string }) {
+function Call({ symbol, breakable = true }: { symbol: string; breakable?: boolean }) {
   const [owner, name] = splitCall(symbol);
   return (
     <>
       {owner && <span className="main-path-owner">{owner}</span>}
-      {owner && <wbr />}
+      {owner && breakable && <wbr />}
       <span className="main-path-name">{name}</span>
     </>
   );
 }
 
-/** Draw a title's `code` spans as calls, each by its owner and its name:
- *  "From `get()` to `HTTPAdapter.send()`". */
+/** Draw a title's `code` spans as calls, each by its owner and its name,
+ *  and each held to the word before it ("From get()", "to HTTPAdapter.send()"),
+ *  so a heading breaks between them, never inside a call. */
 function titleWithCode(title: string): ReactNode[] {
-  return title.split(/`([^`]+)`/).map((part, index) =>
-    index % 2 ? (
-      <code key={index} title={part}>
-        <Call symbol={displaySymbol(part, { short: true })} />
-      </code>
-    ) : (
-      part
-    ),
-  );
+  const parts = title.split(/`([^`]+)`/);
+  const out: ReactNode[] = [];
+  parts.forEach((part, index) => {
+    if (index % 2 === 0) {
+      // The last word before a call goes with the call.
+      const next = parts[index + 1];
+      const lead = next !== undefined ? /(\S+\s*)$/.exec(part) : null;
+      if (lead) out.push(part.slice(0, part.length - lead[1].length));
+      else out.push(part);
+      return;
+    }
+    const before = /(\S+\s*)$/.exec(parts[index - 1] ?? "");
+    out.push(
+      <span className="main-path-title-unit" key={index}>
+        {before ? before[1] : ""}
+        <code title={part}>
+          <Call symbol={displaySymbol(part, { short: true })} breakable={false} />
+        </code>
+      </span>,
+    );
+  });
+  return out;
 }
 
 /** Each step sits right of the one that calls it; a drop into another area

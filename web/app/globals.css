@@ -957,17 +957,20 @@ pre {
 .main-path-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: clamp(26px, 2.4vw, 32px);
+  font-size: clamp(26px, 5cqi, 32px);
   font-weight: 500;
   line-height: 1.18;
   letter-spacing: -0.028em;
   text-wrap: balance;
 }
-/* A call in the heading stays whole; the line breaks before it. */
+/* A call in the heading stays whole, held to the word before it; the line
+   breaks between "From get()" and "to HTTPAdapter.send()". */
 .main-path-title code {
   font-size: 0.84em;
   font-weight: 500;
   letter-spacing: -0.01em;
+}
+.main-path-title-unit {
   white-space: nowrap;
 }
 .main-path-note {
@@ -1214,6 +1217,13 @@ pre {
 [data-theme="light"] .main-path-step:not(:first-child)::after {
   border-color: var(--area, var(--line));
 }
+/* A wide column keeps every step at least 30 px right of its caller, so the
+   stair reads as a fall, not an indent; tight rows set file:line under. */
+@container (min-width: 520px) {
+  .main-path-steps {
+    --unit: min(var(--cascade, 36px), max(30px, calc(min(216px, 21cqi) / var(--units, 5))));
+  }
+}
 @keyframes main-path-down {
   from { transform: scaleY(0); }
   to { transform: scaleY(1); }
@@ -1247,8 +1257,11 @@ pre {
     white-space: normal;
   }
   /* A phone's heading may break a long call after its owner. */
-  .main-path-title code {
+  .main-path-title-unit {
     white-space: normal;
+  }
+  .main-path-title .main-path-owner::after {
+    content: "\200B";
   }
   .main-path-step {
     gap: 10px;
