@@ -27,6 +27,9 @@ export interface WikiGraphNode {
   radius: number;
   x: number;
   y: number;
+  /** An area's size in the code index, when the map recorded it. */
+  symbols?: number;
+  files?: number;
 }
 
 export interface WikiGraphEdge {
@@ -53,6 +56,7 @@ const PAGE_RADIUS: Record<string, number> = { primary: 6.5, key: 6, more: 4.5, d
  */
 export function buildWikiGraph(pages: WikiPageRef[], map: WikiAreaMap | null): WikiGraph {
   const symbols = new Map((map?.available ? map.areas : []).map((area) => [area.id, area.symbols]));
+  const files = new Map((map?.available ? map.areas : []).map((area) => [area.id, area.files]));
   const mostSymbols = Math.max(1, ...symbols.values());
   const nodes: WikiGraphNode[] = [];
   const edges: WikiGraphEdge[] = [];
@@ -94,6 +98,8 @@ export function buildWikiGraph(pages: WikiPageRef[], map: WikiAreaMap | null): W
       radius: 9 + 10 * share,
       x: 0,
       y: 0,
+      symbols: symbols.get(page.id),
+      files: files.get(page.id),
     });
     addChildren(page, page.id, color);
   }

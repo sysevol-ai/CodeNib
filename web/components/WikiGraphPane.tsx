@@ -36,6 +36,7 @@ const LABEL_CHAR_PX = 6.1;
 const LABEL_HEIGHT_PX = 15;
 const LABEL_LINE_PX = 14;
 const LABEL_MARGIN_PX = 8;
+const number = new Intl.NumberFormat("en-US");
 // Room for the repository name above an embedded map.
 const HEADER_PX = 44;
 
@@ -433,6 +434,59 @@ export default function WikiGraphPane({
     return () => cancelAnimationFrame(frame);
   }, [newestHop?.id, newestHop?.d, animateRoute]);
 
+  // What an area is, for a reader pointing at it: its size and the areas it
+  // shares the most recorded references with. The status line keeps the action.
+  const card = useMemo(() => {
+    const node = hoverNode ? byId.get(hoverNode) : null;
+    if (!node || node.kind !== "area" || !view || drag.current?.moved) return null;
+    const point = points.get(node.id);
+    if (!point) return null;
+    const strongest = (side: "source" | "target") =>
+      graph.edges
+        .filter((edge) => edge.kind === "references" && edge.link && edge[side] === node.id)
+        .sort((a, b) => b.link!.weight - a.link!.weight)
+        .slice(0, 2)
+        .map((edge) => {
+          const other = byId.get(side === "source" ? edge.target : edge.source)!;
+          return { id: other.id, title: other.title, color: other.color, weight: edge.link!.weight };
+        });
+    return {
+      node,
+      to: strongest("source"),
+      from: strongest("target"),
+      at: { x: point.x * view.k + view.x, y: point.y * view.k + view.y, r: node.radius * view.k },
+    };
+  }, [hoverNode, byId, view, points, graph]);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Placed once its size is known: beside the mark where there is room, else
+  // under or over it, and always inside the map.
+  useLayoutEffect(() => {
+    const element = cardRef.current;
+    if (!card || !element) return;
+    const { x, y, r } = card.at;
+    const w = element.offsetWidth;
+    const h = element.offsetHeight;
+    const gap = r + 12;
+    const fits = (left: number, top: number) =>
+      left >= 8 && top >= 8 && left + w <= size.width - 8 && top + h <= size.height - 8;
+    const clampY = (top: number) => Math.max(8, Math.min(top, size.height - h - 8));
+    const clampX = (left: number) => Math.max(8, Math.min(left, size.width - w - 8));
+    const options = [
+      { left: x + gap, top: clampY(y - 28) },
+      { left: x - gap - w, top: clampY(y - 28) },
+      { left: clampX(x - w / 2), top: y + gap },
+      { left: clampX(x - w / 2), top: y - gap - h },
+    ];
+    const chosen = options.find((option) => fits(option.left, option.top)) ?? {
+      left: clampX(x + gap),
+      top: clampY(y + gap),
+    };
+    element.style.left = `${chosen.left}px`;
+    element.style.top = `${chosen.top}px`;
+    element.style.visibility = "visible";
+  }, [card, size]);
+
   const activityLegend = useMemo(() => {
     const marks = Object.entries(activity ?? {}).filter(([id]) => byId.has(id));
     return {
@@ -592,6 +646,8 @@ export default function WikiGraphPane({
                   aria-current={active ? "page" : undefined}
                   onPointerEnter={() => setHoverNode(node.id)}
                   onPointerLeave={() => setHoverNode(null)}
+                  onFocus={() => setHoverNode(node.id)}
+                  onBlur={() => setHoverNode(null)}
                   onClick={() => {
                     if (!readonly && !drag.current?.moved) onPick(node.id);
                   }}
@@ -699,6 +755,40 @@ export default function WikiGraphPane({
         )}
       </svg>
 
+      {card && (
+        <div className="wg-card" ref={cardRef} style={{ visibility: "hidden" }} aria-hidden="true">
+          <p className="wg-card-title">
+            <span className="wg-card-dot" style={{ background: card.node.color }} />
+            {card.node.title}
+          </p>
+          {card.node.symbols != null && (
+            <p className="wg-card-size">
+              {number.format(card.node.symbols)} {card.node.symbols === 1 ? "symbol" : "symbols"}
+              {card.node.files != null && ` · ${number.format(card.node.files)} ${card.node.files === 1 ? "file" : "files"}`}
+            </p>
+          )}
+          {(card.to.length > 0 || card.from.length > 0) && (
+            <dl className="wg-card-links">
+              {[
+                ["To", card.to],
+                ["From", card.from],
+              ].flatMap(([word, rows]) =>
+                (rows as typeof card.to).map((row) => (
+                  <div key={`${word}:${row.id}`}>
+                    <dt>
+                      <span className="wg-card-word">{word as string}</span>
+                      <span className="wg-card-dot" style={{ background: row.color }} />
+                      <span className="wg-card-name">{row.title}</span>
+                    </dt>
+                    <dd>{number.format(row.weight)}</dd>
+                  </div>
+                )),
+              )}
+            </dl>
+          )}
+          <p className="wg-card-hint">Recorded references · click to read this area</p>
+        </div>
+      )}
       {header && <div className="wiki-graph-head">{header}</div>}
       {!embedded && (
         <div className="wiki-graph-controls">

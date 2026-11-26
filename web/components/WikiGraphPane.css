@@ -675,3 +675,97 @@
     stroke-dashoffset: 0;
   }
 }
+
+/* --- What an area is, beside it while the pointer is on it --- */
+.wg-card {
+  position: absolute;
+  z-index: 3;
+  width: max-content;
+  max-width: min(300px, calc(100% - 24px));
+  padding: 10px 12px 9px;
+  color: var(--wg-soft);
+  font-size: 13px;
+  line-height: 1.45;
+  background: #17181b;
+  border: 1px solid rgba(232, 234, 237, 0.14);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.wg-card p {
+  margin: 0;
+}
+.wg-card-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--wg-text);
+  font-weight: 600;
+}
+.wg-card-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.wg-card-title .wg-card-dot {
+  margin-top: 0.42em;
+}
+.wg-card-word {
+  flex: none;
+  width: 2.7em;
+}
+.wg-card-size {
+  padding-left: 15px;
+  color: var(--wg-muted);
+}
+.wg-card-links {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(232, 234, 237, 0.09);
+}
+.wg-card-links div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.wg-card-links dt {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wg-muted);
+}
+.wg-card-links dt .wg-card-dot {
+  width: 7px;
+  height: 7px;
+}
+.wg-card-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wg-soft);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.wg-card-links dd {
+  flex: none;
+  margin: 0;
+  color: var(--wg-text);
+  font-variant-numeric: tabular-nums;
+}
+.wg-card-hint {
+  margin-top: 8px !important;
+  color: var(--wg-muted);
+}
+@media (hover: none) {
+  .wg-card {
+    display: none;
+  }
+}
