@@ -118,7 +118,7 @@ def test_a_walkthrough_link_gets_its_title_calls_and_card(
         "<title>How requests.get() sends and returns a response · psf/requests</title>"
         in html
     )
-    assert "2 recorded calls in psf/requests" in html
+    assert "2 steps traced in the code index of psf/requests" in html
     assert "get() → Session.send()" in html
     assert "share-cards/psf__requests--walk-main.png" in html
     assert 'content="https://demo.example/psf__requests?walk=main&amp;step=2"' in html

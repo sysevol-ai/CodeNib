@@ -88,7 +88,7 @@
   flex: 1;
   flex-direction: column;
   justify-content: center;
-  gap: 16px;
+  gap: 20px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -98,8 +98,8 @@
 .walk-card-gap {
   position: relative;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  grid-template-rows: auto auto;
+  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-rows: auto;
   column-gap: 18px;
   padding-left: 0;
 }
@@ -108,17 +108,17 @@
 .walk-card-gap::after {
   content: "";
   position: absolute;
-  left: 8px;
-  top: 15px;
+  left: 9px;
+  top: 18px;
   z-index: 0;
   width: 2px;
-  height: calc(100% + 16px);
+  height: calc(100% + 20px);
   border-radius: 1px;
   background: var(--next, transparent);
 }
 .walk-card-gap::after {
   top: 0;
-  height: calc(100% + 31px);
+  height: calc(100% + 38px);
   background: repeating-linear-gradient(var(--next, #4a4c50) 0 5px, transparent 5px 11px);
 }
 .walk-card-stop:last-child::after {
@@ -129,8 +129,8 @@
   z-index: 1;
   grid-row: 1;
   align-self: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: var(--area);
   box-shadow: 0 0 0 4px #121315;
@@ -139,12 +139,18 @@
   background: #121315;
   box-shadow: inset 0 0 0 2px #9aa0a6, 0 0 0 4px #121315;
 }
+.walk-card h1 code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
 .walk-card-name {
   grid-column: 2;
   overflow: hidden;
   color: #fff;
   font-family: var(--font-mono);
-  font-size: 23px;
+  font-size: 28px;
   font-weight: 500;
   line-height: 1.3;
   white-space: nowrap;
@@ -152,15 +158,6 @@
 }
 .walk-card-stop.is-own .walk-card-name {
   color: #bdc1c6;
-}
-.walk-card-where {
-  grid-column: 2;
-  overflow: hidden;
-  color: #9aa0a6;
-  font-size: 17px;
-  line-height: 1.35;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .walk-card-gap {
   grid-template-rows: auto;

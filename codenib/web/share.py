@@ -158,10 +158,10 @@ def _walk_preview(
         if isinstance(stop, list) and len(stop) >= 2
     ]
     shown = stops if len(stops) <= 6 else [*stops[:4], "…", stops[-1]]
-    calls = len(stops)
+    steps = len(stops)
     description = (
-        f"{calls} recorded {'call' if calls == 1 else 'calls'} in {name}, "
-        f"followed one function at a time: {' → '.join(shown)}."
+        f"{steps} {'step' if steps == 1 else 'steps'} traced in the code index of "
+        f"{name}, one function at a time: {' → '.join(shown)}."
     )
     return f"{walk.get('title') or walk_id} · {name}", description
 
