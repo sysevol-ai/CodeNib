@@ -124,9 +124,9 @@ export default function GenerateWikiPage({
           : `at ${check?.commit?.slice(0, 8)} · a Wiki's chapters appear here as they are planned`,
     };
   else if (check && !check.eligible)
-    idle = { title: "This snapshot cannot be generated here", detail: "The reason is beside the map." };
+    idle = { title: "This snapshot cannot be generated here", detail: "The reason is shown with the form." };
   else if (checkFailed && (!freeMapOffered || freeMapFailed))
-    idle = { title: "The snapshot could not be checked just now", detail: "The reason is beside the map; try again shortly." };
+    idle = { title: "The snapshot could not be checked just now", detail: "The reason is shown with the form; try again shortly." };
   else if (loaded && !enabled)
     idle = { title: slug, detail: "The folder map appears once generation is available." };
   else idle = { title: "Checking the snapshot", detail: "Its folders appear when the check finishes. No key is needed." };
