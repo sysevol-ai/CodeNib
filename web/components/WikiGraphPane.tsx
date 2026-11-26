@@ -258,7 +258,13 @@ export default function WikiGraphPane({
   const newestHopRef = useRef<SVGPathElement>(null);
 
   const byId = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph]);
-  const near = useMemo(() => neighborhood(graph, activeId), [graph, activeId]);
+  // While the main path plays, the areas it has reached stand forward the way
+  // an active area's neighbours do in the tour.
+  const near = useMemo(() => {
+    const found = neighborhood(graph, activeId);
+    if (route) for (const stop of route.stops.slice(0, route.at + 1)) found.add(stop.areaId);
+    return found;
+  }, [graph, activeId, route]);
 
   // Room above and below the drawing for labels, the header and the status
   // line. On a narrow pane it is at least the legend plus two lines of
@@ -423,7 +429,7 @@ export default function WikiGraphPane({
     // Nearest first: straight above or below the mark, then its corners, then
     // a step further out. A name with no free place stays in the status line.
     const candidates: { anchor: "start" | "middle" | "end"; dx: number; dy: number }[] = [];
-    for (const out of [0, 14, 30, 48]) {
+    for (const out of [0, 10, 20, 32, 46, 62]) {
       candidates.push(
         { anchor: "middle", dx: 0, dy: -(r + 13 + out) },
         { anchor: "middle", dx: 0, dy: r + 23 + out },
@@ -438,7 +444,9 @@ export default function WikiGraphPane({
     // Keep clear of the header (which wraps to two lines on a phone) and of
     // the status line with its legend.
     const top = (header ? Math.max(HEADER_PX, headHeight + 14) : 0) + 6;
-    const bottom = size.height - Math.max(58, legendHeight + 2 * 19 + 24);
+    // A phone's status line can run to three lines (the path's heading).
+    const statusLines = size.width < 520 ? 3 : 2;
+    const bottom = size.height - Math.max(58, legendHeight + statusLines * 19 + 24);
     const boxOf = (spot: (typeof candidates)[number]) => {
       const left = sx + spot.dx - (spot.anchor === "middle" ? width / 2 : spot.anchor === "end" ? width : 0);
       return { left: left - 3, right: left + width + 3, top: sy + spot.dy - 13, bottom: sy + spot.dy + 5 };
@@ -560,9 +568,9 @@ export default function WikiGraphPane({
                 <>
                   {size && " · "}most references with{" "}
                   {card.rows.map((row, index) => (
-                    <span key={row.id} className="wg-status-area">
+                    <span key={row.id}>
                       {index > 0 && ", "}
-                      <i style={{ background: row.color }} aria-hidden="true" />
+                      <i className="wg-status-dot" style={{ background: row.color }} aria-hidden="true" />
                       {row.title}{" "}
                       <span className="wg-status-count">
                         ({[row.out && `${number.format(row.out)} out`, row.in && `${number.format(row.in)} in`]
@@ -592,7 +600,7 @@ export default function WikiGraphPane({
         embedded ? " is-embedded" : ""
       }${live ? " is-live" : ""}${readonly ? " is-readonly" : ""}${still ? " is-still" : ""}${surveying ? " is-surveying" : ""}${
         routeView ? " is-routing" : ""
-      }`}
+      }${routeView && hoverNode && byId.get(hoverNode)?.kind === "area" ? " is-pointing" : ""}`}
       ref={paneRef}
       aria-label="Map of this Wiki"
     >

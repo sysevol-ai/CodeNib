@@ -49,7 +49,9 @@ describe("routeFromJourney", () => {
   it("names the shown steps when some are off the map", () => {
     const route = routeFromJourney(journey, CITATIONS, ["request-lifecycle", "session-orchestration"])!;
     expect(routeHeading(route)).toBe("From `get()` to `HTTPAdapter.send()`");
-    expect(routeHeading({ ...route, total: route.stops.length, title: "Overview's own" })).toBe("Overview's own");
+    expect(routeHeading({ ...route, total: route.stops.length, title: "From `a.b.get()` to `x.y.send()`" })).toBe(
+      "From `get()` to `HTTPAdapter.send()`",
+    );
   });
 
   it("returns nothing for a path that never leaves one area", () => {

@@ -76,12 +76,11 @@ export function stopPlace(stop: RouteStop): string | null {
 }
 
 /**
- * The route's heading as the map tells it: the Overview's own when every
- * stage is on the map, otherwise from the first to the last stop shown, so
- * the count and the heading describe the same steps.
+ * The route's heading as the map tells it: from the first to the last stop
+ * shown, by the same short names the steps use, so the count and the heading
+ * describe the same steps.
  */
 export function routeHeading(route: MapRoute): string {
-  if (route.stops.length === route.total) return route.title;
   const first = route.stops[0];
   const last = route.stops[route.stops.length - 1];
   return `From \`${first.label}\` to \`${last.label}\``;

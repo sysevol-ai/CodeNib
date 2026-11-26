@@ -221,9 +221,20 @@
   background: linear-gradient(to top, var(--wg-bg) 62%, transparent);
   pointer-events: none;
 }
+/* The status line has its own row, so the legend never moves as it changes. */
 .wiki-graph-foot p {
+  flex-basis: 100%;
   margin: 0;
   min-width: 0;
+}
+.wiki-graph-foot .is-code {
+  overflow-wrap: anywhere;
+}
+/* Pointing at an area tells its facts; the path's marks step aside meanwhile. */
+.wiki-graph.is-pointing .wg-route-stop,
+.wiki-graph.is-pointing .wg-route-label,
+.wiki-graph.is-pointing .wg-route-token {
+  visibility: hidden;
 }
 .wiki-graph-foot b {
   color: var(--wg-text);
@@ -684,10 +695,7 @@
 }
 
 /* An area's neighbours in the status line, each with its map colour. */
-.wg-status-area {
-  white-space: nowrap;
-}
-.wg-status-area i {
+.wg-status-dot {
   display: inline-block;
   width: 7px;
   height: 7px;
