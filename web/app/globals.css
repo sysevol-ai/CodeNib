@@ -984,36 +984,28 @@ pre {
   color: var(--text-primary);
 }
 /* The path as a cascade: each call a step right of its caller, joined to it
-   by an elbow in the colour of where the call lands. */
+   by an elbow; where the path drops into another area, twice as far. */
 .main-path-steps {
-  --shift: var(--cascade, 36px);
+  --unit: var(--cascade, 36px);
   --line: var(--border-strong);
   list-style: none;
   margin: 0;
   padding: 0;
 }
 .main-path-step {
+  --shift: calc(var(--move, 1) * var(--unit));
   position: relative;
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr);
   gap: 14px;
-  margin-left: calc(var(--depth, 0) * var(--shift));
+  margin-left: calc(var(--offset, 0) * var(--unit));
   padding-bottom: 24px;
 }
 .main-path-step:last-child {
   padding-bottom: 0;
 }
-/* Where the path drops into another area it leaves a little more room, and
-   names the area it lands in. */
-.main-path-step.is-entry {
-  margin-top: 10px;
-}
-/* The drop's elbow reaches up through that room to its caller's line. */
-.main-path-step.is-entry::after {
-  top: -10px;
-  height: 24px;
-}
-/* Down from this step's ring towards the call it makes. */
+/* Down from this step's ring towards the call it makes, in this step's
+   colour: the call leaves from here. */
 .main-path-step:not(:last-child)::before {
   content: "";
   position: absolute;
@@ -1021,10 +1013,10 @@ pre {
   top: 30px;
   bottom: 0;
   width: 1px;
-  background: color-mix(in srgb, var(--next, var(--line)) 75%, transparent);
+  background: color-mix(in srgb, var(--down, var(--line)) 75%, transparent);
   transform-origin: top;
 }
-/* And across into this step, from its caller's line. */
+/* And across into this step, in the colour of where the call lands. */
 .main-path-step:not(:first-child)::after {
   content: "";
   position: absolute;
@@ -1036,6 +1028,23 @@ pre {
   border-left: 1px solid color-mix(in srgb, var(--area, var(--line)) 75%, transparent);
   border-bottom: 1px solid color-mix(in srgb, var(--area, var(--line)) 75%, transparent);
   border-bottom-left-radius: 9px;
+}
+/* Where the path drops into another area, the area is named in the drop,
+   over the call it lands on, and the elbow falls through that room. */
+.main-path-step.is-entry {
+  padding-top: 26px;
+}
+.main-path-step.is-entry:not(:first-child)::after {
+  height: 40px;
+  border-bottom-left-radius: 12px;
+}
+.main-path-step.is-entry:not(:last-child)::before {
+  top: 56px;
+}
+.main-path-step > .main-path-area {
+  position: absolute;
+  top: 2px;
+  left: 0;
 }
 .main-path-index {
   position: relative;
@@ -1064,13 +1073,6 @@ pre {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 2px 16px;
-}
-.main-path-call {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 14px;
-  min-width: 0;
 }
 .main-path-source {
   margin-left: auto;
@@ -1138,7 +1140,6 @@ pre {
 }
 .main-path-source-line {
   color: var(--text-muted);
-  opacity: 0.8;
 }
 /* A step that names its source on its row does not repeat it after its sentence. */
 .main-path-step.has-source .main-path-text .cite-group[data-single] {
@@ -1213,8 +1214,9 @@ pre {
   }
 }
 @media (max-width: 600px) {
+  /* A phone keeps the whole stair within about 90 px. */
   .main-path-steps {
-    --shift: min(var(--cascade, 36px), 18px);
+    --unit: min(var(--cascade, 36px), 20px, calc(88px / var(--units, 5)));
   }
   .main-path-symbol {
     font-size: 15px;
@@ -2280,8 +2282,11 @@ pre {
 /* With the map open, the launcher sits at the foot of the page list, clear
    of the reading column and its file and line references. */
 .askbar-collapsed.askbar-docked {
-  left: 18px;
+  left: var(--dock-left, var(--wiki-gutter));
   right: auto;
+}
+.wiki-reading:has(.wiki-grid.is-workspace) .askbar-docked {
+  --dock-left: 18px;
 }
 .wiki-grid.is-workspace .wiki-toc {
   padding-bottom: 84px;
@@ -4616,7 +4621,7 @@ a.codepanel-name:hover {
   text-decoration: underline;
 }
 .cite-src-loc {
-  opacity: 0.75;
+  color: var(--text-muted);
 }
 
 @media (max-width: 600px) {

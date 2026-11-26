@@ -605,3 +605,9 @@
 .repo-poster.is-card .poster-brand {
   display: inline;
 }
+
+/* In a Wiki the main path below tells the steps; the poster keeps its
+   heading and Play, and its exported image keeps the numbered steps. */
+.wiki-main .repo-poster:not(.is-exporting) .poster-steps {
+  display: none;
+}

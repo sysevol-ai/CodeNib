@@ -1125,7 +1125,9 @@ export default function WikiPageView({
   // index's counts, as the poster does when the map is hidden.
   const overviewTitled = workspace && activeId === "overview";
   const overviewFacts =
-    overviewTitled && areaMap?.available ? repositoryFacts(areaMap, repo?.file_count) : null;
+    // Counted once the repository's own file count is in, so the line never
+    // changes under the reader.
+    overviewTitled && areaMap?.available && repo ? repositoryFacts(areaMap, repo.file_count) : null;
   const renderStageText = (markdown: string) => (
     <Markdown
       citations={page?.citations}
@@ -1503,7 +1505,9 @@ export default function WikiPageView({
                       repoId={repoId}
                       onPageLink={pick}
                     >
-                      {overviewTitled ? titleOverviewLead(wikiMarkdown.lead, repo?.repo) : wikiMarkdown.lead}
+                      {overviewTitled
+                        ? titleOverviewLead(wikiMarkdown.lead, repo?.repo ?? repoId.replace("__", "/"))
+                        : wikiMarkdown.lead}
                     </Markdown>
                   )}
                   {overviewFacts && (
@@ -2050,7 +2054,7 @@ export default function WikiPageView({
         <AskBar
           repoId={repoId} repo={repo.repo} collapsible browserTrial={browserTrial}
           compact={showPoster}
-          docked={workspace}
+          docked={!drawerMode && !showPoster}
         />
       )}
       {staticRuntime && (

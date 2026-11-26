@@ -44,7 +44,8 @@ function titleWithCode(title: string): ReactNode[] {
   );
 }
 
-/** Each step sits right of the one that calls it, at most this far in all. */
+/** Each step sits right of the one that calls it; a drop into another area
+ *  goes twice as far. The whole stair stays within this width. */
 const CASCADE_PX = 216;
 const CASCADE_STEP_PX = 36;
 
@@ -74,8 +75,14 @@ export default function MainPath({
   /** Open a citation's source, by its index in `citations`. */
   onSource?: (index: number) => void;
 }) {
-  const steps = journey.stages.length;
-  const step = steps > 1 ? Math.min(CASCADE_STEP_PX, CASCADE_PX / (steps - 1)) : 0;
+  // A step's move right, in units: one for a call within an area, two where
+  // the path drops into another.
+  const moves: number[] = journey.stages.map((stage, position) =>
+    position === 0 ? 0 : stage.page && journey.stages[position - 1]?.page?.id !== stage.page.id ? 2 : 1,
+  );
+  const units = moves.reduce((sum, move) => sum + move, 0);
+  const step = units > 0 ? Math.min(CASCADE_STEP_PX, CASCADE_PX / units) : 0;
+  let offset = 0;
   const listRef = useRef<HTMLOListElement>(null);
   // Each call's line draws down from its caller and turns into the step as
   // that step comes into view, so the path pours down the page as it is
@@ -103,7 +110,7 @@ export default function MainPath({
           observer.unobserve(step);
         });
       },
-      { rootMargin: "0px 0px -4% 0px" },
+      { rootMargin: "0px 0px -22% 0px" },
     );
     steps.forEach((step) => observer.observe(step));
     return () => observer.disconnect();
@@ -113,15 +120,15 @@ export default function MainPath({
       <figcaption className="main-path-head">
         <h2 className="main-path-title">{titleWithCode(journey.title)}</h2>
         <p className="main-path-note">
-          One path selected from the code index. Each arrow is a call found in the
+          One path selected from the code index: each step is a call found in the
           source, or a base method leading to the subclass that implements it.
-          {colors && " Each colour is the area of the Wiki map where a step's code lives; the line into a step takes its colour."}
+          {colors && " The colours are the Wiki map's areas; a line turns where the call lands in another."}
         </p>
       </figcaption>
       <ol
         ref={listRef}
         className={`main-path-steps${colors ? " is-coloured" : ""}`}
-        style={{ "--cascade": `${step}px` } as CSSProperties}
+        style={{ "--cascade": `${step}px`, "--units": Math.max(units, 1) } as CSSProperties}
       >
         {journey.stages.map((stage, position) => {
           const area = stage.page ? colors?.get(stage.page.id) : undefined;
@@ -137,37 +144,42 @@ export default function MainPath({
           // The path names an area where it enters one; the steps after it
           // keep its colour on their rings and lines.
           const entry = !!stage.page && journey.stages[position - 1]?.page?.id !== stage.page.id;
+          offset += moves[position];
+          // The line down from a step leaves in its own area's colour and
+          // turns the colour of the next step's area at the elbow.
+          const own = area;
           return (
             <li
-              className={`main-path-step${area ? " has-area" : ""}${next ? " has-next" : ""}${source ? " has-source" : ""}${entry && position > 0 ? " is-entry" : ""}`}
+              className={`main-path-step${area ? " has-area" : ""}${next ? " has-next" : ""}${source ? " has-source" : ""}${entry ? " is-entry" : ""}`}
               key={stage.index}
               style={
                 {
                   "--depth": position,
+                  "--offset": offset,
+                  "--move": moves[position],
                   ...(area ? { "--area": area } : {}),
+                  ...(own ? { "--down": own } : {}),
                   ...(next ? { "--next": next } : {}),
                 } as CSSProperties
               }
             >
+              {entry && stage.page && (
+                <button
+                  type="button"
+                  className="main-path-area"
+                  onClick={() => onPick(stage.page!.id)}
+                >
+                  {stage.page.title}
+                </button>
+              )}
               <span className="main-path-index" aria-hidden="true">
                 {stage.index}
               </span>
               <div className="main-path-body">
                 <div className="main-path-symbol-row">
-                  <span className="main-path-call">
-                    <code className="main-path-symbol" title={stage.symbol}>
-                      <Call symbol={displaySymbol(stage.symbol, { short: true })} />
-                    </code>
-                    {stage.page && entry && (
-                      <button
-                        type="button"
-                        className="main-path-area"
-                        onClick={() => onPick(stage.page!.id)}
-                      >
-                        {stage.page.title}
-                      </button>
-                    )}
-                  </span>
+                  <code className="main-path-symbol" title={stage.symbol}>
+                    <Call symbol={displaySymbol(stage.symbol, { short: true })} />
+                  </code>
                   {source && file && (
                     <button
                       type="button"
