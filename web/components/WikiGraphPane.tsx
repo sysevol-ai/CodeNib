@@ -289,15 +289,32 @@ export default function WikiGraphPane({
     observer.observe(legendElement);
     return () => observer.disconnect();
   }, []);
+  // An embedded map's note (why it shows less) sits in the status area too.
+  const noteRef = useRef<HTMLParagraphElement>(null);
+  const [noteHeight, setNoteHeight] = useState(0);
+  useLayoutEffect(() => {
+    const noteElement = noteRef.current;
+    if (!noteElement) {
+      setNoteHeight(0);
+      return undefined;
+    }
+    setNoteHeight(noteElement.offsetHeight);
+    const observer = new ResizeObserver(() => setNoteHeight(noteElement.offsetHeight));
+    observer.observe(noteElement);
+    return () => observer.disconnect();
+  }, [note]);
   const frame = useMemo(() => {
     const reserve = embedded && size.width >= 520 ? 124 : 170;
     const top = (header ? HEADER_PX : 0) + (reserve - 40) / 2;
     // A pane whose legend fits one line keeps the layout it always had;
     // only a wrapped legend needs the extra room.
     const wrapped = legendHeight > 26;
-    const bottom = wrapped ? Math.max(20 + reserve / 2, legendHeight + 2 * 19 + 22 + 46) : 20 + reserve / 2;
+    const base = wrapped ? Math.max(20 + reserve / 2, legendHeight + 2 * 19 + 22 + 46) : 20 + reserve / 2;
+    // Only an embedded map reserves room for its note: in the workspace a
+    // note comes and goes while loading, and the map must not jump.
+    const bottom = embedded && noteHeight ? Math.max(base, legendHeight + noteHeight + 2 * 19 + 28 + 46) : base;
     return { top, bottom };
-  }, [embedded, size.width, header, legendHeight]);
+  }, [embedded, size.width, header, legendHeight, noteHeight]);
 
 
   // The layout is stretched to the pane's shape, so the map fills it at any
@@ -901,7 +918,7 @@ export default function WikiGraphPane({
         </dl>
         )}
         {note && (
-          <p className="wiki-graph-note">
+          <p className="wiki-graph-note" ref={noteRef}>
             {note}{" "}
             {onRetry && (
               <button type="button" onClick={onRetry}>
