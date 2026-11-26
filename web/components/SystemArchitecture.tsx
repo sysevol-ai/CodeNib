@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Citation, WikiMediaSlot } from "@/lib/api";
 import { displaySymbol } from "@/lib/symbols";
 import { stageRoles, type Journey } from "@/lib/wikiPresentation";
@@ -114,11 +114,13 @@ export default function SystemArchitecture({
   return (
     <section className="arch" aria-label={slot.title}>
       <h2 className="arch-title">{slot.title}</h2>
-      <ol className="arch-path">
+      {/* The roles fall as the Overview's main path does: each a step right
+          of the one that hands to it, joined by an elbow. */}
+      <ol className="arch-path" style={{ "--steps": Math.max(primaryNodes.length - 1, 1) } as CSSProperties}>
         {primaryNodes.map((node, index) => {
           const handoff = handoffs[index];
           return (
-            <li className="arch-step" key={node.id}>
+            <li className="arch-step" key={node.id} style={{ "--depth": index } as CSSProperties}>
               <span className="arch-index" aria-hidden="true">
                 {index + 1}
               </span>
