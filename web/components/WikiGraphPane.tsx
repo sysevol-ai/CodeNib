@@ -829,10 +829,12 @@ export default function WikiGraphPane({
               <dd>Main path</dd>
             </div>
           )}
-          <div>
-            <dt className="is-contains" aria-hidden="true" />
-            <dd>Page outline</dd>
-          </div>
+          {graph.edges.some((edge) => edge.kind === "contains") && (
+            <div>
+              <dt className="is-contains" aria-hidden="true" />
+              <dd>Page outline</dd>
+            </div>
+          )}
           {activityLegend.open && (
             <div>
               <dt className="is-activity-open" aria-hidden="true" />
