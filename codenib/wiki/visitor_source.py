@@ -115,6 +115,13 @@ def github_bytes(url: str, limit: int, check) -> bytes:
                 allow_redirects=False,
                 stream=True,
             ) as response:
+                if response.status_code in (403, 429):
+                    # GitHub throttles unauthenticated downloads now and then;
+                    # that is no fault of the address the visitor gave.
+                    raise WikiRunStopped(
+                        "GitHub is limiting downloads from this server just now. "
+                        "Try again in a minute; nothing was started."
+                    )
                 if response.status_code != 200:
                     raise WikiRunStopped(
                         f"GitHub returned HTTP {response.status_code}. "

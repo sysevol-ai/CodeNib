@@ -740,3 +740,36 @@ def test_the_route_maps_without_a_key_and_rate_limits_with_retry_after(
     assert checked.status_code == 200
     invalid = client.get("/api/visitor-wikis/map", params={"repository": "../repo"})
     assert invalid.status_code == 422
+
+
+@pytest.mark.parametrize("status", [403, 429])
+def test_github_throttling_is_not_blamed_on_the_address(monkeypatch, status):
+    import requests as http
+
+    class Response:
+        status_code = status
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class Session:
+        trust_env = True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, *args, **kwargs):
+            return Response()
+
+    monkeypatch.setattr(http, "Session", Session)
+    with pytest.raises(WikiRunStopped, match="limiting downloads from this server"):
+        visitor_source.github_bytes(
+            "https://codeload.github.com/o/r/zip/x", 1024, lambda: None
+        )

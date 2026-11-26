@@ -184,11 +184,19 @@ export default function WikiGenerationForm({
             ) : (
               <>
                 <p>
-                  {checkLimited
-                    ? retryLeft > 0
-                      ? `This address checked a repository moments ago. You can check again in ${retryLeft} s.`
-                      : "You can check again now."
-                    : checkError || eligibility?.message}
+                  {checkLimited ? (
+                    retryLeft > 0 ? (
+                      <>
+                        This address checked a repository moments ago.{" "}
+                        {/* The seconds tick quietly; the sentence above is read once. */}
+                        <span aria-live="off">You can check again in {retryLeft}&nbsp;s.</span>
+                      </>
+                    ) : (
+                      "You can check again now."
+                    )
+                  ) : (
+                    checkError || eligibility?.message
+                  )}
                 </p>
                 {eligibility?.eligible && (
                   <p className="wgf-quiet">
