@@ -230,6 +230,11 @@
     display: none;
   }
 }
+@container (max-width: 760px) {
+  .wg-status-extra {
+    display: none;
+  }
+}
 /* The status line has its own row, so the legend never moves as it changes. */
 .wiki-graph-foot p {
   flex-basis: 100%;

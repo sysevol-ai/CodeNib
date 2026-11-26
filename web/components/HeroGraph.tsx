@@ -113,7 +113,7 @@ export default function HeroGraph({
           {`Step\u00a0${at + 1}\u00a0of\u00a0${stops.length}`}
           {place && (
             <>
-              {"\u00a0· "}
+              {"\u00a0·\u00a0"}
               <span className="is-code">{place}</span>
             </>
           )}
@@ -136,9 +136,11 @@ export default function HeroGraph({
       detail: (
         <>
           {stops.length < route.total
-            ? `${stops.length}\u00a0of the Overview's ${route.total}\u00a0steps`
+            ? `${stops.length}\u00a0of\u00a0${route.total}\u00a0steps`
             : `${stops.length}\u00a0steps`}
-          <span className="wg-status-more"> traced in the code index</span>
+          <span className="wg-status-extra">
+            {stops.length < route.total ? " on the map, traced in the code index" : " traced in the code index"}
+          </span>
         </>
       ),
     };

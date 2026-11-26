@@ -666,17 +666,17 @@ export default function WikiGraphPane({
               {`${number.format(card.node.symbols)}\u00a0${card.node.symbols === 1 ? "symbol" : "symbols"}`}
               {card.node.files ? (
                 <span className="wg-status-more">
-                  {`\u00a0· ${number.format(card.node.files)}\u00a0${card.node.files === 1 ? "file" : "files"}`}
+                  {`\u00a0·\u00a0${number.format(card.node.files)}\u00a0${card.node.files === 1 ? "file" : "files"}`}
                 </span>
               ) : null}
               {references ? (
                 <>
-                  {`\u00a0· ${number.format(references)}\u00a0`}
+                  {`\u00a0·\u00a0${number.format(references)}\u00a0`}
                   <span className="wg-status-more">recorded </span>
                   references
                 </>
               ) : null}
-              {summary && `\u00a0· ${summary}`}
+              {summary && `\u00a0·\u00a0${summary}`}
             </>
           ),
         };
