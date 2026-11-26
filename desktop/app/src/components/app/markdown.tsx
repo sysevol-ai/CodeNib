@@ -96,19 +96,46 @@ function fenceLanguage(node: ReactNode): string {
   return /language-([\w#+.-]+)/.exec(node.props.className ?? "")?.[1]?.toLowerCase() ?? "";
 }
 
-/** The code an [E1](#evidence-E1) or [R2](#evidence-R2) citation names. */
-function citedCode(evidence: Page["evidence"], id: string): { file: string; start: number; end: number; what: string } | null {
+/** A symbol as a reader names it: `pkg/mod.py:Store.get()` -> `Store.get`. */
+function shortSymbol(symbol: string): string {
+  const name = (symbol.split(":").pop() ?? symbol).replace(/\(\)$/, "").trim();
+  const parts = name.split(".");
+  return parts.length > 2 ? parts.slice(-2).join(".") : name;
+}
+
+/** Keep a chip short enough to sit inside a sentence. */
+function clip(text: string, max = 32): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+/**
+ * The code an [E1](#evidence-E1) or [R2](#evidence-R2) citation names, with
+ * a chip label that says what it is: the symbol for code evidence, "a → b"
+ * for a recorded call.
+ */
+function citedCode(
+  evidence: Page["evidence"],
+  id: string,
+): { file: string; start: number; end: number; what: string; label: string } | null {
   const item = evidence?.items?.find((e) => e.id === id);
   if (item?.file && item.start_line) {
-    const name = (item.symbol ?? "").split(":").pop() ?? "";
-    return { file: item.file, start: item.start_line, end: item.end_line, what: name || item.file };
+    const name = item.symbol ? shortSymbol(item.symbol) : "";
+    const base = item.file.split("/").pop() ?? item.file;
+    return { file: item.file, start: item.start_line, end: item.end_line, what: name || item.file, label: clip(name || base) };
   }
   const relation = evidence?.relations?.find((r) => r.id === id);
   const anchor = relation?.anchors?.[0];
   const at = anchor ? /^(.*):(\d+)$/.exec(anchor) : null;
   if (relation && at) {
-    const short = (s: string) => (s.split(":").pop() ?? s).replace(/\(\)$/, "");
-    return { file: at[1], start: Number(at[2]), end: Number(at[2]), what: `${short(relation.source)} calls ${short(relation.target)}` };
+    const from = shortSymbol(relation.source);
+    const to = shortSymbol(relation.target);
+    return {
+      file: at[1],
+      start: Number(at[2]),
+      end: Number(at[2]),
+      what: `${from} calls ${to}`,
+      label: `${clip(from, 18)} → ${clip(to, 18)}`,
+    };
   }
   return null;
 }
@@ -142,9 +169,9 @@ export function Markdown({
             file={code.file}
             start={code.start}
             end={code.end}
-            label={cited}
+            label={code.label}
             className="cite"
-            title={`${code.what} · ${code.file.split("/").pop()}:${code.start}`}
+            title={`${cited} · ${code.what} · ${code.file.split("/").pop()}:${code.start}`}
           />
         );
       }

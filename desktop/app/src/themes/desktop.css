@@ -926,6 +926,11 @@ button.sb-service:hover {
   color: var(--muted-ink);
   vertical-align: 1px;
   text-decoration: none;
+  /* Labels are names ("Store.get", "load → parse"); keep them on one line. */
+  white-space: nowrap;
+  max-width: 24em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .src-mark.cite:hover,
@@ -1231,6 +1236,59 @@ button.sb-service:hover {
 }
 
 /* ---------- files, and the pages that cite them ---------- */
+.files-split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) 1fr;
+}
+
+.files-tree {
+  min-height: 0;
+  height: 100%;
+  border-right: 1px solid var(--line-soft);
+}
+
+.files-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 10px 6px 40px;
+}
+
+.ft-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ft-row:hover {
+  background: var(--hover);
+}
+
+.ft-row.is-on {
+  background: var(--nib-soft);
+  color: var(--nib);
+}
+
+@media (max-width: 720px) {
+  .files-split {
+    grid-template-columns: 1fr;
+  }
+  .files-tree {
+    max-height: 40vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+}
+
 .sb-folder .sb-chev {
   width: 12px;
   height: 12px;

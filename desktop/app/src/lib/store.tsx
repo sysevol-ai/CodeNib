@@ -23,7 +23,8 @@ export type View =
   | { kind: "page"; repo: string; page: string }
   | { kind: "review"; repo: string; task: string }
   | { kind: "revision"; repo: string; id: string }
-  | { kind: "file"; repo: string; file: string }
+  /** The repository's files, as a mode of the page the person came from. */
+  | { kind: "files"; repo: string; page: string; file?: string }
   | { kind: "map" | "impact" | "walkthrough"; repo: string; page: string };
 
 export interface RepoFile {

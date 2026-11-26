@@ -1,5 +1,5 @@
-import { ChevronRight, ChevronsUpDown, FileText, FolderTree, Github, Inbox, MoreHorizontal, Plus, RotateCw, Search, UserRound } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronRight, ChevronsUpDown, FileText, Github, Inbox, MoreHorizontal, Plus, RotateCw, Search, UserRound } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -54,98 +54,6 @@ function RepoActions({ repo }: { repo: RepoView }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-interface Folder {
-  name: string;
-  path: string;
-  folders: Map<string, Folder>;
-  files: { name: string; path: string; cites: number }[];
-}
-
-function buildTree(files: { path: string; cited_by: unknown[] }[]): Folder {
-  const root: Folder = { name: "", path: "", folders: new Map(), files: [] };
-  for (const file of files) {
-    const parts = file.path.split("/");
-    let at = root;
-    for (const part of parts.slice(0, -1)) {
-      const next = at.folders.get(part) ?? {
-        name: part,
-        path: at.path ? `${at.path}/${part}` : part,
-        folders: new Map(),
-        files: [],
-      };
-      at.folders.set(part, next);
-      at = next;
-    }
-    at.files.push({ name: parts[parts.length - 1], path: file.path, cites: file.cited_by.length });
-  }
-  return root;
-}
-
-/** The repository's files, as folders, under "Files". A file the Wiki cites
- *  carries how many pages cite it. */
-function FilesTree({ repo }: { repo: string }) {
-  const { data, loadFiles, go, view } = useStore();
-  const files = data[repo]?.files;
-  const [open, setOpen] = useState<Set<string>>(new Set());
-  const [shown, setShown] = useState(false);
-  const tree = useMemo(() => (files ? buildTree(files) : null), [files]);
-  const toggle = (path: string) =>
-    setOpen((all) => {
-      const next = new Set(all);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  const current = view.kind === "file" && view.repo === repo ? view.file : null;
-  const render = (folder: Folder, depth: number): React.ReactNode[] => [
-    ...[...folder.folders.values()]
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .flatMap((f) => [
-        <SidebarMenuSubItem key={`d:${f.path}`}>
-          <SidebarMenuSubButton onClick={() => toggle(f.path)} style={{ paddingLeft: 8 + depth * 12 }} className="sb-folder">
-            <ChevronRight className="sb-chev" data-open={open.has(f.path) ? "yes" : "no"} />
-            <span>{f.name}</span>
-          </SidebarMenuSubButton>
-        </SidebarMenuSubItem>,
-        ...(open.has(f.path) ? render(f, depth + 1) : []),
-      ]),
-    ...folder.files
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((f) => (
-        <SidebarMenuSubItem key={`f:${f.path}`}>
-          <SidebarMenuSubButton
-            isActive={current === f.path}
-            onClick={() => go({ kind: "file", repo, file: f.path })}
-            style={{ paddingLeft: 22 + depth * 12 }}
-            title={f.path}
-          >
-            <span className="sb-file">{f.name}</span>
-            {f.cites > 0 && <span className="sb-file-cites">{f.cites}</span>}
-          </SidebarMenuSubButton>
-        </SidebarMenuSubItem>
-      )),
-  ];
-  return (
-    <>
-      <SidebarMenuSubItem>
-        <SidebarMenuSubButton
-          onClick={() => {
-            if (!files) void loadFiles(repo);
-            setShown((s) => !s);
-          }}
-          className="sb-folder"
-        >
-          <ChevronRight className="sb-chev" data-open={shown ? "yes" : "no"} />
-          <FolderTree />
-          <span>Files</span>
-        </SidebarMenuSubButton>
-      </SidebarMenuSubItem>
-      {shown && !tree && <li className="sb-note">Listing files…</li>}
-      {shown && tree && render(tree, 1)}
-    </>
   );
 }
 
@@ -260,7 +168,6 @@ function RepoTree({ repo }: { repo: RepoView }) {
                 </SidebarMenuSubButton>
               </SidebarMenuSubItem>
             ))}
-            {d?.tree && <FilesTree repo={repo.path} />}
             {shownTasks.map((task) => (
               <SidebarMenuSubItem key={task.id}>
                 <SidebarMenuSubButton
