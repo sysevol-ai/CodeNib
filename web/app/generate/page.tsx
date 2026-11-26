@@ -48,6 +48,8 @@ export default function GenerateWikiPage({
   const [checkFailed, setCheckFailed] = useState("");
   /** Seconds until a refused free map is asked for again; 0 when not waiting. */
   const [freeMapWait, setFreeMapWait] = useState(0);
+  /** The map was refused twice; the outline says so instead of falling silent. */
+  const [freeMapRefused, setFreeMapRefused] = useState(false);
   useEffect(() => {
     let ignored = false;
     if (isStaticRuntime()) {
@@ -111,6 +113,7 @@ export default function GenerateWikiPage({
             return;
           }
           setFreeMapWait(0);
+          setFreeMapRefused(reason instanceof WikiRequestError && reason.status === 429);
           setFreeMapFailed(true);
         });
     void ask(false);
@@ -146,12 +149,14 @@ export default function GenerateWikiPage({
           ? freeMapWait
             ? "the map was refused just now (the server is busy); asking again shortly"
             : "indexing the code for its map"
-          : checkFailed
-            ? "the source check was refused just now; the reason is shown with the form"
-            : "a Wiki's chapters appear here as they are planned",
+          : freeMapRefused
+            ? "the server is busy, so the map was not drawn; reload in a minute to try again"
+            : checkFailed
+              ? "the source check was refused just now; the reason is shown with the form"
+              : "a Wiki's chapters appear here as they are planned",
       ]
         .filter(Boolean)
-        .join(" · "),
+        .join("\u00a0·\u00a0"),
     };
   else if (check && !check.eligible)
     idle = { title: "This snapshot cannot be generated here", detail: "The reason is shown with the form." };

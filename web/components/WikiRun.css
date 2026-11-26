@@ -764,6 +764,16 @@ button.run-step-title:hover {
 .wgf-check.is-admitted .wgf-check-mark {
   background: var(--own-ok);
 }
+/* A refused or repeated check keeps two lines for its message, and the
+   button keeps one width, so nothing moves while the reader waits. */
+.wgf-check.is-limited > div > p:first-child,
+.wgf-check.is-checking > div > p:first-child {
+  min-height: calc(2 * 1.55em);
+}
+.wgf-check-actions .btn-ghost {
+  min-width: 9.5em;
+  justify-content: center;
+}
 /* Waiting out a rate limit is not an error: a quiet mark and plain text. */
 .wgf-check.is-limited .wgf-check-mark {
   border: 1.5px solid var(--text-muted);
