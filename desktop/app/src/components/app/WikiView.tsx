@@ -596,8 +596,8 @@ function PageRail({ repo, page, blocks }: { repo: string; page: Page; blocks: Md
         </section>
       )}
       <p className="notes-empty">
-        To ask about one paragraph, or request a change to it, point at it and use the <GripVertical className="inline-grip" />{" "}
-        handle at its left. Notes stay beside the words they are about.
+        Select words on the page to comment on them, ask about them or have them improved; or use the{" "}
+        <GripVertical className="inline-grip" /> handle at a paragraph's left. Notes stay beside the words they are about.
       </p>
     </div>
   );
@@ -701,7 +701,11 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
   const [page, setPage] = useState<Page | null>(null);
   const [error, setError] = useState("");
   const [composing, setComposing] = useState<{ block: number; kind: Kind; quote?: string } | null>(null);
-  const [picked, setPicked] = useState<{ block: number; quote: string; x: number; y: number } | null>(null);
+  const [picked, setPicked] = useState<{ block: number; quote: string; x: number; y: number; bottom: number } | null>(
+    null,
+  );
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barAt, setBarAt] = useState<{ left: number; top: number; below: boolean } | null>(null);
   const [focusThread, setFocusThread] = useState<string | null>(null);
   const annotate = useAnnotate(repo);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -786,6 +790,21 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
     }
     setLayout({ tops, paths });
   }, [threads]);
+
+  // Keep the toolbar over the page: centred on the words, but never past the
+  // pane's sides, and below the words when there is no room above them.
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    if (!picked || !bar) {
+      setBarAt(null);
+      return;
+    }
+    const pane = (pageRef.current?.closest(".main-scroll") ?? document.documentElement).getBoundingClientRect();
+    const half = bar.offsetWidth / 2;
+    const left = Math.max(pane.left + 8 + half, Math.min(picked.x, pane.right - 8 - half));
+    const below = picked.y - bar.offsetHeight - 8 < pane.top + 4;
+    setBarAt({ left, top: below ? picked.bottom : picked.y, below });
+  }, [picked]);
 
   useLayoutEffect(() => {
     place();
@@ -887,7 +906,13 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
         return;
       }
       const rect = range.getBoundingClientRect();
-      setPicked({ block: Number(owner.dataset.block), quote: quote.slice(0, 300), x: rect.left + rect.width / 2, y: rect.top });
+      setPicked({
+        block: Number(owner.dataset.block),
+        quote: quote.slice(0, 300),
+        x: rect.left + rect.width / 2,
+        y: rect.top,
+        bottom: rect.bottom,
+      });
     }, 0);
   };
 
@@ -918,7 +943,14 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
   return (
     <div className="wiki-page" ref={pageRef}>
       {picked && (
-        <div className="select-bar" style={{ left: picked.x, top: picked.y }} role="toolbar" aria-label="Selected words">
+        <div
+          ref={barRef}
+          className="select-bar"
+          data-below={barAt?.below ? "yes" : undefined}
+          style={{ left: barAt?.left ?? picked.x, top: barAt?.top ?? picked.y, visibility: barAt ? undefined : "hidden" }}
+          role="toolbar"
+          aria-label="Selected words"
+        >
           <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => startFromSelection("note")}>
             <StickyNote />
             Comment

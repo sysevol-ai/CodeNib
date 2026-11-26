@@ -973,6 +973,11 @@ button.sb-service:hover {
 
 .walk-cta p {
   margin: 0;
+}
+
+/* Only the progress line lays its mark, words and clock out in a row; a
+   sentence stays a sentence, so inline code keeps its place in it. */
+.walk-cta p.walk-cta-status {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1156,6 +1161,10 @@ button.sb-service:hover {
   box-shadow: var(--shadow-card);
 }
 
+.select-bar[data-below="yes"] {
+  transform: translate(-50%, 8px);
+}
+
 .select-bar button {
   display: inline-flex;
   align-items: center;
@@ -1240,7 +1249,9 @@ button.sb-service:hover {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(200px, 260px) 1fr;
+  /* minmax(0, …): a long code line scrolls inside its card instead of
+     widening the column past the window. */
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
 }
 
 .files-tree {

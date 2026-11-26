@@ -861,7 +861,7 @@ export function WalkthroughView({ repo, pageId }: { repo: string; pageId: string
       {!words && told.state !== "checking" && (
         <div className="walk-cta" role="status">
           {told.state === "writing" ? (
-            <p>
+            <p className="walk-cta-status">
               <StatusMark status="working" /> {told.who} is reading the {steps.length} functions and explaining each
               step. This usually takes under a minute. <WritingClock />
             </p>
