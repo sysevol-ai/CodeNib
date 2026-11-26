@@ -698,15 +698,3 @@
   }
 }
 
-/* An area's neighbours in the status line, each with its map colour. */
-.wg-status-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin: 0 5px 1px 0;
-  border-radius: 50%;
-  vertical-align: middle;
-}
-.wg-status-count {
-  color: var(--wg-muted);
-}

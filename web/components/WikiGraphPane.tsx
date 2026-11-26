@@ -60,6 +60,8 @@ function placeLabels(
   center: Point,
   paneWidth: number,
   priority: (node: WikiGraphNode) => number,
+  /** Where the status line begins: a label below it would be covered. */
+  floor = Infinity,
 ): PlacedLabel[] {
   const taken: { left: number; right: number; top: number; bottom: number }[] = [];
   const placed: PlacedLabel[] = [];
@@ -102,8 +104,53 @@ function placeLabels(
     const hits = (other: typeof box) =>
       box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top;
     const clash = taken.some(hits) || marks.some((mark) => mark.id !== node.id && hits(mark));
-    const outside = box.left < 0 || box.right > paneWidth;
+    const outside = box.left < 0 || box.right > paneWidth || box.bottom > floor;
     if ((clash || outside) && priority(node) < 4) continue;
+    if (clash || outside) {
+      // A label that must show (the focused area's) tries the other side,
+      // then above and below, before it is allowed to cover anything.
+      const free = (option: { anchor: PlacedLabel["anchor"]; dx: number; dy: number }, strict = true) => {
+        const optionLeft = sx + option.dx - (option.anchor === "middle" ? width / 2 : option.anchor === "end" ? width : 0);
+        const optionBox = {
+          left: optionLeft,
+          right: optionLeft + width,
+          top: sy + option.dy - 11,
+          bottom: sy + option.dy - 11 + LABEL_HEIGHT_PX + extra,
+        };
+        const clear =
+          optionBox.left >= 0 &&
+          optionBox.right <= paneWidth &&
+          optionBox.bottom <= floor &&
+          !taken.some((other) => optionBox.left < other.right && optionBox.right > other.left && optionBox.top < other.bottom && optionBox.bottom > other.top) &&
+          (!strict ||
+          !marks.some(
+            (mark) =>
+              mark.id !== node.id &&
+              optionBox.left < mark.right &&
+              optionBox.right > mark.left &&
+              optionBox.top < mark.bottom &&
+              optionBox.bottom > mark.top,
+          ));
+        return clear ? optionBox : null;
+      };
+      const options: { anchor: PlacedLabel["anchor"]; dx: number; dy: number }[] = [
+        { anchor: anchor === "start" ? "end" : "start", dx: anchor === "start" ? -(radius + 7) : radius + 7, dy: 4 - extra / 2 },
+        { anchor: "middle", dx: 0, dy: -(radius + 8) - extra },
+        { anchor: "middle", dx: 0, dy: radius + 15 },
+      ];
+      // Clear of everything if possible; otherwise at least clear of other
+      // names and the status line, even if it crosses a mark.
+      const found =
+        options.map((option) => ({ option, box: free(option) })).find((entry) => entry.box) ??
+        (box.bottom > floor
+          ? options.map((option) => ({ option, box: free(option, false) })).find((entry) => entry.box)
+          : undefined);
+      if (found) {
+        taken.push(found.box!);
+        placed.push({ id: node.id, lines, ...found.option, box: found.box! });
+        continue;
+      }
+    }
     taken.push(box);
     placed.push({ id: node.id, lines, anchor, dx, dy, box });
   }
@@ -277,6 +324,16 @@ export default function WikiGraphPane({
   const [legendHeight, setLegendHeight] = useState(0);
   const headRef = useRef<HTMLDivElement>(null);
   const [headHeight, setHeadHeight] = useState(0);
+  const footRef = useRef<HTMLDivElement>(null);
+  const [footHeight, setFootHeight] = useState(0);
+  useLayoutEffect(() => {
+    const footElement = footRef.current;
+    if (!footElement) return undefined;
+    setFootHeight(footElement.offsetHeight);
+    const observer = new ResizeObserver(() => setFootHeight(footElement.offsetHeight));
+    observer.observe(footElement);
+    return () => observer.disconnect();
+  }, []);
   useLayoutEffect(() => {
     const headElement = headRef.current;
     if (!headElement) return undefined;
@@ -384,14 +441,20 @@ export default function WikiGraphPane({
 
   const labels = useMemo(() => {
     if (!view || !points.size) return [];
+    // The status line's text starts about 10 px below the foot's top edge.
+    const floor = footHeight ? size.height - footHeight + 8 : Infinity;
     return placeLabels(graph.nodes, points, view, center, size.width, (node) => {
       // The chapter being written keeps its name, so the reader can follow it.
-      if (node.id === hoverNode || node.id === focusId || states?.[node.id] === "running") return 4;
+      if (states?.[node.id] === "running") return 4;
+      // On a home map the pointed area's name goes first but is not forced
+      // over other marks: the status line already names it.
+      if (pointedArea && node.id === pointedArea) return 3.5;
+      if (node.id === hoverNode || node.id === focusId) return 4;
       if (node.kind === "area") return 3;
       if (near.has(node.id)) return 2;
       return view.k >= 1.7 ? 1 : 0;
-    });
-  }, [graph, points, view, center, size.width, hoverNode, focusId, near, states]);
+    }, floor);
+  }, [graph, points, view, center, size.width, size.height, footHeight, hoverNode, focusId, pointedArea, near, states]);
 
   // The main path up to the current stop: the hops that crossed areas, where
   // the token travels last, and a free place for the current function's name.
@@ -426,6 +489,8 @@ export default function WikiGraphPane({
     // Area labels are placed from an estimate of their width, so keep a margin.
     const taken: Box[] = [
       ...labels.map(({ box }) => ({ left: box.left - 4, right: box.right + 4, top: box.top - 1, bottom: box.bottom + 1 })),
+      // The current mark too: a place beside its own label can land on it.
+      { left: sx - r - 4, right: sx + r + 4, top: sy - r - 4, bottom: sy + r + 4 },
       ...graph.nodes
         .filter((other) => other.id !== node.id)
         .map((other) => {
@@ -434,7 +499,7 @@ export default function WikiGraphPane({
           const oy = p.y * view.k + view.y;
           // Arrowheads land just outside an area's mark, so keep clear of
           // them too; a page's small dot needs only its own room.
-          const or = other.radius * view.k + (other.kind === "area" ? 7 : 2);
+          const or = other.radius * view.k + (other.kind === "area" ? 7 : 3);
           return { left: ox - or, right: ox + or, top: oy - or, bottom: oy + or };
         }),
       // The route's own lines, sampled along each crossing. Where a line
@@ -556,7 +621,7 @@ export default function WikiGraphPane({
       else row.in += edge.link.weight;
       exchange.set(other.id, row);
     }
-    const rows = [...exchange.values()].sort((a, b) => b.out + b.in - (a.out + a.in)).slice(0, 2);
+    const rows = [...exchange.values()];
     return {
       node,
       rows,
@@ -588,40 +653,18 @@ export default function WikiGraphPane({
       const summary = activity?.[node.id] ? markSummary(activity[node.id]) : "";
       const described = describe?.(node);
       if (described) return described;
-      // An area with no indexed code (documentation, tooling) has no facts
-      // to tell; it keeps the plain line rather than printing zeros.
-      if (card && card.node.id === node.id && (card.node.symbols || card.rows.length)) {
-        const size = card.node.symbols
-          ? `${number.format(card.node.symbols)}\u00a0${card.node.symbols === 1 ? "symbol" : "symbols"}${
-              card.node.files ? `\u00a0· ${number.format(card.node.files)}\u00a0${card.node.files === 1 ? "file" : "files"}` : ""
-            }`
-          : "";
-        return {
-          title: node.title,
-          detail: (
-            <>
-              {size}
-              {card.rows.length > 0 && (
-                <>
-                  {size && "\u00a0· "}most references with{" "}
-                  {card.rows.map((row, index) => (
-                    <span key={row.id}>
-                      {index > 0 && ", "}
-                      <i className="wg-status-dot" style={{ background: row.color }} aria-hidden="true" />
-                      {row.title}{" "}
-                      <span className="wg-status-count">
-                        ({[row.out && `${number.format(row.out)}\u00a0out`, row.in && `${number.format(row.in)}\u00a0in`]
-                          .filter(Boolean)
-                          .join(",\u00a0")})
-                      </span>
-                    </span>
-                  ))}
-                </>
-              )}
-              {summary && `\u00a0· ${summary}`}
-            </>
-          ),
-        };
+      // One line of facts: the area's size and how much it references other
+      // areas. Which areas, the map shows by lighting them. An area with no
+      // indexed code (documentation, tooling) keeps the plain line.
+      if (card && card.node.id === node.id && card.node.symbols) {
+        const references = card.rows.reduce((sum, row) => sum + row.out + row.in, 0);
+        const facts = [
+          `${number.format(card.node.symbols)}\u00a0${card.node.symbols === 1 ? "symbol" : "symbols"}`,
+          card.node.files ? `${number.format(card.node.files)}\u00a0${card.node.files === 1 ? "file" : "files"}` : "",
+          references ? `${number.format(references)}\u00a0recorded references` : "",
+          summary,
+        ].filter(Boolean);
+        return { title: node.title, detail: facts.join("\u00a0· ") };
       }
       return {
         title: node.title,
@@ -891,7 +934,7 @@ export default function WikiGraphPane({
 
       {/* What the reader points at is announced; what the map plays by
           itself (the replay, the tour) is not, or it would talk every step. */}
-      <div className="wiki-graph-foot" aria-live={status === idle ? "off" : "polite"}>
+      <div className="wiki-graph-foot" ref={footRef} aria-live={status === idle ? "off" : "polite"}>
         {status ? (
           <p>
             <b className={status.code ? "is-code" : undefined}>{status.title}</b> <span>{status.detail}</span>
