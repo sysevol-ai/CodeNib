@@ -125,11 +125,59 @@ def _attr(value: str) -> str:
     return '"' + escape(value, quote=True) + '"'
 
 
+def _walk_preview(
+    repo_id: str, name: str, walk_id: str, commit: str | None
+) -> tuple[str, str] | None:
+    """A walkthrough's title and the calls it follows, for its link preview.
+
+    Like the walkthroughs route, a set built from another commit is not
+    shown: its steps may no longer match the code.
+    """
+    from .walkthroughs import load_walkthroughs
+
+    try:
+        data = load_walkthroughs(load_config().data_dir, repo_id)
+    except Exception:  # noqa: BLE001 - an unreadable set keeps the repository card
+        return None
+    built = str(((data or {}).get("repo") or {}).get("commit") or "").lower()
+    if (
+        commit
+        and built
+        and not (commit.lower().startswith(built) or built.startswith(commit.lower()))
+    ):
+        return None
+    walk = next(
+        (item for item in (data or {}).get("walks") or [] if item.get("id") == walk_id),
+        None,
+    )
+    if not walk:
+        return None
+    stops = [
+        f"{stop[0]}{stop[1]}"
+        for stop in (walk.get("stops") or [])[1:]
+        if isinstance(stop, list) and len(stop) >= 2
+    ]
+    shown = stops if len(stops) <= 6 else [*stops[:4], "…", stops[-1]]
+    steps = len(stops)
+    description = (
+        f"{steps} {'step' if steps == 1 else 'steps'} traced in the code index of "
+        f"{name}, one function at a time: {' → '.join(shown)}."
+    )
+    return f"{walk.get('title') or walk_id} · {name}", description
+
+
 @router.get("/api/share-page", response_class=HTMLResponse)
-def share_page(request: Request, path: str = "/", p: str = ""):
+def share_page(
+    request: Request, path: str = "/", p: str = "", walk: str = "", step: str = ""
+):
     path = "/" + unquote(path).lstrip("/")[:512]
     url = public_origin() + quote(path, safe="/:@-._~")
-    if p and re.fullmatch(r"[A-Za-z0-9_.-]{1,160}", p):
+    walk = walk if re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", walk) else ""
+    if walk:
+        url += f"?walk={walk}"
+        if step.isdigit() and len(step) <= 3:
+            url += f"&step={step}"
+    elif p and re.fullmatch(r"[A-Za-z0-9_.-]{1,160}", p):
         url += f"?p={p}"
     title, description, image = SITE_TITLE, SITE_DESCRIPTION, _card_url("_site")
 
@@ -146,6 +194,14 @@ def share_page(request: Request, path: str = "/", p: str = ""):
             or f"The system map and source-linked Wiki of {name}."
         )
         image = _card_url(repo_id) or image
+        preview = (
+            _walk_preview(repo_id, name, walk, getattr(info, "base_commit", None))
+            if walk
+            else None
+        )
+        if preview:
+            title, description = preview
+            image = _card_url(f"{repo_id}--walk-{walk}") or image
     elif len(parts) == 2 and parts[0] == "wiki" and _TOKEN.match(parts[1]):
         from .visitor_wikis import _manager
 

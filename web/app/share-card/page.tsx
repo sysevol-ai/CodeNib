@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { loadRepoMap, type Loaded } from "@/components/HomeMap";
 import RepoPoster from "@/components/RepoPoster";
+import WalkShareCard from "@/components/WalkShareCard";
 import { fetchRepos, type RepoInfo } from "@/lib/api";
 import { assetUrl } from "@/lib/runtime";
 
@@ -29,6 +30,15 @@ function summaryNodes(text: string): ReactNode[] {
  * id it draws the site card.
  */
 export default function ShareCardPage({ repoId }: { repoId?: string }) {
+  const params = new URLSearchParams(window.location.search);
+  const walk = params.get("walk");
+  if (repoId && walk) {
+    return <WalkShareCard repoId={repoId} walkId={walk} host={params.get("host") || "demo.codenib.ai"} />;
+  }
+  return <RepoShareCard repoId={repoId} />;
+}
+
+function RepoShareCard({ repoId }: { repoId?: string }) {
   const site = !repoId;
   const id = repoId || SITE_MAP;
   const [repo, setRepo] = useState<RepoInfo | null>(null);
