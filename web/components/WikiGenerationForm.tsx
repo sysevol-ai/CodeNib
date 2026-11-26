@@ -187,7 +187,7 @@ export default function WikiGenerationForm({
                   {checkLimited ? (
                     retryLeft > 0 ? (
                       <>
-                        This address checked a repository moments ago.{" "}
+                        Your network checked a repository moments ago.{" "}
                         {/* The seconds tick quietly; the sentence above is read once. */}
                         <span aria-live="off">You can check again in {retryLeft}&nbsp;s.</span>
                       </>
