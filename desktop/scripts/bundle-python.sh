@@ -47,13 +47,29 @@ rm -rf "$TARGET"/lib/python3.12/{test,idlelib,tkinter,turtledemo,ensurepip}
 rm -rf "$TARGET"/lib/{tcl*,tk*,itcl*,thread*} "$TARGET"/share
 find "$TARGET" -name "__pycache__" -type d -prune -exec rm -rf {} +
 
-# Apple silicon runs only signed code: sign every binary ad hoc, as the app is.
+# Compile the bytecode now, before signing: the app runs with
+# PYTHONDONTWRITEBYTECODE, so nothing is written into the signed bundle, and
+# unchecked-hash .pyc files stay valid whatever the files' times become.
+# A file that does not compile (some packages ship Python 2 examples) just
+# runs from source.
+"$PY" -m compileall -q -j 0 --invalidation-mode unchecked-hash "$TARGET/lib" >/dev/null ||
+  echo "some files did not compile; they run from source"
+
+# Apple silicon runs only signed code, and notarization wants every binary
+# signed with the hardened runtime. CODENIB_SIGN_IDENTITY names a Developer ID
+# Application identity in the keychain; without one, binaries are signed ad
+# hoc, with the same runtime, so a local build behaves as a release does.
+IDENTITY="${CODENIB_SIGN_IDENTITY:--}"
+SIGN=(codesign --force --options runtime --sign "$IDENTITY")
+if [[ "$IDENTITY" != "-" ]]; then
+  SIGN+=(--timestamp)
+fi
 find "$TARGET" -type f \( -perm -u+x -o -name "*.so" -o -name "*.dylib" \) -print0 |
   while IFS= read -r -d '' file; do
     if file -b "$file" | grep -q "Mach-O"; then
-      codesign --force --sign - "$file"
+      "${SIGN[@]}" "$file"
     fi
   done
 
-"$PY" -m codenib --version
+PYTHONDONTWRITEBYTECODE=1 "$PY" -m codenib --version
 du -sh "$TARGET"

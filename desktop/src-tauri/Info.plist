@@ -3,6 +3,9 @@
 <plist version="1.0">
 <dict>
   <!-- Each Wiki is served by `codenib wiki` on 127.0.0.1 over plain HTTP. -->
+  <!-- Shown when Install or Sign in first asks Terminal to run a command. -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>CodeNib opens Terminal on Claude Code's or Codex's own install or sign-in command, for you to run.</string>
   <key>NSAppTransportSecurity</key>
   <dict>
     <key>NSAllowsLocalNetworking</key>
