@@ -603,6 +603,16 @@ button.run-step-title:hover {
   min-width: 0;
   border-right: 1px solid var(--border);
 }
+.own-start-map .hero-graph {
+  height: 100%;
+}
+.own-note {
+  max-width: 52ch;
+  margin: 14px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  line-height: 1.55;
+}
 .own-start-map .wiki-graph.is-embedded {
   height: 100%;
   min-height: 0;
@@ -753,6 +763,25 @@ button.run-step-title:hover {
 }
 .wgf-check.is-admitted .wgf-check-mark {
   background: var(--own-ok);
+}
+/* A refused or repeated check keeps two lines for its message, and the
+   button keeps one width, so nothing moves while the reader waits. */
+.wgf-check.is-limited > div > p:first-child,
+.wgf-check.is-checking > div > p:first-child {
+  min-height: calc(2 * 1.55em);
+}
+.wgf-check-actions .btn-ghost {
+  min-width: 9.5em;
+  justify-content: center;
+}
+/* Waiting out a rate limit is not an error: a quiet mark and plain text. */
+.wgf-check.is-limited .wgf-check-mark {
+  border: 1.5px solid var(--text-muted);
+}
+.wgf-check-actions .btn-ghost[aria-disabled="true"] {
+  opacity: 1;
+  color: var(--text-muted);
+  cursor: default;
 }
 .wgf-check.is-rejected .wgf-check-mark {
   border: 1.5px solid var(--own-error);

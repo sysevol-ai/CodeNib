@@ -39,7 +39,7 @@ describe("buildSourceGraph", () => {
 
   it("shows only the repository until the snapshot is read", () => {
     const { graph, facts } = buildSourceGraph("psf/requests", undefined);
-    expect(graph.nodes.map((node) => node.title)).toEqual(["requests/"]);
+    expect(graph.nodes.map((node) => node.title)).toEqual(["psf/requests"]);
     expect(describeSourceNode(graph.nodes[0], facts)?.detail).toBe("0 code files in this snapshot");
   });
 

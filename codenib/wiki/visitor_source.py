@@ -115,6 +115,13 @@ def github_bytes(url: str, limit: int, check) -> bytes:
                 allow_redirects=False,
                 stream=True,
             ) as response:
+                if response.status_code in (403, 429):
+                    # GitHub throttles unauthenticated downloads now and then;
+                    # that is no fault of the address the visitor gave.
+                    raise WikiRunStopped(
+                        "GitHub is limiting downloads from this server just now. "
+                        "Try again in a minute; nothing was started."
+                    )
                 if response.status_code != 200:
                     raise WikiRunStopped(
                         f"GitHub returned HTTP {response.status_code}. "
@@ -374,4 +381,122 @@ def check_repository(repository: str, check) -> dict:
             )
     except WikiRunStopped as exc:
         result["message"] = str(exc)
+    return result
+
+
+def _unavailable_map(reason: str) -> dict:
+    return {"available": False, "reason": reason, "areas": [], "links": []}
+
+
+def map_repository(repository: str, check) -> dict:
+    """A credential-free first result: folder areas, recorded lines, main path.
+
+    Downloads the pinned archive through generation's source path, groups the
+    code into folder areas, and, when the code is mostly Python, builds the
+    hosted Python graph to draw the references between areas and the main call
+    path. No Wiki, provider, model call or saved state is created, and the
+    temporary source is removed before returning. Other languages return the
+    folder areas at once with ``reason="graph_language"``; a graph that cannot
+    be built keeps the areas and says why in ``map.reason``.
+    """
+    from . import visitor_graph, visitor_map
+
+    result = {
+        "eligible": False,
+        "limits": generation_limits(),
+        "map": _unavailable_map("not_eligible"),
+        "path": None,
+    }
+    try:
+        commit = repository_revision(repository, check)
+        result["commit"] = commit
+        with visitor_source(
+            repository, commit, "map", check, lambda *_: None, index_graph=False
+        ) as (bundle, _):
+            result.update(
+                eligible=True,
+                languages=bundle.manifest.languages,
+                source_files=bundle.manifest.file_count,
+                source_tree=bundle.source_tree,
+                skipped_files=bundle.skipped_files,
+            )
+            extensions = extension_to_language_map("chunker")
+            paths = [
+                path
+                for path in bundle.source_reader.file_paths
+                if PurePosixPath(path).suffix in extensions
+            ]
+            weights = Counter(
+                str(document.metadata.get("file") or "")
+                for document in bundle.wiki_documents
+            )
+            file_area, areas = visitor_map.folder_areas(
+                paths, repository=repository, weights=weights
+            )
+            if not areas:
+                result["map"] = _unavailable_map("no_project_source")
+                result["message"] = (
+                    "Only tests, examples or docs were found, so there is no "
+                    "project code to map."
+                )
+                return result
+            graphed = (
+                visitor_map.graph_language_share(file_area)
+                >= visitor_map.GRAPH_LANGUAGE_SHARE
+            )
+            outline = visitor_map.outline_map(
+                areas, "indexing" if graphed else "graph_language", weights
+            )
+            result["map"] = outline
+            if not graphed:
+                result["message"] = (
+                    "Hosted code maps read Python source for now, so this map "
+                    "shows the repository's folders without the lines between them."
+                )
+                return result
+            check()
+            visitor_graph.build_visitor_graph(bundle, check, lambda *_: None)
+            coverage = getattr(bundle, "graph_coverage", None) or {}
+            result["code_index"] = {
+                key: coverage[key]
+                for key in ("available", "reason", "note", "files", "nodes", "edges")
+                if key in coverage
+            }
+            graph = bundle.code_graph()
+            if graph is None:
+                outline["reason"] = coverage.get("reason") or "graph_unavailable"
+                result["message"] = coverage.get(
+                    "note", "The code index could not be built for this snapshot."
+                )
+                return result
+            check()
+            path = visitor_map.main_path(bundle)
+            if path is not None:
+                # A flat package keeps the path's files out of "Other".
+                file_area, areas = visitor_map.folder_areas(
+                    paths,
+                    repository=repository,
+                    weights=weights,
+                    pinned=[stop["file"] for stop in path["stops"]],
+                )
+                for stop in path["stops"]:
+                    stop["area"] = file_area.get(stop["file"])
+            check()
+            result["map"] = visitor_map.area_links(
+                graph,
+                file_area,
+                areas,
+                repo_dir=bundle.entry.repo_dir,
+                source_reader=bundle.source_reader,
+            )
+            result["path"] = path
+            result["message"] = (
+                "Read from the code index of this commit; no model was called. "
+                "A written Wiki needs an inference key."
+            )
+    except WikiRunStopped as exc:
+        result["message"] = str(exc)
+        # Folder areas drawn before the stop stay; only the lines are missing.
+        if result["map"]["reason"] == "indexing":
+            result["map"]["reason"] = "timeout"
     return result

@@ -169,6 +169,18 @@ for creation; their prepared Wiki pages remain readable offline.
 Disabling `CODENIB_VISITOR_WIKI` stops new generation requests while keeping
 already saved Wikis readable.
 
+With `CODENIB_VISITOR_FREE_MAP=1` as well, the start page also shows the
+repository as its code index reads it before any key is asked for: its code
+cut into up to 12 folder or file parts, the references recorded between them,
+and the main path a call takes, replayed on the map. It comes from
+`GET /api/visitor-wikis/map?repository=owner/name`, which downloads the same
+pinned snapshot as the source check, indexes Python code (other languages get
+the folder outline only) and calls no model. Nothing is saved. It shares the
+check's limit of two active source jobs and is rate-limited per address on
+its own, so a page that runs the check and the map does not refuse itself.
+It spends server CPU on every visitor (a few seconds for a mid-sized Python
+library), so turn it on deliberately and watch the load.
+
 The initial service admits one active generation per shared Wiki database,
 with at most two local source checks/submissions and a bounded 30-second wait for the
 existing owner. It saves up to 100 attempts; it does not discard user work

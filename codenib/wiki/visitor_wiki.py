@@ -35,7 +35,12 @@ from .visitor_provider import (
     WikiRunStopped,
     verify_key,
 )
-from .visitor_source import check_repository, repository_revision, visitor_source
+from .visitor_source import (
+    check_repository,
+    map_repository,
+    repository_revision,
+    visitor_source,
+)
 
 _ATTEMPTS = "visitor-wiki-attempts-v1"
 _PUBLIC = "visitor-wiki-publications-v1"
@@ -43,6 +48,9 @@ _ADMISSION = "visitor-wiki-admission-v1"
 _GENERATION = "visitor-wiki-generation-v1"
 _MAX_ATTEMPTS = 100
 _MAX_RUN_SECONDS = 1800
+_CHECK_SECONDS = 60
+# The Python index alone may take its full 60 seconds after the download.
+_MAP_SECONDS = 120
 logger = get_logger(__name__)
 
 
@@ -90,12 +98,13 @@ class VisitorWikis:
     store guard. Cancellation is a separate run-specific Wiki envelope, so it
     cannot overwrite a concurrent page/progress publication.
 
-    Repository checks share the two in-process source slots with submissions.
-    Admission linearizes when _active is updated under _mutex. A synchronous
-    check owns its slot through temporary-source cleanup even if its HTTP client
-    disconnects; no check state survives process exit. Checking and generation
-    have separate per-client rate keys, so a check permits an immediate funded
-    submission. Neither holds _mutex while performing source or store I/O.
+    Repository checks and free maps share the two in-process source slots with
+    submissions. Admission linearizes when _active is updated under _mutex. A
+    synchronous check or map owns its slot through temporary-source cleanup
+    even if its HTTP client disconnects; no check or map state survives process
+    exit. Checking, mapping and generation have separate per-client rate keys,
+    so a check permits an immediate map and funded submission. None holds
+    _mutex while performing source or store I/O.
     """
 
     def __init__(
@@ -108,6 +117,7 @@ class VisitorWikis:
         verify=verify_key,
         wiki_factory=AgentWiki,
         inspect_repository=check_repository,
+        preview_map=map_repository,
         clock: Callable[[], float] = time.time,
     ):
         self.store = store
@@ -115,6 +125,7 @@ class VisitorWikis:
         self.provider, self.verify, self.wiki_factory = provider, verify, wiki_factory
         self.clock = clock
         self.inspect_repository = inspect_repository
+        self.preview_map = preview_map
         self._mutex = threading.Lock()
         self._active: set[str] = set()
         self._recent: dict[str, float] = {}
@@ -468,28 +479,59 @@ class VisitorWikis:
             self._recent[client] = now
             self._active.add(token)
 
-    def check_repository(self, repository, client):
-        token = f"check:{secrets.token_hex(16)}"
-        self._admit_source(token, f"check:{client}")
+    def _source_task(self, kind, client, seconds, timeout, task, repository):
+        """Run one credential-free source task in a shared source slot.
+
+        Each kind has its own per-client minute, so a page that checks and
+        maps a repository on load is not refused by itself; both still hold one
+        of the two source slots until their temporary source is removed.
+        """
+        token = f"{kind}:{secrets.token_hex(16)}"
+        self._admit_source(token, f"{kind}:{client}")
         try:
-            deadline = time.monotonic() + 60
+            deadline = time.monotonic() + seconds
 
             def check():
                 if self._closing.is_set():
                     raise WikiRunStopped("The server is stopping; try again shortly.")
                 if time.monotonic() >= deadline:
-                    raise WikiRunStopped(
-                        "The repository check timed out. Try again later or run "
-                        "CodeNib locally. No model call was started."
-                    )
+                    raise WikiRunStopped(timeout)
 
             check()
-            return self.inspect_repository(repository, check)
+            return task(repository, check)
         except WikiRunStopped as exc:
             raise VisitorWikiError(str(exc)) from None
         finally:
             with self._mutex:
                 self._active.discard(token)
+
+    def check_repository(self, repository, client):
+        return self._source_task(
+            "check",
+            client,
+            _CHECK_SECONDS,
+            "The repository check timed out. Try again later or run "
+            "CodeNib locally. No model call was started.",
+            self.inspect_repository,
+            repository,
+        )
+
+    def map_preview(self, repository, client):
+        """Map a public repository from its code index, with no key or model.
+
+        Folder areas, the references recorded between them and the main call
+        path (``visitor_source.map_repository``). Nothing is saved, and the
+        temporary source is removed before returning.
+        """
+        return self._source_task(
+            "map",
+            client,
+            _MAP_SECONDS,
+            "The repository map took too long. Try again later or run "
+            "CodeNib locally. No model call was started.",
+            self.preview_map,
+            repository,
+        )
 
     def submit(
         self, attempt, repository, owner, key, budget, client, model=PLANNER_MODEL

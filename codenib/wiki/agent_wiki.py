@@ -5640,6 +5640,19 @@ class AgentWiki:
             return [], [], []
         return new_items, new_relations, path
 
+    def graph_main_path(
+        self,
+    ) -> tuple[List[EvidenceItem], List[RelationItem], List[dict[str, Any]]]:
+        """The Overview's main path read off the graph alone, with no model.
+
+        It is the walk ``_entry_path`` takes with no cited evidence, so the
+        graph picks the start, and it reads only the graph, the README, the
+        manifests and source lines. Empty when the graph records no path of
+        three stops.
+        """
+
+        return self._entry_path([], [])
+
     def _overview_context(self, repo_dir: str) -> dict[str, Any]:
         """Deterministic landing-page skeleton: outline areas and entry points."""
 
