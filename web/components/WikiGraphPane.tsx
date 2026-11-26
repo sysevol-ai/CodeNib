@@ -309,10 +309,10 @@ export default function WikiGraphPane({
     // A pane whose legend fits one line keeps the layout it always had;
     // only a wrapped legend needs the extra room.
     const wrapped = legendHeight > 26;
-    const base = wrapped ? Math.max(20 + reserve / 2, legendHeight + 2 * 19 + 22 + 46) : 20 + reserve / 2;
+    const base = wrapped ? Math.max(20 + reserve / 2, legendHeight + 2 * 19 + 22 + 34) : 20 + reserve / 2;
     // Only an embedded map reserves room for its note: in the workspace a
     // note comes and goes while loading, and the map must not jump.
-    const bottom = embedded && noteHeight ? Math.max(base, legendHeight + noteHeight + 2 * 19 + 28 + 46) : base;
+    const bottom = embedded && noteHeight ? Math.max(base, legendHeight + noteHeight + 2 * 19 + 36 + 46) : base;
     return { top, bottom };
   }, [embedded, size.width, header, legendHeight, noteHeight]);
 
@@ -450,7 +450,7 @@ export default function WikiGraphPane({
     // then beside it, then the diagonals, each a step further out in turn.
     // A name with no free place stays in the status line.
     const candidates: { anchor: "start" | "middle" | "end"; dx: number; dy: number }[] = [];
-    const angles = [-90, 90, 0, 180, -30, -150, 30, 150, -60, -120, 60, 120];
+    const angles = [-90, 90, 0, 180, -30, -150, 30, 150, -60, -120, 60, 120, -15, -165, 15, 165, -45, -135, 45, 135, -75, -105, 75, 105];
     for (const out of [10, 22, 36, 52, 70]) {
       for (const angle of angles) {
         const radians = (angle * Math.PI) / 180;
@@ -589,7 +589,7 @@ export default function WikiGraphPane({
       if (card && card.node.id === node.id && (card.node.symbols || card.rows.length)) {
         const size = card.node.symbols
           ? `${number.format(card.node.symbols)}\u00a0${card.node.symbols === 1 ? "symbol" : "symbols"}${
-              card.node.files ? ` · ${number.format(card.node.files)}\u00a0${card.node.files === 1 ? "file" : "files"}` : ""
+              card.node.files ? `\u00a0· ${number.format(card.node.files)}\u00a0${card.node.files === 1 ? "file" : "files"}` : ""
             }`
           : "";
         return {
@@ -599,7 +599,7 @@ export default function WikiGraphPane({
               {size}
               {card.rows.length > 0 && (
                 <>
-                  {size && " · "}most references with{" "}
+                  {size && "\u00a0· "}most references with{" "}
                   {card.rows.map((row, index) => (
                     <span key={row.id}>
                       {index > 0 && ", "}
@@ -614,7 +614,7 @@ export default function WikiGraphPane({
                   ))}
                 </>
               )}
-              {summary && ` · ${summary}`}
+              {summary && `\u00a0· ${summary}`}
             </>
           ),
         };

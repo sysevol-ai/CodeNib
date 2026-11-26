@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import WikiGraphPane, { type MapStatus } from "@/components/WikiGraphPane";
+import WikiGraphPane, { ROUTE_TRAVEL_MS, type MapStatus } from "@/components/WikiGraphPane";
 import type { WikiAreaMap, WikiPageRef } from "@/lib/api";
 import { routeHeading, stopPlace, type MapRoute } from "@/lib/mapRoute";
 import { buildWikiGraph } from "@/lib/wikiGraph";
@@ -72,7 +72,12 @@ export default function HeroGraph({
   useEffect(() => {
     if (paused || reduced) return undefined;
     if (phase.kind === "areas" && !hasRoute && tour.length < 2) return undefined;
-    const wait = phase.kind === "route" ? STOP_MS : phase.kind === "hold" ? HOLD_MS : TOUR_MS;
+    // A step that crossed areas spends its first moments travelling; it holds
+    // longer so its name is up as long as a step that stayed put.
+    const crossed =
+      phase.kind === "route" && phase.at > 0 && stops[phase.at]?.areaId !== stops[phase.at - 1]?.areaId;
+    const wait =
+      phase.kind === "route" ? STOP_MS + (crossed ? ROUTE_TRAVEL_MS : 0) : phase.kind === "hold" ? HOLD_MS : TOUR_MS;
     const timer = window.setTimeout(() => {
       setPhase((current) => {
         if (current.kind === "route") {
@@ -84,7 +89,7 @@ export default function HeroGraph({
       });
     }, wait);
     return () => window.clearTimeout(timer);
-  }, [phase, paused, reduced, hasRoute, stops.length, tour.length]);
+  }, [phase, paused, reduced, hasRoute, stops, tour.length]);
 
   const activeId = phase.kind === "areas" ? (tour[phase.step % Math.max(tour.length, 1)] ?? "") : "";
   const title = graph.nodes.find((node) => node.id === activeId)?.title;
@@ -108,7 +113,7 @@ export default function HeroGraph({
           {`Step\u00a0${at + 1}\u00a0of\u00a0${stops.length}`}
           {place && (
             <>
-              {" · "}
+              {"\u00a0· "}
               <span className="is-code">{place}</span>
             </>
           )}
@@ -130,7 +135,7 @@ export default function HeroGraph({
       detail: `${stops.length}\u00a0steps traced in the code index`,
     };
   } else if (title) {
-    idle = { title, detail: `${number.format(references)} recorded references with other areas` };
+    idle = { title, detail: `${number.format(references)}\u00a0recorded references with other areas` };
   }
 
   return (
