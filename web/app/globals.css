@@ -6429,26 +6429,34 @@ a.code-activity-row:focus-visible {
 /* The architecture plan as part of the document: a numbered path on a thin
    rail, then the other roles and boundaries as a definition list. */
 .arch {
-  margin: 40px 0 12px;
+  margin: 48px 0 12px;
+  container-type: inline-size;
 }
 .arch-title {
-  margin: 0 0 18px;
+  margin: 0 0 24px;
   color: var(--text-primary);
-  font-size: 22px;
-  font-weight: var(--fw-strong);
-  line-height: 1.3;
-  letter-spacing: -0.012em;
+  font-size: clamp(24px, 5cqi, 32px);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -0.028em;
   text-wrap: balance;
 }
 .wiki-disclosure .arch {
   margin: 0;
   padding: 12px 0 6px;
 }
-/* An Overview without a traced path shows the architecture as a figure in
-   the bordered story-map card; it needs the card's inner margin. */
+/* An Overview without a traced path shows the architecture in place of the
+   path, drawn on the page as the path is: the story card around it steps
+   away. */
 .wiki-story-map-frame .arch {
   margin: 0;
-  padding: 20px 20px 4px;
+  padding: 0;
+}
+.wiki-story-map:has(> .wiki-story-map-frame > .arch) {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
 .wiki-disclosure .arch-title {
   font-size: 20px;
@@ -6464,6 +6472,9 @@ a.code-activity-row:focus-visible {
   font-size: max(13px, 0.88em);
 }
 .arch-path {
+  /* Each role at least 24 px right of the one before, the whole stair
+     within about a third of the column. */
+  --unit: clamp(14px, calc(min(216px, 30cqi) / var(--steps, 4)), 34px);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -6473,25 +6484,45 @@ a.code-activity-row:focus-visible {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   gap: 14px;
-  padding-bottom: 20px;
+  margin-left: calc(var(--depth, 0) * var(--unit));
+  padding-bottom: 26px;
+}
+.arch-step:last-child {
+  padding-bottom: 8px;
 }
 .arch-step:not(:last-child)::before {
   content: "";
   position: absolute;
   top: 32px;
-  bottom: 4px;
+  bottom: 0;
   left: 13.5px;
   width: 1px;
   background: var(--border-strong);
 }
+/* Across into this role, from the line of the role that hands to it. */
+.arch-step:not(:first-child)::after {
+  content: "";
+  position: absolute;
+  left: calc(13.5px - var(--unit));
+  top: 0;
+  width: calc(var(--unit) - 13.5px);
+  min-width: 2px;
+  height: 14px;
+  border-left: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  border-bottom-left-radius: 9px;
+}
 .arch-index {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  background: var(--bg-page);
+  box-shadow: inset 0 0 0 1.5px var(--border-strong);
+  color: var(--text-primary);
   font-size: var(--fs-caption);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -6503,20 +6534,31 @@ a.code-activity-row:focus-visible {
 .arch-role {
   margin: 0;
   color: var(--text-primary);
-  font-size: var(--fs-body);
+  font-size: 19px;
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 28px;
+  letter-spacing: -0.015em;
 }
 .arch-body > p {
-  margin: 4px 0 0;
+  max-width: 62ch;
+  margin: 6px 0 0;
   color: var(--text-secondary);
-  font-size: var(--fs-small);
+  font-size: 15px;
   line-height: 1.6;
 }
+/* What a role hands to the next, read along the line that falls to it. */
 .arch-body > p.arch-handoff {
   margin-top: 10px;
   color: var(--text-muted);
-  font-size: var(--fs-caption);
+  font-size: var(--fs-small);
+}
+@container (max-width: 520px) {
+  .arch-path {
+    --unit: clamp(12px, calc(88px / var(--steps, 4)), 20px);
+  }
+  .arch-role {
+    font-size: 17px;
+  }
 }
 .arch-stages {
   display: flex;
