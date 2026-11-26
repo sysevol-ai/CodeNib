@@ -14,7 +14,12 @@ import type { FreeMapArea, FreeRepositoryMap } from "@/lib/visitorWiki";
 export function freeMapPicture(
   result: FreeRepositoryMap | null,
 ): { pages: WikiPageRef[]; map: WikiAreaMap; route: MapRoute | null } | null {
-  const folded = foldParts(result?.map);
+  // Parts the main path stops in keep their own place, so the path never
+  // lands on the grey "Other".
+  const onPath = new Set(
+    (result?.path?.stops ?? []).map((stop) => stop.area).filter((area): area is string => !!area),
+  );
+  const folded = foldParts(result?.map, onPath);
   const map = folded;
   if (!map?.available || map.areas.length < 2) return null;
   const names = partNames(map.areas);
@@ -61,17 +66,22 @@ export function freeMapPicture(
 export const MAX_PARTS = 8;
 
 /**
- * At most eight parts: the largest seven keep their place and the rest join
- * "Other", with their references summed and references inside Other dropped.
+ * At most eight parts: seven keep their place and the rest join "Other",
+ * with their references summed and references inside Other dropped. Parts in
+ * `keep` (where the main path stops) are kept first, then the largest.
  */
 export function foldParts(
   map: FreeRepositoryMap["map"] | undefined,
+  keep: Set<string> = new Set(),
 ): (NonNullable<FreeRepositoryMap["map"]> & { into: Map<string, string> }) | undefined {
   if (!map) return undefined;
   const into = new Map<string, string>();
   if (map.areas.length <= MAX_PARTS) return { ...map, into };
   const own = map.areas.filter((area) => area.kind !== "other").sort((a, b) => b.symbols - a.symbols);
-  const kept = own.slice(0, MAX_PARTS - 1);
+  const kept = [
+    ...own.filter((area) => keep.has(area.id)),
+    ...own.filter((area) => !keep.has(area.id)),
+  ].slice(0, MAX_PARTS - 1);
   const keptIds = new Set(kept.map((area) => area.id));
   const rest = map.areas.filter((area) => !keptIds.has(area.id));
   for (const area of rest) into.set(area.id, "other");

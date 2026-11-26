@@ -728,3 +728,8 @@
   }
 }
 
+
+/* The path drawn over the label halos is seen, never hit. */
+.wg-route-over {
+  pointer-events: none;
+}

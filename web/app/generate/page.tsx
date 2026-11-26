@@ -194,8 +194,16 @@ export default function GenerateWikiPage({
             )}
           </h1>
           {/* One lead for every state of the free map, so the form below it
-              never moves when the map arrives. */}
-          {freeMapOffered && enabled ? (
+              never moves when the map arrives. Until the server says what it
+              offers, the longer lead holds its room unseen. */}
+          {!loaded ? (
+            <p className="own-lead is-pending" aria-hidden="true">
+              CodeNib reads this snapshot and draws what its code index finds:
+              for Python code, its parts, the references recorded between them
+              and the path a call takes. That needs no key; a key is needed only
+              to write the Wiki's chapters.
+            </p>
+          ) : freeMapOffered && enabled ? (
             <p className="own-lead">
               CodeNib reads this snapshot and draws what its code index finds:
               for Python code, its parts, the references recorded between them

@@ -82,9 +82,18 @@ function placeLabels(
   const ordered = nodes
     .filter((node) => priority(node) > 0)
     .sort((a, b) => priority(b) - priority(a) || b.radius - a.radius);
-  const placeOne = (node: WikiGraphNode, factor: number, force = false): PlacedLabel | null => {
+  // "must": a pointed name tries every side (and moves in from the pane's
+  // edge) but gives up rather than cover anything; "force": it then takes its
+  // usual place, kept inside the pane.
+  const placeOne = (
+    node: WikiGraphNode,
+    factor: number,
+    mode: "normal" | "must" | "force" = "normal",
+    linesOverride?: string[],
+  ): PlacedLabel | null => {
+    const force = mode !== "normal";
     const point = points.get(node.id)!;
-    const lines = labelLines(node.title);
+    const lines = linesOverride ?? labelLines(node.title);
     const extra = (lines.length - 1) * LABEL_LINE_PX;
     // The focused or pointed name is set bold, about 8% wider.
     const width = Math.max(...lines.map((line) => line.length)) * LABEL_CHAR_PX * factor;
@@ -113,14 +122,28 @@ function placeLabels(
     const hits = (other: typeof box) =>
       box.left - pad < other.right && box.right + pad > other.left && box.top < other.bottom && box.bottom > other.top;
     const clash = taken.some(hits) || marks.some((mark) => mark.id !== node.id && hits(mark));
-    const outside = box.left < 0 || box.right > paneWidth || box.bottom > floor;
+    // A pointed name keeps the pane's margin: it is the one name being read.
+    const edge = priority(node) >= 3.5 ? LABEL_MARGIN_PX : 0;
+    const outside = box.left < edge || box.right > paneWidth - edge || box.bottom > floor;
     const retry = retryAreas && node.kind === "area" && priority(node) >= 3;
     if ((clash || outside) && priority(node) < 4 && !retry && priority(node) !== 3.5 && !force) return null;
     if (clash || outside) {
       // A label that must show (the focused area's) tries the other side,
       // then above and below, before it is allowed to cover anything.
       const free = (option: { anchor: PlacedLabel["anchor"]; dx: number; dy: number }, strict = true) => {
-        const optionLeft = sx + option.dx - (option.anchor === "middle" ? width / 2 : option.anchor === "end" ? width : 0);
+        let optionLeft = sx + option.dx - (option.anchor === "middle" ? width / 2 : option.anchor === "end" ? width : 0);
+        // A pointed or focused name that runs past the pane's side moves in,
+        // towards its mark.
+        if (force || priority(node) >= 3.5) {
+          const shift =
+            optionLeft < LABEL_MARGIN_PX
+              ? LABEL_MARGIN_PX - optionLeft
+              : optionLeft + width > paneWidth - LABEL_MARGIN_PX
+                ? paneWidth - LABEL_MARGIN_PX - optionLeft - width
+                : 0;
+          optionLeft += shift;
+          option.dx += shift;
+        }
         const optionBox = {
           left: optionLeft,
           right: optionLeft + width,
@@ -144,6 +167,7 @@ function placeLabels(
         return clear ? optionBox : null;
       };
       const options: { anchor: PlacedLabel["anchor"]; dx: number; dy: number }[] = [
+        ...(force ? [{ anchor, dx, dy }] : []),
         { anchor: anchor === "start" ? "end" : "start", dx: anchor === "start" ? -(radius + 7) : radius + 7, dy: 4 - extra / 2 },
         { anchor: "middle", dx: 0, dy: -(radius + 8) - extra },
         { anchor: "middle", dx: 0, dy: radius + 15 },
@@ -156,7 +180,24 @@ function placeLabels(
           ? options.map((option) => ({ option, box: free(option, false) })).find((entry) => entry.box)
           : undefined);
       if (found) return { id: node.id, lines, ...found.option, box: found.box! };
-      if (priority(node) < 4 && !force) return null;
+      if (priority(node) < 4 && mode !== "force") return null;
+    }
+    if (mode === "force" || ((clash || outside) && priority(node) >= 4)) {
+      // Its usual place, but never past the pane's side.
+      const shift =
+        box.left < LABEL_MARGIN_PX
+          ? LABEL_MARGIN_PX - box.left
+          : box.right > paneWidth - LABEL_MARGIN_PX
+            ? paneWidth - LABEL_MARGIN_PX - box.right
+            : 0;
+      return {
+        id: node.id,
+        lines,
+        anchor,
+        dx: dx + shift,
+        dy,
+        box: { ...box, left: box.left + shift, right: box.right + shift },
+      };
     }
     return { id: node.id, lines, anchor, dx, dy, box };
     };
@@ -174,10 +215,22 @@ function placeLabels(
         break;
       }
     }
-    // As in production, a pointed name always shows: where nothing is free it
-    // takes its usual place, set regular.
+    // As in production, a pointed name always shows. Set regular, it tries
+    // every side on one line and on two, and only where nothing is free
+    // takes its usual place.
     if (!done && priority(node) === 3.5) {
-      const forced = placeOne(node, 1, true);
+      const words = node.title.split(" ");
+      const layouts: (string[] | undefined)[] = [undefined];
+      if (labelLines(node.title).length === 1 && words.length > 1) {
+        let best: string[] = [node.title];
+        for (let split = 1; split < words.length; split += 1) {
+          const pair = [words.slice(0, split).join(" "), words.slice(split).join(" ")];
+          if (best.length === 1 || Math.max(...pair.map((line) => line.length)) < Math.max(...best.map((line) => line.length))) best = pair;
+        }
+        layouts.push(best);
+      }
+      const forced =
+        layouts.map((lines) => placeOne(node, 1, "must", lines)).find(Boolean) ?? placeOne(node, 1, "force");
       if (forced) {
         taken.push(forced.box);
         placed.push({ ...forced, plain: true });
@@ -565,7 +618,7 @@ export default function WikiGraphPane({
     // A name with no free place stays in the status line.
     const candidates: { anchor: "start" | "middle" | "end"; dx: number; dy: number }[] = [];
     const angles = [-90, 90, 0, 180, -30, -150, 30, 150, -60, -120, 60, 120, -15, -165, 15, 165, -45, -135, 45, 135, -75, -105, 75, 105];
-    for (const out of [10, 16, 22, 29, 36, 44, 52, 70, 90]) {
+    for (const out of [10, 16, 22, 29, 36, 44, 52, 70, 90, 112, 136]) {
       for (const angle of angles) {
         const radians = (angle * Math.PI) / 180;
         const cos = Math.cos(radians);
@@ -835,16 +888,6 @@ export default function WikiGraphPane({
             })}
             {routeView && (
               <g className="wg-route" aria-hidden="true">
-                {routeView.hops.map((hop) => (
-                  <path
-                    key={hop.id}
-                    ref={hop.newest ? newestHopRef : undefined}
-                    d={hop.d}
-                    className={`wg-route-line${hop.newest ? " is-newest" : ""}`}
-                    stroke={hop.color}
-                    pathLength={hop.newest ? 1 : undefined}
-                  />
-                ))}
                 {onRoute &&
                   !readonly &&
                   routeView.hops.map((hop) => (
@@ -925,15 +968,31 @@ export default function WikiGraphPane({
                 </g>
               );
             })}
-            {routeView && (
-              <g ref={tokenRef} className="wg-route-token" style={{ opacity: 0 }} aria-hidden="true">
-                <circle r={6 / view.k} stroke={newestHop?.color ?? "transparent"} />
-              </g>
-            )}
             {/* The halo is its own layer under every label. Safari paints a stroked
                 glyph over the one before it, so a halo on the label itself eats
-                the letters. */}
-            {(["halo", "text"] as const).map((layer) =>
+                the letters. The path and its token go between the halos and the
+                letters: a name keeps its letters on top, and the path stays seen
+                where it passes behind one. */}
+            {(["halo", "route", "text"] as const).map((layer) =>
+              layer === "route" ? (
+                routeView && (
+                  <g key="route" className="wg-route-over" aria-hidden="true">
+                    {routeView.hops.map((hop) => (
+                      <path
+                        key={hop.id}
+                        ref={hop.newest ? newestHopRef : undefined}
+                        d={hop.d}
+                        className={`wg-route-line${hop.newest ? " is-newest" : ""}`}
+                        stroke={hop.color}
+                        pathLength={hop.newest ? 1 : undefined}
+                      />
+                    ))}
+                    <g ref={tokenRef} className="wg-route-token" style={{ opacity: 0 }}>
+                      <circle r={6 / view.k} stroke={newestHop?.color ?? "transparent"} />
+                    </g>
+                  </g>
+                )
+              ) :
               labels.map((label) => {
                 const point = points.get(label.id)!;
                 const x = point.x + label.dx / view.k;
