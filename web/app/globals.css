@@ -973,9 +973,15 @@ pre {
   text-underline-offset: 3px;
   cursor: pointer;
 }
-.main-path-area:hover {
-  color: var(--text-primary);
+.main-path-area:hover,
+.main-path-area:focus-visible {
+  color: var(--accent);
   text-decoration-color: currentColor;
+}
+.main-path-area:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 2px;
 }
 .main-path-step.has-area .main-path-index {
   background: var(--bg-surface);
