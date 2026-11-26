@@ -230,11 +230,16 @@ export default function WikiGenerationForm({
                         Run CodeNib locally ↗
                       </a>
                     )}
+                    {/* Waiting, the button stays focusable (aria-disabled), so a
+                        refused retry does not drop keyboard focus to the page. */}
                     <button
                       type="button"
                       className="btn-ghost"
-                      disabled={checkLimited && retryLeft > 0}
-                      onClick={() => setCheckRetry((value) => value + 1)}
+                      aria-disabled={checkLimited && retryLeft > 0}
+                      onClick={() => {
+                        if (checkLimited && retryLeft > 0) return;
+                        setCheckRetry((value) => value + 1);
+                      }}
                     >
                       Check again
                     </button>

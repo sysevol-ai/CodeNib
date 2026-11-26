@@ -768,7 +768,7 @@ button.run-step-title:hover {
 .wgf-check.is-limited .wgf-check-mark {
   border: 1.5px solid var(--text-muted);
 }
-.wgf-check-actions .btn-ghost:disabled {
+.wgf-check-actions .btn-ghost[aria-disabled="true"] {
   opacity: 1;
   color: var(--text-muted);
   cursor: default;
