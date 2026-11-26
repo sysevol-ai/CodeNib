@@ -18,6 +18,7 @@ import {
   recentWikis,
   wikiGenerationAvailable,
   type FreeRepositoryMap,
+  WikiRequestError,
   type WikiAttempt,
   type WikiRepositoryCheck,
 } from "@/lib/visitorWiki";
@@ -45,6 +46,8 @@ export default function GenerateWikiPage({
   const [freeMap, setFreeMap] = useState<FreeRepositoryMap | null>(null);
   const [freeMapFailed, setFreeMapFailed] = useState(false);
   const [checkFailed, setCheckFailed] = useState("");
+  /** Seconds until a refused free map is asked for again; 0 when not waiting. */
+  const [freeMapWait, setFreeMapWait] = useState(0);
   useEffect(() => {
     let ignored = false;
     if (isStaticRuntime()) {
@@ -88,15 +91,32 @@ export default function GenerateWikiPage({
     let ignored = false;
     setFreeMap(null);
     setFreeMapFailed(false);
-    loadFreeRepositoryMap(repo.slug)
-      .then((result) => {
-        if (!ignored) setFreeMap(result);
-      })
-      .catch(() => {
-        if (!ignored) setFreeMapFailed(true);
-      });
+    let timer = 0;
+    // A refused map (the server is busy, or this network asked a moment ago)
+    // is asked for once more when the server says it may be.
+    const ask = (retried: boolean) =>
+      loadFreeRepositoryMap(repo.slug)
+        .then((result) => {
+          if (!ignored) {
+            setFreeMap(result);
+            setFreeMapWait(0);
+          }
+        })
+        .catch((reason: unknown) => {
+          if (ignored) return;
+          if (!retried && reason instanceof WikiRequestError && reason.status === 429) {
+            const wait = Math.min(120, Math.max(1, Math.ceil(reason.retryAfter ?? 60)));
+            setFreeMapWait(wait);
+            timer = window.setTimeout(() => void ask(true), wait * 1000);
+            return;
+          }
+          setFreeMapWait(0);
+          setFreeMapFailed(true);
+        });
+    void ask(false);
     return () => {
       ignored = true;
+      window.clearTimeout(timer);
     };
   }, [enabled, freeMapOffered, repo?.slug]);
   const picture = useMemo(() => freeMapPicture(freeMap), [freeMap]);
@@ -123,7 +143,9 @@ export default function GenerateWikiPage({
       detail: [
         snapshot ? `at ${snapshot.slice(0, 8)}` : "",
         freeMapOffered && !freeMap && !freeMapFailed
-          ? "indexing the code for its map"
+          ? freeMapWait
+            ? "the map was refused just now (the server is busy); asking again shortly"
+            : "indexing the code for its map"
           : checkFailed
             ? "the source check was refused just now; the reason is shown with the form"
             : "a Wiki's chapters appear here as they are planned",
@@ -136,7 +158,9 @@ export default function GenerateWikiPage({
   else if (checkFailed && freeMapOffered && !freeMap && !freeMapFailed)
     idle = {
       title: "The source check was refused just now",
-      detail: "The free map is still being drawn; the reason for the refusal is shown with the form.",
+      detail: freeMapWait
+        ? "The map was refused too; it is asked for again shortly. The reason is shown with the form."
+        : "The free map is still being drawn; the reason for the refusal is shown with the form.",
     };
   else if (checkFailed)
     idle = { title: "The snapshot could not be checked just now", detail: "The reason is shown with the form; try again shortly." };

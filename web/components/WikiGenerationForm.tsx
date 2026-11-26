@@ -185,12 +185,14 @@ export default function WikiGenerationForm({
         >
           <span className="wgf-check-mark" aria-hidden="true" />
           <div>
-            {!eligibility && !checkError ? (
+            {!eligibility && !checkError && !retrying ? (
               <p>Checking the repository size and source languages… No API key or model call is needed.</p>
             ) : (
               <>
                 <p>
-                  {checkLimited ? (
+                  {retrying ? (
+                    "Checking the repository again…"
+                  ) : checkLimited ? (
                     retryLeft > 0 ? (
                       <>
                         Your network checked a repository moments ago.{" "}
@@ -235,7 +237,7 @@ export default function WikiGenerationForm({
                 and its focus while the check runs. */}
               {(rejected || retrying) && (
                 <p className="wgf-check-actions">
-                  {!checkLimited && (
+                  {!checkLimited && !retrying && (
                     <a href="https://docs.codenib.ai/web_demo/" target="_blank" rel="noopener noreferrer">
                       Run CodeNib locally ↗
                     </a>
