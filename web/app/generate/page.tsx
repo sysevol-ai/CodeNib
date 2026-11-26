@@ -147,28 +147,28 @@ export default function GenerateWikiPage({
         snapshot ? `at ${snapshot.slice(0, 8)}` : "",
         freeMapOffered && !freeMap && !freeMapFailed
           ? freeMapWait
-            ? "the map was refused just now (the server is busy); asking again shortly"
+            ? "map refused (server busy); asking again shortly"
             : "indexing the code for its map"
           : freeMapRefused
-            ? "the server is busy, so the map was not drawn; reload in a minute to try again"
+            ? "server busy, map not drawn; reload in a minute"
             : checkFailed
-              ? "the source check was refused just now; the reason is shown with the form"
+              ? "check refused just now; see the form"
               : "a Wiki's chapters appear here as they are planned",
       ]
         .filter(Boolean)
         .join("\u00a0·\u00a0"),
     };
   else if (check && !check.eligible)
-    idle = { title: "This snapshot cannot be generated here", detail: "The reason is shown with the form." };
+    idle = { title: "This snapshot cannot be generated here", detail: "The reason is with the form." };
   else if (checkFailed && freeMapOffered && !freeMap && !freeMapFailed)
     idle = {
-      title: "The source check was refused just now",
-      detail: freeMapWait
-        ? "The map was refused too; it is asked for again shortly. The reason is shown with the form."
-        : "The free map is still being drawn; the reason for the refusal is shown with the form.",
+      title: "Check refused just now",
+      detail: freeMapWait ? "The map was refused too; asking again shortly." : "The map is still being drawn.",
     };
+  else if (checkFailed && freeMapRefused)
+    idle = { title: "The server is busy just now", detail: "Neither the check nor the map ran; reload in a minute." };
   else if (checkFailed)
-    idle = { title: "The snapshot could not be checked just now", detail: "The reason is shown with the form; try again shortly." };
+    idle = { title: "The snapshot could not be checked just now", detail: "See the form; try again shortly." };
   else if (loaded && !enabled)
     idle = { title: slug, detail: "The folder map appears once generation is available." };
   else idle = { title: "Checking the snapshot", detail: "Its folders appear when the check finishes. No key is needed." };
@@ -190,19 +190,14 @@ export default function GenerateWikiPage({
               "Invalid repository URL"
             )}
           </h1>
-          {picture ? (
+          {/* One lead for every state of the free map, so the form below it
+              never moves when the map arrives. */}
+          {freeMapOffered && enabled ? (
             <p className="own-lead">
-              This is the repository as its code index reads it:{" "}
-              {picture.map.areas.length} parts of its code, the references
-              recorded between them{picture.route ? ", and the path a call takes" : ""}.
-              No key was needed for this. A key is needed only to write the
-              Wiki's chapters.
-            </p>
-          ) : freeMapOffered && enabled && !freeMap && !freeMapFailed ? (
-            <p className="own-lead">
-              CodeNib is reading this snapshot and indexing its code. The map
-              fills in when the index answers, usually within a minute; no key
-              is needed for it.
+              CodeNib reads this snapshot and draws what its code index finds:
+              for Python code, its parts, the references recorded between them
+              and the path a call takes. That needs no key; a key is needed only
+              to write the Wiki's chapters.
             </p>
           ) : (
             <p className="own-lead">
@@ -221,6 +216,7 @@ export default function GenerateWikiPage({
               map={picture.map}
               route={picture.route}
               unit="parts"
+              retryAreaLabels
               neutral={OTHER_PART}
               wikiHref={`https://github.com/${slug}`}
               onPick={(id) => {
