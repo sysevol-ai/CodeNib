@@ -934,6 +934,19 @@ export default function WikiPageView({
     return () => document.removeEventListener("keydown", onKey);
   }, [sourceCitation]);
 
+  // The source dialog takes focus when it opens and gives it back when it
+  // closes, so the keyboard never stays on the page behind it.
+  const sourceModalRef = useRef<HTMLDivElement>(null);
+  const sourceOpen = !!sourceCitation;
+  useEffect(() => {
+    if (!sourceOpen) return undefined;
+    const before = document.activeElement as HTMLElement | null;
+    sourceModalRef.current?.querySelector<HTMLElement>(".source-modal-close")?.focus();
+    return () => {
+      if (before && document.contains(before)) before.focus();
+    };
+  }, [sourceOpen]);
+
   // An address naming a walkthrough this repository does not have shows the page.
   const walk = walkAt ? walkthroughs?.walks.find((item) => item.id === walkAt.id) ?? null : null;
   const walking = !!walkAt && (walkthroughs === undefined || !!walk);
@@ -1844,8 +1857,28 @@ export default function WikiPageView({
           aria-label="Source definition"
         >
           <div
+            ref={sourceModalRef}
             className="source-modal"
             onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              // Keep Tab inside the source while it is open.
+              if (event.key !== "Tab") return;
+              const focusable = [
+                ...event.currentTarget.querySelectorAll<HTMLElement>(
+                  'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                ),
+              ].filter((element) => element.offsetParent !== null);
+              if (!focusable.length) return;
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }}
           >
             <div className="source-modal-head">
               <div>
@@ -1896,10 +1929,16 @@ export default function WikiPageView({
           repoId={repoId}
           repoName={repo.repo}
           pages={jumpPages}
-          walks={(walkthroughs?.walks ?? []).map((item) => ({ id: item.id, title: item.title || item.tab }))}
+          walks={(walkthroughs?.walks ?? []).map((item) => ({
+            id: item.id,
+            title: item.tab || item.title,
+            also: item.title,
+          }))}
           searchCode={hasGraph && !staticRuntime}
           onClose={() => {
             setJumpOpen(false);
+            // The source dialog, when one opens, takes focus from here and
+            // hands it back to the trigger when it closes.
             jumpTriggerRef.current?.focus();
           }}
           onPage={pick}

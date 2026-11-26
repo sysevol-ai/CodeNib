@@ -17,7 +17,10 @@ export interface JumpPage {
 
 export interface JumpWalk {
   id: string;
+  /** The name the page list gives it. */
   title: string;
+  /** Its longer question, also searched. */
+  also?: string;
 }
 
 type Item =
@@ -102,17 +105,24 @@ export default function JumpPalette({
   }, [repoId, trimmed, searchCode]);
 
   const groups = useMemo(() => {
-    const foundPages = rankByTitle(pages, (page) => page.title, trimmed, trimmed ? PAGE_LIMIT : 6);
-    const foundWalks = rankByTitle(walks, (walk) => walk.title, trimmed, 4);
     const code = symbols && symbols.query === trimmed ? symbols.found : [];
-    return [
-      { label: "Pages", items: foundPages.map((page): Item => ({ kind: "page", key: `p:${page.id}`, page })) },
-      { label: "Walkthroughs", items: foundWalks.map((walk): Item => ({ kind: "walk", key: `w:${walk.id}`, walk })) },
-      {
-        label: "Code",
-        items: code.map((symbol): Item => ({ kind: "code", key: `c:${symbol.file}:${symbol.line}:${symbol.name}`, symbol })),
-      },
-    ].filter((group) => group.items.length);
+    // Nothing typed: the areas, which is the Wiki's own table of contents.
+    const foundPages = trimmed
+      ? rankByTitle(pages, (page) => page.title, trimmed, code.length ? 4 : PAGE_LIMIT)
+      : pages.filter((page) => !page.area);
+    const foundWalks = rankByTitle(walks, (walk) => `${walk.title} ${walk.also ?? ""}`, trimmed, 4);
+    const pageGroup = { label: "Pages", items: foundPages.map((page): Item => ({ kind: "page", key: `p:${page.id}`, page })) };
+    const walkGroup = { label: "Walkthroughs", items: foundWalks.map((walk): Item => ({ kind: "walk", key: `w:${walk.id}`, walk })) };
+    const codeGroup = {
+      label: "Code",
+      items: code.map((symbol): Item => ({ kind: "code", key: `c:${symbol.file}:${symbol.line}:${symbol.name}`, symbol })),
+    };
+    // A name typed exactly is a jump to code: its definition comes first.
+    const leaf = (name: string) => name.replace(/\(\)$/, "").split(/\.|::/).pop()?.toLowerCase();
+    const exact = code.some((symbol) => leaf(symbol.name) === trimmed.replace(/\(\)$/, "").toLowerCase());
+    return (exact ? [codeGroup, pageGroup, walkGroup] : [pageGroup, walkGroup, codeGroup]).filter(
+      (group) => group.items.length,
+    );
   }, [pages, walks, symbols, trimmed]);
   const items = useMemo(() => groups.flatMap((group) => group.items), [groups]);
   const colors = useMemo(() => new Map(pages.map((page) => [page.id, page.color])), [pages]);
@@ -247,9 +257,6 @@ export default function JumpPalette({
                           <path d="M7 6h7a3 3 0 0 1 0 6H10a3 3 0 0 0 0 6h7" />
                         </svg>
                         <span className="jump-name">{item.walk.title}</span>
-                        <span className="jump-meta">
-                          <span className="jump-meta-kind">Walkthrough</span>
-                        </span>
                       </>
                     )}
                     {item.kind === "code" && (
