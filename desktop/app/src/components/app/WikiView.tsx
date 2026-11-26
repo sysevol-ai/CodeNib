@@ -55,11 +55,11 @@ export function agentProblem(agents: AgentStatus[] | null, id: WriterId): string
 export function useAnnotate(repo: string) {
   const { data, call, refreshNotes, agents, taskAgent, setAccountsOpen } = useStore();
   return useCallback(
-    async (kind: Kind, text: string, on: Anchor, replyTo?: string) => {
+    async (kind: Kind, text: string, on: Anchor, replyTo?: string, agent: WriterId = taskAgent) => {
       const d = data[repo];
       const base = repoPath(d, "");
       if (!base) throw new Error("This repository is not open yet");
-      const problem = kind === "note" ? null : agentProblem(agents, taskAgent);
+      const problem = kind === "note" ? null : agentProblem(agents, agent);
       if (problem) {
         setAccountsOpen(true);
         throw new Error(problem);
@@ -71,7 +71,7 @@ export function useAnnotate(repo: string) {
         reply_to: replyTo ?? null,
       });
       if (kind !== "note") {
-        await call<Task>(repo, "POST", `${base}/tasks`, { annotations: [created.id], agent: taskAgent });
+        await call<Task>(repo, "POST", `${base}/tasks`, { annotations: [created.id], agent });
       }
       await refreshNotes(repo);
       return created;
@@ -87,12 +87,13 @@ export function Composer({
   initial = "",
 }: {
   kind: Kind;
-  onSend: (text: string) => Promise<unknown>;
+  onSend: (text: string, agent: WriterId) => Promise<unknown>;
   onClose: () => void;
   initial?: string;
 }) {
-  const { taskAgent } = useStore();
-  const who = agentName(taskAgent);
+  const { taskAgent, setTaskAgent, agents } = useStore();
+  // Starts on the last agent used; a pick here becomes the next default.
+  const [agent, setAgent] = useState<WriterId>(taskAgent);
   const [text, setText] = useState(initial);
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -106,7 +107,7 @@ export function Composer({
     if (!text.trim() || busy) return;
     setBusy(true);
     try {
-      await onSend(text.trim());
+      await onSend(text.trim(), agent);
       onClose();
     } catch (error) {
       toast.error(message(error));
@@ -129,7 +130,30 @@ export function Composer({
       />
       <div className="composer-row">
         <span className="composer-hint">
-          {kind === "note" ? "Saved in the repository's .codenib/notes/." : `Runs on your ${who}, on this Mac.`}{" "}
+          {kind === "note" ? "Saved in the repository's .codenib/notes/." : "Runs on this Mac with"}{" "}
+          {kind !== "note" && (
+            <span className="agent-pick" role="radiogroup" aria-label="Send to">
+              {(["claude-code", "codex"] as WriterId[]).map((id) => {
+                const problem = agentProblem(agents, id);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={agent === id}
+                    className={cn("agent-pick-option", agent === id && "is-on", problem && "is-off")}
+                    title={problem ?? `Send to ${agentName(id)}`}
+                    onClick={() => {
+                      setAgent(id);
+                      setTaskAgent(id);
+                    }}
+                  >
+                    {agentName(id)}
+                  </button>
+                );
+              })}
+            </span>
+          )}
           <Kbd>⌘</Kbd>
           <Kbd>Enter</Kbd>
         </span>
@@ -276,7 +300,7 @@ function NoteThread({ repo, thread, onReview }: { repo: string; thread: Thread; 
     try {
       await call(repo, "POST", `${base}/tasks`, {
         annotations: (pending.length ? pending : [root]).map((a) => a.id),
-        agent: taskAgent,
+        agent: thread.task?.agent === "codex" ? "codex" : taskAgent,
       });
       await refreshNotes(repo);
     } catch (error) {
@@ -341,7 +365,7 @@ function NoteThread({ repo, thread, onReview }: { repo: string; thread: Thread; 
         <Composer
           kind="ask"
           onClose={() => setReplying(false)}
-          onSend={(text) => annotate("ask", text, root.on, all[all.length - 1].id)}
+          onSend={(text, agent) => annotate("ask", text, root.on, all[all.length - 1].id, agent)}
         />
       ) : (
         <div className="note-actions">
@@ -818,7 +842,8 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
           setComposing(null);
           if (index === 0 && palette.ask !== undefined) setPalette({ open: false });
         }}
-        onSend={async (body) => {
+        onSend={async (body, agent) => {
+          const who = agentName(agent);
           if (composing.kind === "revise") {
             const path = repoPath(d, "/revisions");
             if (!path) return;
@@ -826,7 +851,7 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
               page: pageId,
               quote: composing.quote ?? plain(text).slice(0, 300),
               comment: body,
-              agent: taskAgent,
+              agent,
             });
             await refreshNotes(repo);
             toast(`${who} is improving this passage. Its proposal will be in your Inbox.`);
@@ -837,7 +862,7 @@ export function WikiView({ repo, pageId, onReview }: { repo: string; pageId: str
             section: sectionTitle,
             quote: composing.quote ?? plain(text).slice(0, 160),
             block: plain(text).slice(0, 600),
-          });
+          }, undefined, agent);
           toast(composing.kind === "note" ? "Note saved in .codenib/notes/" : `Sent to ${who} on this Mac`);
         }}
       />

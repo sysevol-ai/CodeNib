@@ -956,6 +956,35 @@ mark.anchor.is-focus {
   gap: 4px;
 }
 
+/* Which agent a question or change goes to. */
+.agent-pick {
+  display: inline-flex;
+  padding: 1px;
+  margin-right: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.agent-pick-option {
+  padding: 1px 7px;
+  border-radius: 5px;
+  font: inherit;
+  color: var(--muted-ink);
+  background: transparent;
+  cursor: pointer;
+}
+
+.agent-pick-option.is-on {
+  color: var(--ink);
+  background: var(--nib-soft);
+  box-shadow: 0 0 0 1px var(--nib-line);
+}
+
+.agent-pick-option.is-off {
+  text-decoration: line-through;
+  text-decoration-color: var(--muted-ink);
+}
+
 /* ---------- status marks ---------- */
 .status-mark {
   display: inline-grid;
