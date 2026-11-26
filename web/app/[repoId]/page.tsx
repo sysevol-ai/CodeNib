@@ -1321,7 +1321,15 @@ export default function WikiPageView({
             aria-hidden
           />
         )}
-        <aside ref={tocRef} className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
+        <aside
+          ref={tocRef}
+          className={`wiki-toc ${tocOpen ? "open" : ""}`}
+          data-rail="left"
+          // Open as a drawer, the page list is a modal dialog over the page.
+          {...(drawerMode && tocOpen
+            ? { role: "dialog", "aria-modal": true, "aria-label": "Pages in this Wiki" }
+            : {})}
+        >
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
           {commits.length > 0 ? (
             <div className="rail-sub commit-picker">
