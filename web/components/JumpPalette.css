@@ -232,7 +232,12 @@ code.jump-name {
   font-size: var(--fs-caption);
   border: 0;
 }
-@media (max-width: 820px) {
+.jump-trigger,
+.jump-trigger kbd {
+  white-space: nowrap;
+}
+/* Below 900 px the header has no room for words: the field is its icon. */
+@media (max-width: 900px) {
   .jump-trigger-label,
   .jump-trigger kbd {
     display: none;

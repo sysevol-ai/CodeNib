@@ -952,11 +952,15 @@ export default function WikiPageView({
       const target = event.target as HTMLElement | null;
       const typing =
         !!target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      // The palette takes over from the page-list drawer, so the two never
+      // trap focus against each other.
       if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
         event.preventDefault();
+        setTocOpen(false);
         setJumpOpen((open) => !open);
       } else if (event.key === "/" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault();
+        setTocOpen(false);
         setJumpOpen(true);
       }
     };
@@ -1196,7 +1200,10 @@ export default function WikiPageView({
               ref={jumpTriggerRef}
               type="button"
               className="jump-trigger"
-              onClick={() => setJumpOpen(true)}
+              onClick={() => {
+                setTocOpen(false);
+                setJumpOpen(true);
+              }}
               aria-label={`Search ${repo.repo}`}
               aria-keyshortcuts="Meta+K Control+K /"
               title={`Jump to a page, walkthrough or function (${IS_MAC ? "⌘K" : "Ctrl+K"})`}

@@ -324,6 +324,7 @@ pre {
   font-size: 14.5px;
   font-weight: var(--fw-regular);
   color: var(--text-secondary);
+  white-space: nowrap;
   transition: color 0.15s;
 }
 .site-header .header-link:hover {
