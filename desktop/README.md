@@ -120,3 +120,22 @@ To sign on your own Mac, pass the identity to both steps:
 scripts/bundle-python.sh`, then `APPLE_SIGNING_IDENTITY="…" npm run build`, and
 check the result with `scripts/check-notarizable.sh --release
 src-tauri/target/release/bundle/macos/CodeNib.app`.
+
+## Publish a release
+
+A release puts the disk image on a GitHub release page, where anyone can
+download it without a GitHub account. Set the new version in
+`src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, merge that to `main`,
+then tag the merge and push the tag:
+
+```bash
+git tag desktop-v0.1.0 && git push origin desktop-v0.1.0
+```
+
+The **Desktop app** workflow checks that the tag names that version, builds,
+signs and notarizes the app (with the secrets above), and creates the release
+**CodeNib for macOS 0.1.0** with `CodeNib-0.1.0-macos-apple-silicon.dmg` and
+its checksum. A desktop release is never marked as the repository's latest
+release, which stays the Python package's. Without the Apple secrets the build
+is signed ad hoc, and the release is marked as a pre-release that says how to
+open it.

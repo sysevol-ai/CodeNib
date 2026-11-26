@@ -16,6 +16,10 @@ on:
   push:
     branches:
       - main
+    # A desktop-v<version> tag publishes that build as a GitHub release.
+    # Path filters are not applied to tag pushes.
+    tags:
+      - "desktop-v*"
     paths:
       - "desktop/**"
       - ".github/workflows/desktop.yml"
@@ -41,11 +45,23 @@ jobs:
     timeout-minutes: 60
     env:
       DEVELOPER_ID: ${{ github.event_name != 'pull_request' && secrets.APPLE_CERTIFICATE != '' }}
+    outputs:
+      notarized: ${{ steps.notarize.outcome == 'success' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+
+      - name: Check the tag names the app's version
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("desktop/src-tauri/tauri.conf.json"))["version"])')"
+          CRATE="$(python3 -c 'import tomllib; print(tomllib.load(open("desktop/src-tauri/Cargo.toml", "rb"))["package"]["version"])')"
+          if [[ "$GITHUB_REF_NAME" != "desktop-v$VERSION" || "$CRATE" != "$VERSION" ]]; then
+            echo "tag $GITHUB_REF_NAME, tauri.conf.json ($VERSION) and Cargo.toml ($CRATE) must name one version" >&2
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -141,6 +157,7 @@ jobs:
         run: desktop/scripts/smoke-bundle.sh desktop/src-tauri/target/release/bundle/macos/CodeNib.app
 
       - name: Notarize and staple the app and its disk image
+        id: notarize
         if: env.DEVELOPER_ID == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -202,3 +219,42 @@ jobs:
           if [[ -n "${CODENIB_KEYCHAIN:-}" ]]; then
             security delete-keychain "$CODENIB_KEYCHAIN"
           fi
+
+  release:
+    # A desktop-v<version> tag puts its disk image on a GitHub release, where
+    # anyone can download it without signing in. It is never marked latest:
+    # that stays the Python package's release.
+    name: Publish the disk image
+    needs: macos
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the disk image
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: CodeNib-macos-apple-silicon
+          path: dist
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTARIZED: ${{ needs.macos.outputs.notarized }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#desktop-v}"
+          DMG="dist/CodeNib-${VERSION}-macos-apple-silicon.dmg"
+          mv dist/*.dmg "$DMG"
+          (cd dist && sha256sum "$(basename "$DMG")" > SHA256SUMS)
+          FLAGS=(--latest=false)
+          if [[ "$NOTARIZED" == "true" ]]; then
+            NOTES="CodeNib for macOS $VERSION, for Apple silicon Macs on macOS 12 or later. Open the disk image and drag CodeNib to Applications."
+          else
+            # Without the Apple secrets the build is signed ad hoc: say so,
+            # and keep it a pre-release.
+            FLAGS+=(--prerelease)
+            NOTES="CodeNib for macOS $VERSION, for Apple silicon Macs on macOS 12 or later. This build is not notarized: open it once, then choose Open Anyway in System Settings, then Privacy & Security."
+          fi
+          gh release create "$GITHUB_REF_NAME" "$DMG" dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --title "CodeNib for macOS $VERSION" \
+            --notes "$NOTES" "${FLAGS[@]}"
