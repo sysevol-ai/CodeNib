@@ -983,6 +983,12 @@ pre {
   box-shadow: var(--focus-ring);
   border-radius: 2px;
 }
+/* A step whose code is in no area of the map: a quiet ring, no colour. */
+.main-path-steps.is-coloured .main-path-step:not(.has-area) .main-path-index {
+  background: var(--bg-surface);
+  box-shadow: inset 0 0 0 1.5px var(--border-strong);
+  color: var(--text-secondary);
+}
 .main-path-step.has-area .main-path-index {
   background: var(--bg-surface);
   box-shadow: inset 0 0 0 1.5px var(--area);

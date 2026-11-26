@@ -49,7 +49,7 @@ export default function MainPath({
           {colors && " Each colour is the area of the Wiki map where a step's code lives; the line into a step takes its colour."}
         </p>
       </figcaption>
-      <ol className="main-path-steps">
+      <ol className={`main-path-steps${colors ? " is-coloured" : ""}`}>
         {journey.stages.map((stage, position) => {
           const area = stage.page ? colors?.get(stage.page.id) : undefined;
           // The line under a step is the call to the next one, in the colour
