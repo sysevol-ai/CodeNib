@@ -52,12 +52,22 @@ class WikiPublication(BaseModel):
     published: bool
 
 
+def _flag(name):
+    return os.environ.get(name, "").lower() in {"1", "true", "yes"}
+
+
 def _enabled():
-    if os.environ.get("CODENIB_VISITOR_WIKI", "").lower() not in {"1", "true", "yes"}:
+    if not _flag("CODENIB_VISITOR_WIKI"):
         return False
     from ..agent.runtime.grep_jev import resolve_ripgrep
 
     return find_spec("requests") is not None and resolve_ripgrep() is not None
+
+
+def _free_map_enabled():
+    """The credential-free map spends server CPU on any visitor's request,
+    so it is a separate operator decision on top of visitor Wikis."""
+    return _flag("CODENIB_VISITOR_FREE_MAP") and _enabled()
 
 
 def _manager(request, *, for_generation=False):
@@ -95,6 +105,7 @@ def capabilities(response: Response):
     response.headers["Cache-Control"] = "no-store"
     return {
         "enabled": _enabled(),
+        "free_map": _free_map_enabled(),
         "persistence": "unlisted",
         "max_budget_usd": 5,
         "limits": generation_limits(),
@@ -116,6 +127,34 @@ def check_repository(
     manager = _manager(request, for_generation=True)
     try:
         return manager.check_repository(
+            repository, request.client.host if request.client else "unknown"
+        )
+    except VisitorWikiError as exc:
+        wait = exc.retry_after if isinstance(exc, VisitorWikiRateLimited) else 60
+        raise HTTPException(429, str(exc), headers={"Retry-After": str(wait)}) from None
+
+
+@router.get("/map")
+def map_repository(
+    request: Request,
+    response: Response,
+    repository: Annotated[
+        str,
+        Query(pattern=r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$"),
+    ],
+):
+    """Credential-free map: folder areas, recorded references, main call path.
+
+    No key, model call or saved Wiki; admitted like a check, with its own
+    per-client minute.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    if not _flag("CODENIB_VISITOR_FREE_MAP"):
+        raise HTTPException(404, "The free repository map is not enabled here.")
+    manager = _manager(request, for_generation=True)
+    try:
+        return manager.map_preview(
             repository, request.client.host if request.client else "unknown"
         )
     except VisitorWikiError as exc:
