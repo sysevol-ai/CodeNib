@@ -284,8 +284,17 @@ def _assert_wiki(
             # A note saved from the printed address lands as a Markdown file in
             # the repository, through the same proxy the browser uses.
             session = _printed_session(log_path, process=process, timeout=30)
-            if (repo / ".codenib").exists():
-                raise RuntimeError("Wiki startup wrote .codenib/ into the repository")
+            # Startup makes the empty .codenib/ that notes go into, so the
+            # first note does not change the root under the source binding;
+            # it writes nothing inside it.
+            startup_writes = sorted(
+                path.relative_to(repo).as_posix()
+                for path in (repo / ".codenib").rglob("*")
+            )
+            if startup_writes:
+                raise RuntimeError(
+                    f"Wiki startup wrote into the repository: {startup_writes}"
+                )
             note = _post_json(
                 f"{frontend_base}/api/repos/"
                 f"{urllib.parse.quote(repo_id)}/annotations",
