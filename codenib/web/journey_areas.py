@@ -17,6 +17,7 @@ import re
 from typing import Mapping, Sequence
 
 from ..ops.filter import is_test_path
+from ..wiki.importance import is_detail_step, is_side_road
 
 _STEP = re.compile(r"^(\s*\d+\.\s+\*\*`[^`]+`\*\*)(\s*:\s*)(.*)$")
 _EVIDENCE = re.compile(r"\(#evidence-E(\d+)\)")
@@ -331,5 +332,36 @@ def sync_journey_title(markdown: str) -> str:
                 entities.append(match.group(1))
         if len(entities) >= 2:
             lines[index] = f"## From `{entities[0]}` to `{entities[-1]}`"
+        break
+    return "\n".join(lines)
+
+
+def trim_path_tail(markdown: str) -> str:
+    """Drop a cached path's trailing getter, check or set-up step.
+
+    A path written before the path rule cut such tails ends on a detail
+    (OrcaLoca's ``SearchInput.get_content()``); the step before it is
+    where the work lands. Three steps always stay.
+    """
+    lines = markdown.split("\n")
+    for index, line in enumerate(lines):
+        if not _JOURNEY_TITLE.match(line):
+            continue
+        steps = []
+        for position in range(index + 1, len(lines)):
+            if lines[position].startswith("## "):
+                break
+            match = _STAGE_ENTITY.match(lines[position])
+            if match:
+                steps.append((position, match.group(1)))
+        dropped = set()
+        while len(steps) > 3 and (
+            is_detail_step(steps[-1][1]) or is_side_road(steps[-1][1])
+        ):
+            dropped.add(steps.pop()[0])
+        if dropped:
+            lines = [
+                line for position, line in enumerate(lines) if position not in dropped
+            ]
         break
     return "\n".join(lines)

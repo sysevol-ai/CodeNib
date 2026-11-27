@@ -301,3 +301,24 @@ def test_a_part_whose_first_source_placed_the_step_before_is_told_by_its_next():
     ]["data"]["nodes"]
     assert first["area"]["id"] == "render"
     assert second["area"] == {"id": "dom", "title": "Runtime DOM", "evidence": "E2"}
+
+
+def test_a_cached_path_drops_its_trailing_getter():
+    from codenib.web.journey_areas import sync_journey_title, trim_path_tail
+
+    markdown = "\n".join(
+        [
+            "## From `main` to `SearchInput.get_content()`",
+            "",
+            "1. **`main`**: Starts. [E1](#evidence-E1)",
+            "2. **`OrcarAgent.run()`**: Runs. [E2](#evidence-E2)",
+            "3. **`OrcarAgent.run_agents()`**: Runs agents. [E3](#evidence-E3)",
+            "4. **`OrcarAgent.run_search_agent()`**: Searches. [E4](#evidence-E4)",
+            "5. **`SearchInput.get_content()`**: Gets. [E5](#evidence-E5)",
+            "",
+            "## Next",
+        ]
+    )
+    out = sync_journey_title(trim_path_tail(markdown))
+    assert "get_content" not in out
+    assert out.startswith("## From `main` to `OrcarAgent.run_search_agent()`")
