@@ -93,8 +93,9 @@ export default function MainPath({
 }) {
   // A step's move right, in units: one for a call within an area, two where
   // the path drops into another.
+  // A drop is any change of area, into the code outside every area too.
   const moves: number[] = journey.stages.map((stage, position) =>
-    position === 0 ? 0 : stage.page && journey.stages[position - 1]?.page?.id !== stage.page.id ? 2 : 1,
+    position === 0 ? 0 : (stage.page?.id ?? null) !== (journey.stages[position - 1]?.page?.id ?? null) ? 2 : 1,
   );
   const units = moves.reduce((sum, move) => sum + move, 0);
   const step = units > 0 ? Math.min(CASCADE_STEP_PX, CASCADE_PX / units) : 0;
@@ -188,13 +189,17 @@ export default function MainPath({
           // The path names an area where it enters one; the steps after it
           // keep its colour on their rings and lines.
           const entry = !!stage.page && journey.stages[position - 1]?.page?.id !== stage.page.id;
+          // Code in no area of the map (an entry point, a vendored library)
+          // says so where the path reaches it, so its grey reads as meant.
+          const outside =
+            !!colors && !stage.page && (position === 0 || !!journey.stages[position - 1]?.page);
           offset += moves[position];
           // The line down from a step leaves in its own area's colour and
           // turns the colour of the next step's area at the elbow.
           const own = area;
           return (
             <li
-              className={`main-path-step${area ? " has-area" : ""}${next ? " has-next" : ""}${source ? " has-source" : ""}${entry ? " is-entry" : ""}`}
+              className={`main-path-step${area ? " has-area" : ""}${next ? " has-next" : ""}${source ? " has-source" : ""}${entry || outside ? " is-entry" : ""}`}
               key={stage.index}
               style={
                 {
@@ -216,6 +221,7 @@ export default function MainPath({
                   {stage.page.title}
                 </button>
               )}
+              {outside && <span className="main-path-area is-outside">Outside the map's areas</span>}
               <span className="main-path-index" aria-hidden="true">
                 {stage.index}
               </span>

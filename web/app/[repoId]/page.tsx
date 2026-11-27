@@ -55,6 +55,7 @@ import {
   wikiRetryNotice,
   repositoryFacts,
   titleOverviewLead,
+  type Journey,
 } from "@/lib/wikiPresentation";
 import {
   fetchCommits,
@@ -476,6 +477,28 @@ function writeStored(key: string, value: string) {
   } catch {
     // A reader without storage still gets the setting for this visit.
   }
+}
+
+/** A main path whose steps name their top-level area: a step told on a
+ *  detail page takes the area that page sits under, as the map draws it. */
+function journeyByArea(journey: Journey, pages: WikiPageRef[]): Journey {
+  const top = new Map<string, { id: string; title: string }>();
+  for (const area of pages) {
+    const visit = (list: WikiPageRef[]) => {
+      for (const item of list) {
+        top.set(item.id, { id: area.id, title: area.title });
+        visit(item.children);
+      }
+    };
+    top.set(area.id, { id: area.id, title: area.title });
+    visit(area.children);
+  }
+  return {
+    ...journey,
+    stages: journey.stages.map((stage) =>
+      stage.page && top.has(stage.page.id) ? { ...stage, page: top.get(stage.page.id)! } : stage,
+    ),
+  };
 }
 
 export default function WikiPageView({
@@ -1584,7 +1607,7 @@ export default function WikiPageView({
                   )}
                   {lifted.journey && (
                     <MainPath
-                      journey={lifted.journey}
+                      journey={journeyByArea(lifted.journey, pages)}
                       onPick={pick}
                       renderText={renderStageText}
                       colors={wikiGraph.colors}
