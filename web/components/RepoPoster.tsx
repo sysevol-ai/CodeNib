@@ -16,6 +16,7 @@ import {
 import { breakableCode } from "@/lib/breakable";
 import { ghFileUrl } from "@/lib/github";
 import {
+  ATLAS_MORE,
   layoutAtlas,
   layoutPoster,
   posterMode,
@@ -535,19 +536,24 @@ export default function RepoPoster({
                   key={cell.id}
                   className={`poster-node poster-cell${lit ? " is-lit" : ""}${
                     focusArea === cell.id ? " is-active" : ""
-                  }${colors?.get(cell.id) ? " has-area" : ""}`}
+                  }${colors?.get(cell.id) ? " has-area" : ""}${cell.id === ATLAS_MORE ? " is-more" : ""}`}
                   style={areaStyle(cell.id)}
                   transform={`translate(${cell.x} ${cell.y})`}
                   onMouseEnter={() => setHoverNode(cell.id)}
                   onMouseLeave={() => setHoverNode(null)}
-                  onClick={() => onPick?.(cell.id)}
-                  role="link"
-                  tabIndex={0}
+                  // The combined cell only stands for the rows listed below it.
+                  onClick={cell.id === ATLAS_MORE ? undefined : () => onPick?.(cell.id)}
+                  role={cell.id === ATLAS_MORE ? undefined : "link"}
+                  tabIndex={cell.id === ATLAS_MORE ? undefined : 0}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") onPick?.(cell.id);
+                    if (event.key === "Enter" && cell.id !== ATLAS_MORE) onPick?.(cell.id);
                   }}
                 >
-                  <title>{`${cell.title}: ${number.format(cell.symbols)} symbols in ${cell.files} files`}</title>
+                  <title>
+                    {cell.id === ATLAS_MORE
+                      ? `${cell.title} smaller areas, listed below: ${number.format(cell.symbols)} symbols`
+                      : `${cell.title}: ${number.format(cell.symbols)} symbols in ${cell.files} files`}
+                  </title>
                   <rect
                     className="poster-node-box"
                     width={cell.w}
@@ -762,11 +768,12 @@ export default function RepoPoster({
               <button
                 key={area.id}
                 type="button"
-                className={`poster-chip${focusArea === area.id ? " is-now" : ""}`}
+                className={`poster-chip is-area${focusArea === area.id ? " is-now" : ""}`}
+                style={areaStyle(area.id)}
                 onClick={() => onPick?.(area.id)}
               >
                 {area.title}
-                <span>{number.format(area.symbols)}</span>
+                <span>{number.format(area.symbols)} symbols</span>
               </button>
             ))}
           </div>

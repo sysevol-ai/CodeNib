@@ -1965,6 +1965,19 @@ def _overview_path_areas(
     for top in outline.get("pages") or []:
         if top.get("id") != "overview":
             walk(top, str(top.get("id")))
+
+    # Each area's page titles, as the Overview's own placement reads them,
+    # so a part placed by a page's name enters the same area here.
+    def titles(node: dict):
+        yield str(node.get("title") or "")
+        for child in node.get("children") or []:
+            yield from titles(child)
+
+    tops = {str(top.get("id")): top for top in outline.get("pages") or []}
+    areas = [
+        {**area, "titles": [t for t in titles(tops.get(str(area.get("id")), {})) if t]}
+        for area in areas
+    ]
     try:
         places = _symbol_pages(repo_id)
     except Exception:  # noqa: BLE001 - outline files alone still place steps

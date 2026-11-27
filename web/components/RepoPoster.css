@@ -314,7 +314,7 @@
 .poster-isolated-label {
   max-width: 80ch;
   color: var(--p-muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 /* The references between areas, as a ruled list of lines to select: no
@@ -763,4 +763,37 @@
   text-decoration: underline;
   text-decoration-color: var(--p-line-strong);
   text-underline-offset: 3px;
+}
+
+/* The cell standing for the smaller areas listed under the picture: no
+   area of its own, so no colour and no hover. */
+.poster-cell.is-more {
+  cursor: default;
+}
+.poster-cell.is-more .poster-node-box {
+  fill: transparent;
+  stroke: var(--p-line-strong);
+  stroke-dasharray: 3 3;
+}
+.poster-cell.is-more .poster-node-title {
+  fill: var(--p-muted);
+  font-weight: 500;
+}
+/* An area row (no recorded references) carries its area's dot, as the
+   rows under the picture do. */
+.poster-chip.is-area::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: -2px;
+  border-radius: 50%;
+  background: var(--area, var(--p-dim));
+  align-self: center;
+}
+.poster-chip.is-area {
+  justify-content: flex-start;
+}
+.poster-chip.is-area span {
+  margin-left: auto;
 }

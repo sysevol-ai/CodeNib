@@ -276,3 +276,28 @@ def test_a_role_named_after_a_page_inside_an_area_takes_that_area():
         "data"
     ]["nodes"]
     assert node["area"]["id"] == "sd"
+
+
+def test_a_part_whose_first_source_placed_the_step_before_is_told_by_its_next():
+    from codenib.web.journey_areas import place_architecture_areas
+
+    areas = [
+        {"id": "render", "title": "Rendering", "files": ["core/src/renderer.ts"]},
+        {"id": "dom", "title": "Runtime DOM", "files": ["dom/src/index.ts"]},
+    ]
+    citations = [{"file": "core/src/renderer.ts"}, {"file": "dom/src/index.ts"}]
+    nodes = [
+        {"id": "a", "label": "Patch Engine", "evidence": ["E1"]},
+        {"id": "b", "label": "Host Adapters", "evidence": ["E1", "E2"]},
+    ]
+    slot = {
+        "render_contract": {
+            "adapter": "architecture",
+            "data": {"primary_path": ["a", "b"], "nodes": nodes},
+        }
+    }
+    first, second = place_architecture_areas([slot], citations, {}, areas)[0][
+        "render_contract"
+    ]["data"]["nodes"]
+    assert first["area"]["id"] == "render"
+    assert second["area"] == {"id": "dom", "title": "Runtime DOM", "evidence": "E2"}
