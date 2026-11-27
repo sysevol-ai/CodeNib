@@ -6895,3 +6895,10 @@ a.code-activity-row:focus-visible {
     content: "\200B";
   }
 }
+
+/* A phone's path heading that would run to four lines steps down a size. */
+@media (max-width: 600px) {
+  .main-path-title.is-crowded {
+    font-size: 25px;
+  }
+}

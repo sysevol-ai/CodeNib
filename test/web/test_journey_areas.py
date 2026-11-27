@@ -353,3 +353,27 @@ def test_a_step_on_the_path_keeps_its_only_source_from_a_part_beside_it():
     assert renderer["area"]["evidence"] == "E1"
     assert host["area"] == {"id": "dom", "title": "Runtime DOM", "evidence": "E2"}
     assert "evidence" not in vnode["area"]
+
+
+def test_a_shared_source_goes_to_the_step_named_for_it():
+    from codenib.web.journey_areas import place_architecture_areas
+
+    areas = [
+        {"id": "exec", "title": "Command Execution Pipeline", "files": ["src/server.c"]}
+    ]
+    citations = [{"file": "src/server.c", "node_name": "processCommand"}]
+    nodes = [
+        {"id": "clients", "label": "Client Connections", "evidence": ["E1"]},
+        {"id": "dispatch", "label": "Command Dispatcher", "evidence": ["E1"]},
+    ]
+    slot = {
+        "render_contract": {
+            "adapter": "architecture",
+            "data": {"primary_path": ["clients", "dispatch"], "nodes": nodes},
+        }
+    }
+    clients, dispatch = place_architecture_areas([slot], citations, {}, areas)[0][
+        "render_contract"
+    ]["data"]["nodes"]
+    assert dispatch["area"].get("evidence") == "E1"
+    assert "evidence" not in clients["area"]
