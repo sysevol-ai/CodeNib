@@ -60,6 +60,14 @@ function titleWithCode(title: string): ReactNode[] {
   return out;
 }
 
+/** Whether every source a step cites is the README. */
+function describedInReadme(evidence: string[], citations?: Citation[]): boolean {
+  const files = evidence
+    .map((id) => citations?.[Number(id.replace(/^E/, "")) - 1]?.file)
+    .filter((file): file is string => !!file);
+  return files.length > 0 && files.every((file) => /(^|\/)readme[^/]*$/i.test(file));
+}
+
 /** Each step sits right of the one that calls it; a drop into another area
  *  goes twice as far. The whole stair stays within this width. */
 const CASCADE_PX = 216;
@@ -204,8 +212,14 @@ export default function MainPath({
           const entry = !!stage.page && journey.stages[position - 1]?.page?.id !== stage.page.id;
           // Code in no area of the map (an entry point, a vendored library)
           // says so where the path reaches it, so its grey reads as meant.
+          // A part the plan grounds only in the README has no code to place;
+          // it says where it is described rather than claim to be outside.
+          const readmeOnly = roles && describedInReadme(stage.evidence, citations);
+          const previous = journey.stages[position - 1];
           const outside =
-            !!colors && !stage.page && (position === 0 || !!journey.stages[position - 1]?.page);
+            !!colors &&
+            !stage.page &&
+            (position === 0 || !!previous?.page || (roles && describedInReadme(previous.evidence, citations)) !== readmeOnly);
           offset += moves[position];
           // The line down from a step leaves in its own area's colour and
           // turns the colour of the next step's area at the elbow.
@@ -234,7 +248,11 @@ export default function MainPath({
                   {stage.page.title}
                 </button>
               )}
-              {outside && <span className="main-path-area is-outside">Outside the map's areas</span>}
+              {outside && (
+                <span className="main-path-area is-outside">
+                  {readmeOnly ? "Described in the README" : "Outside the map's areas"}
+                </span>
+              )}
               <span className="main-path-index" aria-hidden="true">
                 {stage.index}
               </span>
