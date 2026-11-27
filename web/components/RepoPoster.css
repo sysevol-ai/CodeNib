@@ -343,7 +343,8 @@
   text-align: left;
   cursor: pointer;
 }
-.poster-chip span {
+/* The count; the name (with its stop numbers) reads in the row's own type. */
+.poster-chip > span:not(.poster-chip-name) {
   flex: none;
   color: var(--p-muted);
   font-family: var(--font-mono);
@@ -356,9 +357,9 @@
   text-decoration-color: var(--p-line-strong);
   text-underline-offset: 3px;
 }
+/* Lit by the trace: brighter, not bolder, so nothing beside it moves. */
 .poster-chip.is-now {
   color: var(--p-text);
-  font-weight: 600;
 }
 .poster-cell-share {
   fill: var(--p-dim);
@@ -645,7 +646,7 @@
   ) {
   font-size: 13px;
 }
-.wiki-main .repo-poster:not(.is-exporting) :is(.poster-chip span, .poster-callout-example code, .poster-code pre) {
+.wiki-main .repo-poster:not(.is-exporting) :is(.poster-chip > span, .poster-callout-example code, .poster-code pre) {
   font-size: 13px;
 }
 .poster-link-arrow {
@@ -832,13 +833,17 @@
   font-size: 13px;
 }
 
-/* The stop numbers of an area listed outside the drawing. */
+/* The stop numbers of an area listed outside the drawing: just after the
+   name, on its last line, at the size of the boxes' tags. */
 .poster-row-stops {
   display: inline-flex;
   gap: 3px;
   margin-left: 8px;
+  vertical-align: 1px;
 }
 .poster-row-stops .poster-step-no {
+  font-size: 10px;
+  transform: none;
   background: color-mix(in srgb, var(--area, var(--p-trace)) 30%, transparent);
   color: var(--p-text);
 }
@@ -880,4 +885,16 @@
   display: inline;
   padding: 1px 5px;
   font-size: 10px;
+}
+
+/* The copy a saved image is drawn from: laid out at the poster's width,
+   off screen, never seen or reached. */
+.poster-export-stage {
+  position: fixed;
+  top: 0;
+  left: -100000px;
+  pointer-events: none;
+}
+.poster-chip-name {
+  min-width: 0;
 }
