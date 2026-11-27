@@ -595,6 +595,19 @@ export default function RepoPoster({
             })}
           </svg>
         )}
+        {atlas?.rest && atlas.rest.length > 0 && (
+          // Areas too small to name inside the picture, each on its own line.
+          <ul className="poster-rest" aria-label="Smaller areas">
+            {atlas.rest.map((area) => (
+              <li key={area.id}>
+                <button type="button" style={areaStyle(area.id)} onClick={() => onPick?.(area.id)}>
+                  <span className="poster-rest-name">{area.title}</span>
+                  <span className="poster-rest-share">{Math.max(1, Math.round(area.share * 100))}%</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         {layout && (
         <svg
           viewBox={`0 0 ${layout.width} ${layout.height}`}

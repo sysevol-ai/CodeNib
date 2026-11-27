@@ -6849,3 +6849,12 @@ a.code-activity-row:focus-visible {
     transition: none;
   }
 }
+
+/* A source path wraps on a phone rather than run off the column. */
+.wiki-story-map-footer .wiki-media-citation,
+.wiki-story-map-footer .wiki-media-citations a,
+.wiki-story-map-footer .wiki-media-citations span {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
