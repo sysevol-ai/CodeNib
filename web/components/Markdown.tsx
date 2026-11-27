@@ -587,9 +587,14 @@ export default function Markdown({
                 );
               }
             }
+            const shown = inline ? cleanTemplateArguments(text) : "";
             return (
-              <code className={className}>
-                {inline ? breakableCode(cleanTemplateArguments(text)) : children}
+              // A short call with spaces stays on one line ("pow(i, d, n)",
+              // not "n)" alone); short code without spaces cannot break.
+              <code
+                className={[className, inline && shown.length < 23 && /\s/.test(shown) ? "is-whole" : ""].filter(Boolean).join(" ") || undefined}
+              >
+                {inline ? breakableCode(shown) : children}
               </code>
             );
           },

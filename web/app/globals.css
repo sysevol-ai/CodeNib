@@ -5221,13 +5221,12 @@ a.codepanel-name:hover {
   padding: 0;
 }
 .boundary-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
   /* The symbol gets the full width; the call site sits beside the sentence
-     that names it, so neither squeezes the other. */
-  grid-template-areas:
-    "symbol symbol"
-    "link site";
+     that names it while both fit, and drops below it otherwise, so a long
+     site ("test_representation.py:419 · 2 sites") never squeezes the
+     sentence to a column of letters. */
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 0 10px;
   padding: 6px 0;
@@ -5237,8 +5236,7 @@ a.codepanel-name:hover {
   border-top: 0;
 }
 .boundary-symbol {
-  grid-area: symbol;
-  justify-self: start;
+  flex: 0 1 100%;
   max-width: 100%;
   padding: 0;
   border: 0;
@@ -5269,7 +5267,10 @@ a.codepanel-name:hover {
   text-underline-offset: 3px;
 }
 .boundary-link {
-  grid-area: link;
+  /* Its basis is the whole sentence: the site stays beside it only when
+     both fit on one line. */
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: var(--fs-caption);
   color: var(--text-secondary, var(--muted));
   overflow-wrap: break-word;
@@ -5280,10 +5281,14 @@ a.codepanel-name:hover {
   padding: 0;
 }
 .boundary-site {
-  grid-area: site;
+  flex: none;
+  max-width: 100%;
+  margin-left: auto;
   font-size: var(--fs-caption);
   color: var(--text-muted, var(--muted));
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .boundary-empty {
   margin: 4px 0;
@@ -5302,19 +5307,14 @@ a.codepanel-name:hover {
 .boundary-more:hover {
   text-decoration: underline;
 }
+/* A long caller's name wraps at its separators, in every engine, rather
+   than ending in an ellipsis in one and breaking in another. */
 .boundary-symbol code {
   display: inline-block;
   max-width: 100%;
+  overflow: visible;
+  white-space: normal;
   overflow-wrap: break-word;
-}
-@media (max-width: 720px) {
-  .boundary-row {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "symbol"
-      "link"
-      "site";
-  }
 }
 
 /* --- Overview system map: the wiki's areas by who calls whom --- */
@@ -6946,4 +6946,10 @@ a.code-activity-row:focus-visible {
   .main-path-title.is-crowded {
     font-size: 25px;
   }
+}
+
+/* Short inline code is one token to the eye: it moves to the next line
+   whole rather than breaking at a space inside it. */
+code.is-whole {
+  white-space: nowrap;
 }
