@@ -364,7 +364,9 @@ function MultimodalMedia({
                 <div className="wiki-story-map-footer">
                   <MediaStatus slot={slot} />
                   <MediaCitations slot={slot} repo={repo} />
-                  {assetUrl && (
+                  {/* A planned architecture is drawn here as the page's own
+                      waterfall; its older generated picture is not offered. */}
+                  {assetUrl && slot.render_contract?.provenance !== "architecture-plan" && (
                     <a
                       className="wiki-media-open"
                       href={assetUrl}
@@ -1252,7 +1254,7 @@ export default function WikiPageView({
     : undefined;
   // Without a traced path, the architecture's roles fall as the path would.
   const cascade =
-    activeId === "overview" && !lifted.journey && page
+    activeId === "overview" && page
       ? {
           colors: wikiGraph.colors,
           areaOf: (pageId: string) => topAreaOf(pages, pageId),
@@ -1836,22 +1838,13 @@ export default function WikiPageView({
                     </span>
                   )}
                   {page.grounding && (
-                    // The reader gets counts they can check; the pipeline's
-                    // routes, review score, and visual audit stay in the
-                    // tooltip for whoever maintains the page.
+                    // The reader gets counts they can check, and how the
+                    // sources were found if they hover.
                     <span
                       className="provenance-detail"
-                      title={[
-                        evidenceRoutes.length > 0 && `Evidence routes: ${evidenceRoutes.join(" + ")}`,
-                        page.quality?.story_review &&
-                          `Reader review ${page.quality.story_review.score}/${page.quality.story_review.max_score}${
-                            page.quality.story_review.notes ? `: ${page.quality.story_review.notes}` : ""
-                          }`,
-                        (page.visual_quality?.grounded_visuals ?? 0) > 0 &&
-                          `${page.visual_quality?.grounded_visuals} source-grounded visual(s)`,
-                      ]
-                        .filter(Boolean)
-                        .join("\n")}
+                      // How the sources were found, for a reader who asks;
+                      // the pipeline's review notes stay out of the page.
+                      title={evidenceRoutes.length > 0 ? `Evidence routes: ${evidenceRoutes.join(" + ")}` : undefined}
                     >
                       {page.grounding.evidence_count} cited symbols
                       {page.grounding.relation_count > 0 &&

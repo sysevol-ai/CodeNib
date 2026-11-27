@@ -67,13 +67,66 @@ const SVG_STYLE_PROPS = [
   "font-variant-numeric",
 ];
 
+/** A computed colour as plain rgba(): an exported image's canvas reads
+ *  color-mix() and color(srgb …) as black, so each is painted once on a
+ *  pixel and read back. */
+const plainColor = (() => {
+  let context: CanvasRenderingContext2D | null = null;
+  const cache = new Map<string, string>();
+  return (value: string): string => {
+    const text = value.trim();
+    if (!text || text === "none" || /^(rgba?\(|#|transparent$|currentcolor$|url\()/i.test(text)) return value;
+    const known = cache.get(text);
+    if (known) return known;
+    context ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    if (!context) return value;
+    // The page resolves color-mix() first; the canvas then reads what the
+    // page computed (Chromium's canvas does not parse color-mix itself).
+    const probe = document.createElement("span");
+    probe.style.color = text;
+    probe.style.display = "none";
+    document.body.appendChild(probe);
+    const resolved = getComputedStyle(probe).color || text;
+    probe.remove();
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = "#000";
+    context.fillStyle = resolved;
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+    const plain = `rgba(${r}, ${g}, ${b}, ${Math.round((a / 255) * 1000) / 1000})`;
+    cache.set(text, plain);
+    return plain;
+  };
+})();
+const COLOR_PROPS = new Set(["fill", "stroke", "color", "stop-color", "background-color", "border-color"]);
+
 function inlineSvgStyles(root: Element): () => void {
-  const saved: Array<[Element, string | null]> = [];
+  // Every value is read before any is written: writing first would drop a
+  // group's --area before its boxes are read, and they would export black.
+  // Written values are appended, so custom properties stay in place.
+  const writes: Array<[Element, string]> = [];
   for (const el of root.querySelectorAll("svg *")) {
     const computed = getComputedStyle(el);
-    saved.push([el, el.getAttribute("style")]);
-    const inline = SVG_STYLE_PROPS.map((prop) => `${prop}:${computed.getPropertyValue(prop)}`).join(";");
-    el.setAttribute("style", inline);
+    const inline = SVG_STYLE_PROPS.map((prop) => {
+      const value = computed.getPropertyValue(prop);
+      return `${prop}:${COLOR_PROPS.has(prop) ? plainColor(value) : value}`;
+    }).join(";");
+    writes.push([el, inline]);
+  }
+  // The poster's own boxes and text outside the drawing, the same way.
+  for (const el of [root, ...root.querySelectorAll(":not(svg *)")]) {
+    if (!(el instanceof HTMLElement)) continue;
+    const computed = getComputedStyle(el);
+    const colors = ["color", "background-color", "border-top-color", "border-bottom-color", "border-left-color", "border-right-color"]
+      .map((prop) => `${prop}:${plainColor(computed.getPropertyValue(prop))}`)
+      .join(";");
+    writes.push([el, colors]);
+  }
+  const saved: Array<[Element, string | null]> = [];
+  for (const [el, inline] of writes) {
+    const original = el.getAttribute("style");
+    saved.push([el, original]);
+    el.setAttribute("style", original ? `${original};${inline}` : inline);
   }
   return () => {
     for (const [el, style] of saved) {
@@ -258,6 +311,13 @@ export default function RepoPoster({
   const card = variant === "card";
   const hero = variant === "hero" || card;
   const stages = journey?.stages ?? [];
+  // The area a treemap cell opens: its own, or the one area a combined
+  // cell names; none for "+3".
+  const target = (cell: { id: string; lines: string[] }): string | null => {
+    if (cell.id !== ATLAS_MORE) return cell.id;
+    const ids = (cell as { moreIds?: string[] }).moreIds ?? [];
+    return ids.length === 1 && !cell.lines[0]?.startsWith("+") ? ids[0] : null;
+  };
   // An area's map colour as --area, for its box, its path and its tags.
   const areaStyle = (areaId: string): CSSProperties | undefined => {
     const color = colors?.get(areaId);
@@ -447,7 +507,8 @@ export default function RepoPoster({
       try {
         url = await toPng(node, {
           pixelRatio: 2,
-          backgroundColor: "#070b14",
+          // The theme's own ground: a light page exports a light poster.
+          backgroundColor: plainColor(getComputedStyle(node).backgroundColor) || "#070b14",
           filter: (child) =>
             !(child instanceof Element && child.classList.contains("poster-no-export")),
         });
@@ -560,16 +621,17 @@ export default function RepoPoster({
                   transform={`translate(${cell.x} ${cell.y})`}
                   onMouseEnter={() => setHoverNode(cell.id)}
                   onMouseLeave={() => setHoverNode(null)}
-                  // The combined cell only stands for the rows listed below it.
-                  onClick={cell.id === ATLAS_MORE ? undefined : () => onPick?.(cell.id)}
-                  role={cell.id === ATLAS_MORE ? undefined : "link"}
-                  tabIndex={cell.id === ATLAS_MORE ? undefined : 0}
+                  // The combined cell stands for the rows listed below it; one
+                  // area named in it is that area, and opens it.
+                  onClick={target(cell) ? () => onPick?.(target(cell)!) : undefined}
+                  role={target(cell) ? "link" : undefined}
+                  tabIndex={target(cell) ? 0 : undefined}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && cell.id !== ATLAS_MORE) onPick?.(cell.id);
+                    if (event.key === "Enter" && target(cell)) onPick?.(target(cell)!);
                   }}
                 >
                   <title>
-                    {cell.id === ATLAS_MORE
+                    {cell.id === ATLAS_MORE && !target(cell)
                       ? `${plural((cell as { moreCount?: number }).moreCount ?? 1, "smaller area")}, listed below: ${plural(cell.symbols, "symbol")}`
                       : `${cell.title}: ${plural(cell.symbols, "symbol")} in ${plural(cell.files, "file")}`}
                   </title>
