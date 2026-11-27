@@ -1062,6 +1062,13 @@ pre {
   top: 2px;
   left: 0;
 }
+.main-path-area.is-outside {
+  cursor: default;
+}
+.main-path-area.is-outside:hover {
+  color: var(--text-muted);
+  text-decoration: none;
+}
 .main-path-index {
   position: relative;
   z-index: 1;

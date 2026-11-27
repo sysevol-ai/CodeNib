@@ -100,6 +100,7 @@ from .schemas import (
 from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
+from .journey_areas import place_journey_areas
 from .symbol_search import symbol_index
 from .visitor_wikis import router as visitor_wiki_router
 from .walkthroughs import load_walkthroughs, walkthrough_path
@@ -1485,6 +1486,18 @@ async def wiki_page(
                     (page.get("evidence") or {}).get("relations") or [],
                 ),
             }
+        if page_id == "overview" and page.get("markdown"):
+            # Each main-path step names the area its code lives in, as the map
+            # assigns files to areas, so the path reads in the map's colours
+            # from end to end.
+            places = await _run_pinned_thread(_symbol_pages, repo_id)
+            areas = await _run_pinned_thread(_outline_areas, repo_id, bundle)
+            page = {
+                **page,
+                "markdown": place_journey_areas(
+                    str(page["markdown"]), page.get("citations") or [], places, areas
+                ),
+            }
         if "story" not in page:
             page = {
                 **page,
@@ -1947,6 +1960,29 @@ async def search_symbols(repo_id: str, q: str = "", limit: int = 20) -> dict:
             for item in found:
                 item["page"] = places.get(item["file"])
     return {"available": True, "symbols": found}
+
+
+def _outline_areas(repo_id: str, bundle) -> list[dict]:
+    """The outline's top-level areas with the files each holds, as the map has them."""
+    try:
+        builder = _wiki(repo_id, bundle)
+        cached_outline = getattr(builder, "cached_outline", None)
+        outline = cached_outline() if callable(cached_outline) else None
+    except Exception:  # noqa: BLE001 - steps keep their written areas
+        return []
+    if not outline:
+        return []
+
+    def files(page):
+        yield from page.get("files") or []
+        for child in page.get("children") or []:
+            yield from files(child)
+
+    return [
+        {"id": top["id"], "title": top.get("title") or top["id"], "files": list(files(top))}
+        for top in outline.get("pages") or []
+        if top.get("id") != "overview"
+    ]
 
 
 _SYMBOL_PAGES_TTL_S = 300.0
