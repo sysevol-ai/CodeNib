@@ -214,6 +214,7 @@ export default function RepoPoster({
   at,
   titleAs: Title = "h2",
   colors,
+  pathLabel = "Traced call path",
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -243,6 +244,8 @@ export default function RepoPoster({
   /** Each area's colour on the Wiki map, so the poster keys the Overview's
    *  coloured path; without it the poster keeps its own palette. */
   colors?: Map<string, string>;
+  /** What the marked path is: traced calls, or the architecture's parts. */
+  pathLabel?: string;
 }) {
   // "card": the static 1200x630 link-preview image; no motion, no controls.
   const card = variant === "card";
@@ -809,7 +812,7 @@ export default function RepoPoster({
       {hasTrace && (
         <div className="poster-trace">
           <div className="poster-trace-head">
-            <span className="poster-trace-label">Traced call path</span>
+            <span className="poster-trace-label">{pathLabel}</span>
             <span className="poster-trace-title">
               {leadNodes(
                 journey!.title.replace(/`([^`]+)`/g, (_match, symbol: string) =>

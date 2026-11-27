@@ -92,6 +92,36 @@ export function nodeWidth(width: number, count: number): number {
  * Word-wrap a box title. `firstMax` narrows the first line, which shares the
  * box's top row with the traced path's stop tags.
  */
+const SUFFIXES = ["tion", "sion", "ment", "ness", "ance", "ence", "able", "ible", "ical", "ture", "ing"];
+const VOWEL = /[aeiouy]/i;
+
+/** Where to hyphenate `word` so its first part is at most `limit` letters,
+ *  keeping three letters each side; 0 when there is no seam. */
+function hyphenAt(word: string, limit: number): number {
+  const lower = word.toLowerCase();
+  const fits = (p: number) => p >= 3 && p <= limit && word.length - p >= 3;
+  // The rightmost seam that fits, before a suffix or between a vowel and a
+  // consonant-vowel, so the line carries as much of the word as it can.
+  let best = 0;
+  for (const suffix of SUFFIXES) {
+    for (let p = lower.indexOf(suffix, 3); p > 0; p = lower.indexOf(suffix, p + 1)) {
+      if (fits(p)) best = Math.max(best, p);
+    }
+  }
+  for (let p = Math.min(limit, word.length - 3); p > best && p >= 3; p -= 1) {
+    const [a, b, c] = [lower[p - 1], lower[p], lower[p + 1] ?? ""];
+    if (VOWEL.test(a) && !VOWEL.test(b) && VOWEL.test(c)) {
+      best = p;
+      break;
+    }
+  }
+  if (best) return best;
+  for (let p = Math.min(limit, word.length - 3); p >= 3; p -= 1) {
+    if (!VOWEL.test(lower[p - 1]) && !VOWEL.test(lower[p])) return p;
+  }
+  return Math.min(limit, word.length - 3);
+}
+
 export function wrapTitle(
   title: string,
   max = 23,
@@ -100,8 +130,10 @@ export function wrapTitle(
   hyphenate = false,
 ): string[] {
   // Only a word longer than a whole line breaks, with a hyphen, keeping at
-  // least three letters on each side ("Internationaliza-tion"); the part
-  // before the hyphen ends its line. Shorter words never break.
+  // least three letters on each side, at a syllable seam: before a suffix
+  // ("Decora-tion", "Configura-tion"), else between a vowel and a
+  // consonant-vowel ("Internationali-zation"), else between two consonants
+  // ("Colormap-ping"). The part before the hyphen ends its line.
   const words = title
     .split(/\s+/)
     .filter(Boolean)
@@ -110,8 +142,8 @@ export function wrapTitle(
       const parts: string[] = [];
       let rest = word;
       while (rest.length > max) {
-        let cut = max - 1;
-        if (rest.length - cut < 3) cut = rest.length - 3;
+        const cut = hyphenAt(rest, max - 1);
+        if (cut < 3) break;
         parts.push(`${rest.slice(0, cut)}-`);
         rest = rest.slice(cut);
       }
@@ -684,7 +716,12 @@ export function layoutAtlas(
     );
     if (!cut || folded >= movable.length) {
       return moved.length
-        ? { ...layout, rest: moved.map((area) => ({ ...area, share: area.symbols / total })) }
+        ? {
+            ...layout,
+            rest: moved
+              .map((area) => ({ ...area, share: area.symbols / total }))
+              .sort((a, b) => b.share - a.share),
+          }
         : layout;
     }
     folded += 1;
@@ -783,7 +820,8 @@ function packAtlas(
       for (let size = largest; size >= 10; size -= 1) {
         fontSize = size;
         const lineCap = narrow ? 6 : 3;
-        maxLines = Math.max(1, Math.min(lineCap, Math.floor((cell.h - 30 - titleOffset - shareRoom) / Math.round(size * 1.25))));
+        // 10 px above the first line and room for the last line's descenders.
+        maxLines = Math.max(1, Math.min(lineCap, Math.floor((cell.h - 18 - titleOffset - shareRoom) / Math.round(size * 1.25))));
         const lines = wrapTitle(area.title, Math.floor((cell.w - 20) / (size * CHAR_EM)), maxLines);
         if (!lines.some((line) => line.endsWith("…"))) {
           fitted = true;
@@ -814,12 +852,25 @@ function packAtlas(
     let lines: string[] = [];
     if (silent.has(area.id)) {
       lines = [];
+    } else if (area.id === ATLAS_MORE) {
+      // The cell for the areas listed below always says so: "+3" if
+      // "3 more" does not fit. Its share gives way first.
+      const count = area.title.split(" ")[0];
+      lines = fits && !whole.some((line) => line.endsWith("…")) ? whole : [`+${count}`];
+      noShare = noShare || !fits;
     } else if (fits) {
-      lines = whole.some((line) => line.endsWith("…")) ? across(true) : whole;
-      // Too narrow across even hyphenated, but tall: the name runs up its side.
-      if (lines.some((line) => line.endsWith("…")) && cell.h >= 100 && !up(fontSize).some((l) => l.endsWith("…"))) {
+      const tall = cell.h >= 100 && cell.h >= 2.5 * cell.w && !up(fontSize).some((l) => l.endsWith("…"));
+      if (whole.some((line) => line.endsWith("…")) && tall) {
+        // A tall, narrow cell runs its name up the side before breaking a word.
         lines = up(fontSize);
         sideways = true;
+      } else {
+        lines = whole.some((line) => line.endsWith("…")) ? across(true) : whole;
+        // Too narrow across even hyphenated, but tall: the name runs up its side.
+        if (lines.some((line) => line.endsWith("…")) && cell.h >= 100 && !up(fontSize).some((l) => l.endsWith("…"))) {
+          lines = up(fontSize);
+          sideways = true;
+        }
       }
     } else if (vertical) {
       lines = up(fontSize);

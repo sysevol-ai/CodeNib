@@ -699,7 +699,9 @@
   border-color: #dadce0;
   box-shadow: none;
 }
-[data-theme="light"] .repo-poster.has-colours .poster-edge-line {
+/* Only the untraced references fade on paper; the traced path keeps its
+   area colours and a hovered line its highlight. */
+[data-theme="light"] .repo-poster.has-colours .poster-edge:not(.is-traced):not(.is-hot) .poster-edge-line {
   stroke: rgba(32, 33, 36, 0.1);
 }
 [data-theme="light"] .repo-poster.has-colours .poster-arrow {

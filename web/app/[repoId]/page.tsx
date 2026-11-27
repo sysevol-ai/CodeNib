@@ -517,6 +517,28 @@ function writeStored(key: string, value: string) {
 
 /** A main path whose steps name their top-level area: a step told on a
  *  detail page takes the area that page sits under, as the map draws it. */
+/** The architecture's primary path as a journey through the map's areas,
+ *  so the poster can mark it as it marks a traced call path. */
+function architectureJourney(page: WikiPage | null, pages: WikiPageRef[]): Journey | null {
+  const slot = page?.media_slots?.find(
+    (item) => item.render_contract?.adapter === "architecture" && item.render_contract.provenance === "architecture-plan",
+  );
+  const contract = slot?.render_contract;
+  if (!contract || contract.adapter !== "architecture" || contract.provenance !== "architecture-plan") return null;
+  const nodes = new Map(contract.data.nodes.map((node) => [node.id, node]));
+  const stages = contract.data.primary_path
+    .map((id) => nodes.get(id))
+    .filter((node) => node !== undefined)
+    .map((node, index) => ({
+      index: index + 1,
+      symbol: node.label,
+      text: node.detail,
+      evidence: node.evidence,
+      page: node.area ? topAreaOf(pages, node.area.id) ?? { id: node.area.id, title: node.area.title } : undefined,
+    }));
+  return stages.length >= 2 ? { title: slot?.title ?? "", stages } : null;
+}
+
 /** The top-level area a page belongs to, as the map colours it. */
 function topAreaOf(pages: WikiPageRef[], pageId: string): { id: string; title: string } | undefined {
   for (const area of pages) {
@@ -1193,7 +1215,9 @@ export default function WikiPageView({
     !!areaMap &&
     areaMap.reason !== "outline_pending" &&
     areaMap.areas.filter((area) => area.symbols > 0).length >= 2;
-  const posterJourney = activeId === "overview" ? lifted.journey : null;
+  // The poster marks the Overview's path: its traced calls, or where there
+  // are none, the architecture's parts through the areas they sit in.
+  const posterJourney = activeId === "overview" ? lifted.journey ?? architectureJourney(page, pages) : null;
   // Beside the map the Overview is titled with the repository and carries the
   // index's counts, as the poster does when the map is hidden.
   // The Overview is headed by the repository's name at every width; its
@@ -1588,6 +1612,7 @@ export default function WikiPageView({
               onOpenGraph={hasGraph ? () => openGraph() : undefined}
               titleAs="h1"
               colors={wikiGraph.colors}
+              pathLabel={lifted.journey ? "Traced call path" : "The parts in order"}
             />
           )}
           <div className="wiki-content" ref={contentRef}>

@@ -242,7 +242,9 @@ def place_architecture_areas(
             out.append(slot)
             continue
         placed = []
-        previous_source = ""
+        # Sources already shown by a step of this path: each step shows its
+        # own (astropy's steps 1 and 3 both cited hdulist.py:1).
+        used: set[str] = set()
         for node in nodes:
             if not isinstance(node, Mapping):
                 placed.append(node)
@@ -263,24 +265,26 @@ def place_architecture_areas(
                     (
                         evidence
                         for evidence, file in cited
-                        if not (is_test_path(file) or _is_readme(file))
+                        if evidence not in used
+                        and not (is_test_path(file) or _is_readme(file))
                         and (_area_of(file, areas) or _area_by_folder(file, areas))
                         is named
                     ),
                     None,
                 )
             else:
-                # A part whose first source is the very source that placed
-                # the step before it is told by its next source: two steps
-                # in a row are different parts (vue's Host Adapters cite the
-                # renderer's E4 first and runtime-dom after).
+                # A part is told by a source no other step of the path shows
+                # where it has one: two steps are different parts (vue's Host
+                # Adapters cite the renderer's E4 first and runtime-dom after).
                 usable = [
                     (evidence, file)
                     for evidence, file in cited
                     if not (is_test_path(file) or _is_readme(file))
                 ]
-                if len(usable) > 1 and usable[0][0] == previous_source:
-                    usable = usable[1:] + usable[:1]
+                # A source another step already shows goes last.
+                usable = [item for item in usable if item[0] not in used] + [
+                    item for item in usable if item[0] in used
+                ]
                 for evidence, file in usable:
                     place = (
                         _area_of(file, areas)
@@ -290,7 +294,12 @@ def place_architecture_areas(
                     if place:
                         source = evidence
                         break
-            previous_source = source or ""
+            if source in used:
+                # Placed by a source another step shows: the colour holds,
+                # the citation is not repeated.
+                source = None
+            if source:
+                used.add(source)
             if place and place.get("id") and place.get("title"):
                 area = {"id": str(place["id"]), "title": str(place["title"])}
                 if source:
