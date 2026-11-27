@@ -189,7 +189,14 @@ _WORK_WORDS = frozenset(
     }
 )
 # Reporting a problem is a side road too: ``NewDiagnostic()``, ``warn()``.
-_SIDE_WORDS = _REPORTING_WORDS | {"diagnostic", "diagnostics", "describe", "help", "usage", "version"}
+_SIDE_WORDS = _REPORTING_WORDS | {
+    "diagnostic",
+    "diagnostics",
+    "describe",
+    "help",
+    "usage",
+    "version",
+}
 
 
 def path_weight(name: str, reach: int) -> int:
@@ -201,7 +208,9 @@ def path_weight(name: str, reach: int) -> int:
     """
 
     words = _symbol_words(name)
-    if is_side_road(name):
+    # Setting up, reporting, and a check, getter or conversion are details
+    # beside the work; the walk passes them by at comparable reach.
+    if is_side_road(name) or is_detail_step(name):
         return reach // 4
     if words & _WORK_WORDS:
         return reach * 2
@@ -209,8 +218,17 @@ def path_weight(name: str, reach: int) -> int:
 
 
 def is_side_road(name: str) -> bool:
-    """Whether a callable sets something up or reports, rather than works."""
+    """Whether a callable sets something up or reports, rather than works.
 
+    A name that leads with work is work, whatever follows:
+    ``run_with_error_handler()`` runs; ``report_error()`` reports.
+    """
+
+    leaf = re.findall(
+        r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", _leaf_name(re.sub(r"<[^>]*>", "", name))
+    )
+    if leaf and leaf[0].lower() in _WORK_WORDS:
+        return False
     words = _symbol_words(name)
     lowered = name.lower()
     return bool(
@@ -248,7 +266,9 @@ _DETAIL_LEADS = frozenset(
 def is_detail_step(name: str) -> bool:
     """Whether a callable's name leads with a check, getter or conversion."""
 
-    words = re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", _leaf_name(re.sub(r"<[^>]*>", "", name)))
+    words = re.findall(
+        r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", _leaf_name(re.sub(r"<[^>]*>", "", name))
+    )
     return bool(words) and words[0].lower() in _DETAIL_LEADS
 
 
