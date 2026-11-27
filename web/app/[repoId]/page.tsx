@@ -2179,7 +2179,7 @@ export default function WikiPageView({
         <AskBar
           repoId={repoId} repo={repo.repo} collapsible browserTrial={browserTrial}
           compact={showPoster}
-          docked={!drawerMode && !showPoster}
+          docked={!drawerMode}
         />
       )}
       {staticRuntime && (

@@ -212,7 +212,7 @@ export default function MainPath({
         <h2 className="main-path-title">{titleWithCode(journey.title)}</h2>
         {roles ? (
           <p className="main-path-note">
-            The parts in the order work passes through them, each grounded in its cited source
+            The system&apos;s parts in the order work passes through them
             {colors ? "; each line takes the colour of the area it enters." : "."}
           </p>
         ) : (

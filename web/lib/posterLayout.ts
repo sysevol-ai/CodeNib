@@ -107,7 +107,14 @@ export function wrapTitle(title: string, max = 23, maxLines = MAX_LINES, firstMa
     }
   }
   if (line) lines.push(line);
-  const clip = (l: string, limit = max) => (l.length > limit ? `${l.slice(0, limit - 1).trimEnd()}…` : l);
+  // A line too long is cut at its last whole word, never inside one, unless
+  // the line is a single word.
+  const clip = (l: string, limit = max) => {
+    if (l.length <= limit) return l;
+    const cut = l.slice(0, limit - 1);
+    const space = cut.lastIndexOf(" ");
+    return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}…`;
+  };
   const fitted = lines.map((l, i) => (i === 0 ? clip(l, Math.max(firstMax, 1)) : clip(l)));
   if (lines.length <= maxLines) return fitted;
   const last = lines.slice(maxLines - 1).join(" ");
@@ -583,6 +590,8 @@ export interface AtlasLayout {
   width: number;
   height: number;
   cells: AtlasCell[];
+  /** Areas too small to name inside the picture, listed under it. */
+  rest?: Array<PosterArea & { share: number }>;
 }
 
 const ATLAS_GAP = 6;
@@ -598,21 +607,44 @@ export function layoutAtlas(
   width: number,
   tags: Map<string, number> = new Map(),
 ): AtlasLayout {
-  const shown = areas.filter((area) => area.symbols > 0).sort(
+  const sorted = areas.filter((area) => area.symbols > 0).sort(
     (a, b) => b.symbols - a.symbols || a.id.localeCompare(b.id),
   );
+  const first = packAtlas(sorted, sorted, width, tags);
+  // An area whose name cannot fit its cell whole, even small, is listed
+  // under the picture instead, and the others share its room.
+  const cut = first.cells.filter((cell) => !cell.lines.length || cell.lines.some((line) => line.endsWith("…")));
+  if (!cut.length || sorted.length - cut.length < 2) return first;
+  const folded = new Set(cut.map((cell) => cell.id));
+  const kept = sorted.filter((area) => !folded.has(area.id));
+  const total = sorted.reduce((sum, area) => sum + area.symbols, 0) || 1;
+  return {
+    ...packAtlas(kept, sorted, width, tags),
+    rest: sorted
+      .filter((area) => folded.has(area.id))
+      .map((area) => ({ ...area, share: area.symbols / total })),
+  };
+}
+
+function packAtlas(
+  shown: PosterArea[],
+  all: PosterArea[],
+  width: number,
+  tags: Map<string, number>,
+): AtlasLayout {
   // A handful of areas needs less room than a dozen; tall empty cells read
   // as a missing picture.
-  const few = shown.length <= 4 ? 180 + 24 * shown.length : Infinity;
+  const few = all.length <= 4 ? 180 + 24 * all.length : Infinity;
   const height = Math.round(
     width < VERTICAL_BELOW
       ? Math.max(Math.min(320, few), Math.min(640, width * 1.15, few * 1.6))
       : Math.max(Math.min(280, few), Math.min(460, width * 0.42, few)),
   );
-  const total = shown.reduce((sum, area) => sum + area.symbols, 0) || 1;
+  const total = all.reduce((sum, area) => sum + area.symbols, 0) || 1;
+  const packed = shown.reduce((sum, area) => sum + area.symbols, 0) || 1;
   // Inset like the map's boxes so the cells line up with the heading above.
   const inner = { x: PAD_X - ATLAS_GAP / 2, w: width - (PAD_X - ATLAS_GAP / 2) * 2 };
-  const scale = (inner.w * height) / total;
+  const scale = (inner.w * height) / packed;
   // Every area keeps room for its name: a cell never shrinks below about
   // 110 by 74 px (as long as the areas leave room for that), and the rest
   // share what is left by their size. Each cell still says its true share.
@@ -673,13 +705,22 @@ export function layoutAtlas(
       h: Math.max(0, r.h - ATLAS_GAP),
     };
     const narrow = cell.w < 120;
-    const fontSize = narrow
+    const largest = narrow
       ? 12
       : Math.round(Math.max(13, Math.min(22, Math.sqrt(cell.w * cell.h) / 16)));
-    const lineHeight = Math.round(fontSize * 1.25);
     const titleOffset = tags.get(area.id) ? 18 : 0;
     const fits = cell.w >= 72 && cell.h >= 40 + titleOffset;
-    const maxLines = Math.max(1, Math.min(3, Math.floor((cell.h - 30 - titleOffset) / lineHeight)));
+    // The share sits in the bottom corner; the name keeps clear of it.
+    const shareRoom = cell.w >= 64 && cell.h >= 40 ? 18 : 0;
+    // The name steps down in size until every word of it fits whole.
+    let fontSize = largest;
+    let maxLines = 1;
+    for (let size = largest; size >= 11; size -= 1) {
+      fontSize = size;
+      maxLines = Math.max(1, Math.min(3, Math.floor((cell.h - 30 - titleOffset - shareRoom) / Math.round(size * 1.25))));
+      const lines = wrapTitle(area.title, Math.floor((cell.w - 20) / (size * 0.56)), maxLines);
+      if (!lines.some((line) => line.endsWith("…"))) break;
+    }
     // Too narrow for its name across, but tall: the name runs up its side.
     const vertical = !fits && cell.w >= 28 && cell.h >= 80 + titleOffset;
     return {
