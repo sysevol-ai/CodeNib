@@ -513,3 +513,30 @@ def test_a_libraries_side_programs_are_no_reason_to_start():
         graph, program_files=scripts, own_files=["astropy/__init__.py"]
     )
     assert library is None
+
+
+def test_setting_up_and_reporting_are_side_roads():
+    from codenib.wiki.importance import is_side_road
+
+    for name in (
+        "NewHugoSites()",
+        "App.config()",
+        "initCommands()",
+        "WorkerMetrics.from_config()",
+        "loadI18n()",
+        "getDefaultLocaleConfig()",
+        "NewDiagnostic()",
+        "setup_localization_or_exit()",
+    ):
+        assert is_side_road(name), name
+    for name in ("Session.send()", "run_controller()", "evaluate_file()", "render()", "get()"):
+        assert not is_side_road(name), name
+
+
+def test_path_weight_favours_the_work_over_setting_up():
+    from codenib.wiki.importance import path_weight
+
+    # bat's run(): the controller that prints files, not the listing or config.
+    assert path_weight("run_controller()", 67) > path_weight("list_themes()", 107)
+    assert path_weight("run_controller()", 67) > path_weight("App.config()", 123)
+    assert path_weight("get()", 40) == 40
