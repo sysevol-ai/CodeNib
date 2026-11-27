@@ -194,6 +194,39 @@ def _area_by_title(
     return areas[scored[0][1]]
 
 
+def _area_by_folder_word(
+    label: str, areas: Sequence[Mapping[str, object]]
+) -> Mapping[str, object] | None:
+    """The area holding the folder a role is named after.
+
+    A role that cites no code is often named for a folder all the same:
+    prometheus' Rule Evaluation cites only the README, and ``rules/`` holds
+    the rule manager. The area holding the shallowest folder named with one
+    of the role's words takes it, so terraform's Providers is
+    ``internal/providers``, not ``internal/builtin/providers``; a tie names
+    none.
+    """
+    own = _title_words(label)
+    if not own:
+        return None
+    depths: list[tuple[int, int]] = []
+    for index, area in enumerate(areas):
+        best = None
+        for owned in area.get("files") or []:  # type: ignore[union-attr]
+            parts = str(owned).strip("/").split("/")
+            folders = parts[:-1] if "." in parts[-1] else parts
+            for depth, folder in enumerate(folders):
+                if own & _title_words(folder):
+                    best = depth if best is None else min(best, depth)
+                    break
+        if best is not None:
+            depths.append((best, index))
+    depths.sort()
+    if not depths or (len(depths) > 1 and depths[1][0] == depths[0][0]):
+        return None
+    return areas[depths[0][1]]
+
+
 def _cited_files(
     node: Mapping[str, object], citations: Sequence[Mapping[str, object] | None]
 ) -> list[tuple[str, str]]:
@@ -227,7 +260,9 @@ def place_architecture_areas(
     of the first code it cites, a test's or a README's only when nothing
     else is cited. The source that placed it is recorded, so the step shows
     the citation its colour comes from. A role citing only the README, or
-    code no area holds, stays outside.
+    code no area holds, takes the area holding the folder it is named after
+    (``rules/`` for Rule Evaluation); otherwise, or when outside the code,
+    it stays outside.
     """
     out: list[Mapping[str, object]] = []
     for slot in slots:
@@ -332,6 +367,9 @@ def place_architecture_areas(
                 # Every source it could show is shown by another step: the
                 # colour holds, the citation is not repeated.
                 place = candidates[0][1]
+            elif place is None and node.get("kind") != "external":
+                # No code it cites places it: the folder it is named after.
+                place = _area_by_folder_word(str(node.get("label") or ""), areas)
             if place and place.get("id") and place.get("title"):
                 area = {"id": str(place["id"]), "title": str(place["title"])}
                 if source:
