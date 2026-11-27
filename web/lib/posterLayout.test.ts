@@ -306,14 +306,16 @@ describe("layoutAtlas", () => {
     }
   });
 
-  it("reserves a title row below journey tags in sparse phone maps", () => {
+  it("sets the title on the tags' row, its first line narrowed to clear them", () => {
     const area = { id: "request", title: "Request Lifecycle Handling", symbols: 10, files: 1 };
     const plain = layoutAtlas([area], 350).cells[0];
     const tagged = layoutAtlas([area], 350, new Map([[area.id, 6]])).cells[0];
-    expect(plain.titleOffset).toBe(0);
-    expect(tagged.lines.join(" ")).toBe(area.title);
-    // Tags occupy y=7..21; title glyphs start at 10 + titleOffset.
-    expect(10 + tagged.titleOffset).toBeGreaterThan(21);
+    // Level with an untagged neighbour's title.
+    expect(tagged.titleOffset).toBe(plain.titleOffset);
+    expect(tagged.lines.filter(Boolean).join(" ")).toBe(area.title);
+    // The first line ends before the tags (6 tags, 17 px each, from the right).
+    const firstWidth = tagged.lines[0].length * tagged.fontSize * 0.62;
+    expect(12 + firstWidth).toBeLessThanOrEqual(tagged.w - 6 * 17 - 8 + 1);
     expect(tagged.h).toBe(plain.h);
   });
 });

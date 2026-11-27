@@ -717,7 +717,8 @@ export function layoutAtlas(
               symbols: moved.reduce((sum, area) => sum + area.symbols, 0),
               files: moved.reduce((sum, area) => sum + area.files, 0),
               moreCount: moved.length,
-            } as PosterArea & { moreCount: number },
+              moreIds: moved.map((area) => area.id),
+            } as PosterArea & { moreCount: number; moreIds: string[] },
           ]
         : sorted;
     const layout = packAtlas(list, sorted, width, tags);
@@ -726,6 +727,9 @@ export function layoutAtlas(
         cell.id !== ATLAS_MORE && (!cell.lines.length || cell.lines.some((line) => line.endsWith("…"))),
     );
     if (!cut || folded >= movable.length) {
+      // A single moved area named in its own cell is not listed again.
+      const more = layout.cells.find((cell) => cell.id === ATLAS_MORE);
+      if (moved.length === 1 && more && !more.lines[0]?.startsWith("+")) return layout;
       return moved.length
         ? {
             ...layout,
@@ -816,7 +820,13 @@ function packAtlas(
     const largest = narrow
       ? 12
       : Math.round(Math.max(13, Math.min(22, Math.sqrt(cell.w * cell.h) / 16)));
-    const titleOffset = tags.get(area.id) ? 18 : 0;
+    // A cell's step tags sit at its top right, on the title's own row: the
+    // first line is narrowed to clear them, so a tagged cell's name sits
+    // level with its neighbours'. A sideways name keeps clear of them below.
+    const tagged = tags.get(area.id) ?? 0;
+    const tagRoom = tagged ? tagged * TAG_W + 8 : 0;
+    const titleOffset = 0;
+    const sideOffset = tagged ? 18 : 0;
     const fits = cell.w >= 72 && cell.h >= 40 + titleOffset;
     // The share sits in the bottom corner; the name keeps clear of it, and
     // where a name needs that room, the share gives way (the rows and the
@@ -833,7 +843,12 @@ function packAtlas(
         const lineCap = narrow ? 6 : 3;
         // 10 px above the first line and room for the last line's descenders.
         maxLines = Math.max(1, Math.min(lineCap, Math.floor((cell.h - 18 - titleOffset - shareRoom) / Math.round(size * 1.25))));
-        const lines = wrapTitle(area.title, Math.floor((cell.w - 20) / (size * CHAR_EM)), maxLines);
+        const lines = wrapTitle(
+          area.title,
+          Math.floor((cell.w - 20) / (size * CHAR_EM)),
+          maxLines,
+          Math.floor((cell.w - 20 - tagRoom) / (size * CHAR_EM)),
+        );
         if (!lines.some((line) => line.endsWith("…"))) {
           fitted = true;
           break;
@@ -845,9 +860,15 @@ function packAtlas(
     }
 
     // Too narrow for its name across, but tall: the name runs up its side.
-    const vertical = !fits && cell.w >= 28 && cell.h >= 80 + titleOffset;
+    const vertical = !fits && cell.w >= 28 && cell.h >= 80 + sideOffset;
     const across = (hyphenate: boolean) =>
-      wrapTitle(area.title, Math.floor((cell.w - 20) / (fontSize * CHAR_EM)), maxLines, undefined, hyphenate);
+      wrapTitle(
+        area.title,
+        Math.floor((cell.w - 20) / (fontSize * CHAR_EM)),
+        maxLines,
+        Math.floor((cell.w - 20 - tagRoom) / (fontSize * CHAR_EM)),
+        hyphenate,
+      );
     // Whole words first; a word longer than the cell breaks with a hyphen
     // before a name would lose its end.
     const whole = fits ? across(false) : [];
@@ -856,7 +877,7 @@ function packAtlas(
     const up = (size: number) =>
       wrapTitle(
         area.title,
-        Math.floor((cell.h - 24 - titleOffset) / (size * CHAR_EM)),
+        Math.floor((cell.h - 24 - sideOffset) / (size * CHAR_EM)),
         cell.w >= 2 * Math.round(size * 1.25) + 16 ? 2 : 1,
       );
     let sideways = vertical;
@@ -869,6 +890,7 @@ function packAtlas(
       // gives way first; it never turns on its side.
       const count = (area as PosterArea & { moreCount?: number }).moreCount ?? 1;
       lines = fits && !whole.some((line) => line.endsWith("…")) ? whole : [`+${count}`];
+      if (lines[0].startsWith("+")) fontSize = 12;
       noShare = noShare || !fits;
       sideways = false;
     } else if (fits) {
