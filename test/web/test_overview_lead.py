@@ -37,3 +37,22 @@ def test_a_feature_bullet_or_an_emoji_title_is_not_a_lead():
     assert "🧠" not in replace_unfit_lead(
         title, "Evaluating long-horizon memory for agentic applications."
     )
+
+
+def test_a_lead_that_says_the_same_thing_twice_keeps_the_fuller_sentence():
+    markdown = (
+        "# Overview\n\njq is a command-line JSON processor akin to sed, awk, grep, and friends for JSON data. "
+        "[E1](#evidence-E1) `jq` is a portable C command-line JSON processor that applies a filter program "
+        "to JSON inputs and writes the filter's results as JSON. [E1](#evidence-E1)\n\n## A"
+    )
+    out = replace_unfit_lead(markdown, "")
+    assert "akin to sed" not in out
+    assert "portable C command-line JSON processor" in out and out.count("[E1]") == 1
+
+
+def test_two_different_lead_sentences_both_stay():
+    markdown = (
+        "# Overview\n\nRedis is an in-memory data structure server. [E1](#evidence-E1) "
+        "Clients send commands over a socket and the event loop runs them. [E2](#evidence-E2)\n\n## A"
+    )
+    assert replace_unfit_lead(markdown, "") == markdown

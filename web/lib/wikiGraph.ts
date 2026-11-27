@@ -3,16 +3,20 @@
 
 import type { WikiAreaLink, WikiAreaMap, WikiPageRef } from "@/lib/api";
 
-/** Fixed order, validated on the map's dark surface; never cycled. */
+/** Fixed order, validated on the map's dark surface; never cycled. Every
+ *  pair sits at least 23° apart in hue (orange and amber, which also differ
+ *  in lightness): green and coral sat beside teal, orange and pink, so lime
+ *  and magenta replaced them. Each passes 4.5:1 on the dark map and 3:1 on
+ *  white. */
 export const AREA_COLORS = [
   "#3987e5",
   "#d95926",
   "#199e70",
   "#c98500",
   "#d55181",
-  "#008300",
+  "#6f9a14",
   "#9085e9",
-  "#e66767",
+  "#b45ad6",
 ] as const;
 /** The Overview's dot in the page list, and every area past the eighth. */
 export const NEUTRAL_COLOR = "#80868b";
