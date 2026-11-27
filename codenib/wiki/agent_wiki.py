@@ -5508,7 +5508,11 @@ class AgentWiki:
                     continue
                 target_file = self._rel(target["file"]) or ""
                 # A type stub declares; the code that runs is elsewhere.
-                if not target_file or is_test_file(target_file) or target_file.endswith(".pyi"):
+                if (
+                    not target_file
+                    or is_test_file(target_file)
+                    or target_file.endswith(".pyi")
+                ):
                     continue
                 # The path follows the project's own work: not into vendored
                 # or tooling code, and not into a helper it only uses.
@@ -5667,22 +5671,32 @@ class AgentWiki:
         )
         if side is not None:
             del path[side:]
+        items_by_id = {item.id: item for item in (*evidence, *new_items)}
+
+        def forwards(step: dict[str, Any]) -> bool:
+            # A body of a line or two only hands the call on (tokio's
+            # Context.defer(), bat's Controller.run()): not a destination.
+            item = items_by_id.get(step["evidence"])
+            return item is not None and item.end_line - item.start_line <= 3
+
         while len(path) > 1 and (
-            is_side_road(path[-1]["symbol"]) or is_detail_step(path[-1]["symbol"])
+            is_side_road(path[-1]["symbol"])
+            or is_detail_step(path[-1]["symbol"])
+            or forwards(path[-1])
         ):
             path.pop()
         # A path whose every call reaches only a few functions never enters
         # the system's work (babel's CLI keeping watch-mode books).
-        known_reach = [
-            value for value in reaches[1 : len(path)] if value is not None
-        ]
+        known_reach = [value for value in reaches[1 : len(path)] if value is not None]
         # A small repository's calls all reach a few functions; the bar
         # scales with the graph, up to ten.
         floor = min(_MIN_PATH_REACH, raw_graph.vcount() // 200)
         if len(known_reach) == len(path) - 1 and max(known_reach, default=0) < floor:
             return [], [], []
         steps = path[1:]
-        if steps and 3 * sum(is_side_road(step["symbol"]) for step in steps) >= len(steps):
+        if steps and 3 * sum(is_side_road(step["symbol"]) for step in steps) >= len(
+            steps
+        ):
             return [], [], []
         if len(path) < 3:
             return [], [], []
