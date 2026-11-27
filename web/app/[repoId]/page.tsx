@@ -275,11 +275,11 @@ function MediaStatus({ slot }: { slot: WikiMediaSlot }) {
 function mediaOpenLabel(slot: WikiMediaSlot): string {
   switch (slot.render_contract?.adapter) {
     case "architecture":
-      return "Open as image ↗";
+      return "Open as image";
     case "flow":
-      return "Open as image ↗";
+      return "Open as image";
     case "storyboard":
-      return "Open as image ↗";
+      return "Open as image";
     default:
       return "Open generated asset ↗";
   }
@@ -1123,11 +1123,14 @@ export default function WikiPageView({
   const posterJourney = activeId === "overview" ? lifted.journey : null;
   // Beside the map the Overview is titled with the repository and carries the
   // index's counts, as the poster does when the map is hidden.
-  const overviewTitled = workspace && activeId === "overview";
+  // The Overview is headed by the repository's name at every width; its
+  // counts line runs beside the map, where the poster does not show them.
+  const overviewTitled = activeId === "overview";
+  const overviewWide = workspace && activeId === "overview";
   const overviewFacts =
     // Counted once the repository's own file count is in, so the line never
     // changes under the reader.
-    overviewTitled && areaMap?.available && repo ? repositoryFacts(areaMap, repo.file_count) : null;
+    overviewWide && areaMap?.available && repo ? repositoryFacts(areaMap, repo.file_count) : null;
   const renderStageText = (markdown: string) => (
     <Markdown
       citations={page?.citations}
@@ -1527,7 +1530,7 @@ export default function WikiPageView({
                         : wikiMarkdown.lead}
                     </Markdown>
                   )}
-                  {!overviewFacts && overviewTitled && !areaMapError && (!areaMap || (areaMap.available && !repo)) && (
+                  {!overviewFacts && overviewWide && !areaMapError && (!areaMap || (areaMap.available && !repo)) && (
                     // The facts' line is kept while its counts arrive, so the
                     // path below never moves.
                     <dl className="wiki-repo-facts" aria-hidden="true" style={{ visibility: "hidden" }}>
@@ -1547,7 +1550,10 @@ export default function WikiPageView({
                       ))}
                     </dl>
                   )}
-                  {activeId === "overview" && !showPoster && !workspace && (
+                  {/* A repository with no map to draw says nothing here; only a
+                      map still loading, failed or pending holds a line. */}
+                  {activeId === "overview" && !showPoster && !workspace &&
+                    (areaMap?.available || !areaMap || areaMapError || areaMap.reason === "outline_pending") && (
                     areaMap?.available ? (
                       <AreaMap map={areaMap} commit={repo?.commit_short} onPick={pick} />
                     ) : (

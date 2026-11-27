@@ -333,6 +333,11 @@ pre {
   font-weight: var(--fw-regular);
   color: var(--muted);
 }
+@media (max-width: 1180px) {
+  .site-header .header-right .header-link + .header-link {
+    margin-left: 10px;
+  }
+}
 .site-header .header-link {
   font-size: 14.5px;
   font-weight: var(--fw-regular);
@@ -1264,8 +1269,9 @@ pre {
     white-space: normal;
     overflow-wrap: anywhere;
   }
-  .main-path-title {
-    font-size: 26px;
+  .main-path-title,
+  .arch-title {
+    font-size: 29px;
   }
   /* A phone's heading may break a long call after its owner. */
   .main-path-title-unit {
@@ -6446,7 +6452,7 @@ a.code-activity-row:focus-visible {
 .arch-title {
   margin: 0 0 24px;
   color: var(--text-primary);
-  font-size: clamp(24px, 5cqi, 32px);
+  font-size: clamp(30px, 5.4cqi, 34px);
   font-weight: 500;
   line-height: 1.18;
   letter-spacing: -0.028em;
@@ -6468,6 +6474,45 @@ a.code-activity-row:focus-visible {
   border-radius: 0;
   background: none;
   box-shadow: none;
+}
+/* In the path's place it keeps the path's room above it. */
+.wiki-story > .wiki-media-bridge .wiki-story-map-frame > .arch {
+  padding-top: 56px;
+}
+/* Its sources read as a line of references under it, as a page's do: no
+   panel, no chips, a plain link to the image. */
+.wiki-story-map:has(> .wiki-story-map-frame > :is(.arch, .call-path)) .wiki-story-map-footer {
+  margin-top: 18px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border-subtle);
+  background: none;
+}
+.wiki-story-map:has(> .wiki-story-map-frame > :is(.arch, .call-path)) .wiki-media-status .ready {
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.wiki-story-map:has(> .wiki-story-map-frame > :is(.arch, .call-path)) .wiki-media-citation {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.wiki-story-map:has(> .wiki-story-map-frame > :is(.arch, .call-path)) .wiki-media-citation:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+.wiki-story-map:has(> .wiki-story-map-frame > :is(.arch, .call-path)) .wiki-media-citations {
+  gap: 4px 14px;
+}
+.wiki-story-map:has(> .wiki-story-map-frame > :is(.arch, .call-path)) .wiki-media-open {
+  border: 0;
+  padding: 0;
+  background: none;
+  font-size: var(--fs-caption);
+}
+.wiki-story-map:has(> .wiki-story-map-frame > :is(.arch, .call-path)) .wiki-media-open:hover {
+  text-decoration: underline;
 }
 .wiki-disclosure .arch-title {
   font-size: 20px;
@@ -6562,6 +6607,11 @@ a.code-activity-row:focus-visible {
   margin-top: 10px;
   color: var(--text-muted);
   font-size: var(--fs-small);
+}
+@media (max-width: 600px) {
+  .arch-title {
+    font-size: 29px;
+  }
 }
 @container (max-width: 520px) {
   .arch-path {

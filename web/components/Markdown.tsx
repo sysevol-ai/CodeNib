@@ -144,6 +144,10 @@ function groupTrailingCitations(
   const tail = items.slice(end).filter(isCitationElement);
   if (tail.length === 0) return children;
   const body = items.slice(0, end);
+  // The sources follow the last word with no space between, so a line never
+  // breaks to leave them alone; their margin keeps the gap.
+  const last = body[body.length - 1];
+  if (typeof last === "string") body[body.length - 1] = last.replace(/\s+$/, "");
   if (tail.length === 1) {
     // One source is short enough to show as it is, line number included.
     return (
