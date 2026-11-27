@@ -3,6 +3,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import type { Citation, WikiMediaSlot } from "@/lib/api";
+import MainPath from "@/components/MainPath";
 import { displaySymbol } from "@/lib/symbols";
 import { stageRoles, type Journey } from "@/lib/wikiPresentation";
 
@@ -17,6 +18,17 @@ function inlineCode(text: string): ReactNode[] {
         <span key={index}>{part}</span>
       ),
     );
+}
+
+/** What the architecture needs to fall as the main path does: the map's
+ *  colours, each page's top-level area, and the page's sources. */
+export interface ArchitectureCascade {
+  colors: Map<string, string>;
+  areaOf: (pageId: string) => { id: string; title: string } | undefined;
+  citations?: Citation[];
+  onPick: (pageId: string) => void;
+  onSource?: (index: number) => void;
+  renderText: (markdown: string) => ReactNode;
 }
 
 export interface ArchitectureJourney {
@@ -39,10 +51,13 @@ export default function SystemArchitecture({
   slot,
   trace,
   onEvidence,
+  cascade,
 }: {
   slot: WikiMediaSlot;
   trace?: ArchitectureJourney;
   onEvidence?: (ids: string[]) => void;
+  /** Draw the roles as the main path is drawn, in the map's colours. */
+  cascade?: ArchitectureCascade;
 }) {
   const contract = slot.render_contract;
   if (
@@ -111,6 +126,107 @@ export default function SystemArchitecture({
     return { edge, peer, outgoing: edge.source === nodeId };
   };
 
+  const context = (
+    <>
+        {(supportingNodes.length > 0 || contract.data.boundaries.length > 0) && (
+          <div className="arch-context">
+            {supportingNodes.length > 0 && (
+              <div className="arch-group">
+                <h3 className="arch-group-title">Also involved</h3>
+                <dl>
+                  {supportingNodes.map((node) => {
+                    const link = peerOf(node.id);
+                    return (
+                      <div className="arch-item" key={node.id}>
+                        <dt>{sourceButton(node.label, node.evidence, "Open the source for this role")}</dt>
+                        <dd>
+                          {inlineCode(node.detail)}
+                          {link && (
+                            <span className="arch-item-link">
+                              {link.outgoing ? "Hands to " : "Takes from "}
+                              {link.peer.label}: {inlineCode(link.edge.label)}
+                            </span>
+                          )}
+                        </dd>
+                      </div>
+                    );
+                  })}
+                </dl>
+              </div>
+            )}
+            {contract.data.boundaries.length > 0 && (
+              <div className="arch-group">
+                <h3 className="arch-group-title">Boundaries</h3>
+                <dl>
+                  {contract.data.boundaries.map((boundary) => (
+                    <div className="arch-item" key={boundary.id}>
+                      <dt>{boundary.label}</dt>
+                      <dd>
+                        {boundary.detail && inlineCode(boundary.detail)}
+                        <span className="arch-item-link">
+                          {boundary.members
+                            .map((member) => nodes.get(member)?.label)
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
+          </div>
+        )}
+    </>
+  );
+
+  /** What a role hands to the next, and the traced functions inside it. */
+  const after = (index: number) => {
+    const node = primaryNodes[index];
+    const handoff = handoffs[index];
+    return (
+      <>
+        {node && roleStages(node.id)}
+        {handoff && (
+          <p className="main-path-handoff">
+            {sourceButton(inlineCode(handoff.label), handoff.evidence, "Open the source for this handoff")}
+          </p>
+        )}
+      </>
+    );
+  };
+
+  if (cascade) {
+    // The roles fall as the main path does, each line in the colour of the
+    // area its source is in, so a repository with no traced call path still
+    // reads as one coloured stair down the system.
+    const journey = {
+      title: slot.title,
+      stages: primaryNodes.map((node, index) => ({
+        index: index + 1,
+        symbol: node.label,
+        text: node.detail,
+        evidence: node.evidence,
+        page: node.area ? cascade.areaOf(node.area.id) ?? node.area : undefined,
+      })),
+    };
+    return (
+      <section className="arch is-cascade" aria-label={slot.title}>
+        <MainPath
+          journey={journey}
+          roles
+          onPick={cascade.onPick}
+          renderText={cascade.renderText}
+          colors={cascade.colors}
+          citations={cascade.citations}
+          onSource={cascade.onSource}
+          renderAfter={after}
+        />
+        {context}
+      </section>
+    );
+  }
+
   return (
     <section className="arch" aria-label={slot.title}>
       <h2 className="arch-title">{slot.title}</h2>
@@ -144,55 +260,7 @@ export default function SystemArchitecture({
           );
         })}
       </ol>
-      {(supportingNodes.length > 0 || contract.data.boundaries.length > 0) && (
-        <div className="arch-context">
-          {supportingNodes.length > 0 && (
-            <div className="arch-group">
-              <h3 className="arch-group-title">Also involved</h3>
-              <dl>
-                {supportingNodes.map((node) => {
-                  const link = peerOf(node.id);
-                  return (
-                    <div className="arch-item" key={node.id}>
-                      <dt>{sourceButton(node.label, node.evidence, "Open the source for this role")}</dt>
-                      <dd>
-                        {inlineCode(node.detail)}
-                        {link && (
-                          <span className="arch-item-link">
-                            {link.outgoing ? "Hands to " : "Takes from "}
-                            {link.peer.label}: {inlineCode(link.edge.label)}
-                          </span>
-                        )}
-                      </dd>
-                    </div>
-                  );
-                })}
-              </dl>
-            </div>
-          )}
-          {contract.data.boundaries.length > 0 && (
-            <div className="arch-group">
-              <h3 className="arch-group-title">Boundaries</h3>
-              <dl>
-                {contract.data.boundaries.map((boundary) => (
-                  <div className="arch-item" key={boundary.id}>
-                    <dt>{boundary.label}</dt>
-                    <dd>
-                      {boundary.detail && inlineCode(boundary.detail)}
-                      <span className="arch-item-link">
-                        {boundary.members
-                          .map((member) => nodes.get(member)?.label)
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </span>
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          )}
-        </div>
-      )}
+      {context}
     </section>
   );
 }

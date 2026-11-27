@@ -540,3 +540,12 @@ def test_path_weight_favours_the_work_over_setting_up():
     assert path_weight("run_controller()", 67) > path_weight("list_themes()", 107)
     assert path_weight("run_controller()", 67) > path_weight("App.config()", 123)
     assert path_weight("get()", 40) == 40
+
+
+def test_a_check_getter_or_conversion_is_a_detail_not_a_destination():
+    from codenib.wiki.importance import is_detail_step
+
+    for name in ("OutputType.from_mode()", "isReactive()", "MIMEType.Satisfies()", "LinkedList<L>.new()", "toString()"):
+        assert is_detail_step(name), name
+    for name in ("HTTPAdapter.send()", "node.addChild()", "tokenize()", "eval_block()"):
+        assert not is_detail_step(name), name

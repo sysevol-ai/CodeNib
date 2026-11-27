@@ -318,7 +318,8 @@ export default function RepoPoster({
 
   const totals = useMemo(
     () => ({
-      areas: shownAreas.length,
+      // Every area the Wiki has, as its map draws them, code or not.
+      areas: map.areas.length,
       symbols: shownAreas.reduce((sum, area) => sum + area.symbols, 0),
       // The repository's own count only: a sum over areas would show first
       // and then change under the reader.

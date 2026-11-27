@@ -68,6 +68,7 @@ from .evidence import (
 )
 from .fences import fence_marker as _fence_marker
 from .importance import (
+    is_detail_step,
     is_side_road,
     path_weight,
     TIER_DETAIL,
@@ -2483,6 +2484,9 @@ _CALLS_WITHOUT_PARENS = frozenset({".rb", ".kt", ".kts", ".swift", ".scala", ".l
 # ``#[cfg(test)]`` or a pytest decorator.
 _TEST_MARKER_LINES = 12
 # A README word steers a hop only to a callee with this much behind it.
+# A main path reaches into the system: at least one call it makes leads on
+# to this many functions within two hops.
+_MIN_PATH_REACH = 10
 _README_WORD_MIN_REACH = 10
 _TEST_MARKER_RE = re.compile(
     r"#\[(?:[\w:]+::)?test\b|#\[cfg\(test\)\]|^\s*@pytest\.", re.MULTILINE
@@ -5436,6 +5440,9 @@ class AgentWiki:
         # Names collapse across files (``Handle.spawn()`` is a method of each
         # scheduler), so a visited function is its file and its name.
         visited = {(current.file.replace("\\", "/"), _canonical_symbol(current.symbol))}
+        # How far each step's callee reaches, to tell a path into the system
+        # from one that only keeps books (None: a subclass's override).
+        reaches: List[Optional[int]] = [None]
         vid_of: dict[str, int] = {}
         for _hop in range(max_hops):
             best = None
@@ -5476,7 +5483,7 @@ class AgentWiki:
                         and isinstance(header, int)
                     ):
                         anchor = f"{self._rel(sub['file'])}:{header + 1}"
-                        best = ((0,), target, target_file, span, anchor)
+                        best = ((0,), target, target_file, span, anchor, None)
             try:
                 result = graph.query_range(
                     current.file,
@@ -5500,7 +5507,8 @@ class AgentWiki:
                 ):
                     continue
                 target_file = self._rel(target["file"]) or ""
-                if not target_file or is_test_file(target_file):
+                # A type stub declares; the code that runs is elsewhere.
+                if not target_file or is_test_file(target_file) or target_file.endswith(".pyi"):
                     continue
                 # The path follows the project's own work: not into vendored
                 # or tooling code, and not into a helper it only uses.
@@ -5585,10 +5593,11 @@ class AgentWiki:
                 )
                 anchor = f"{self._rel(edge.anchor_file)}:{edge.anchor_line + 1}"
                 if best is None or score > best[0]:
-                    best = (score, target, target_file, span, anchor)
+                    best = (score, target, target_file, span, anchor, reach)
             if best is None:
                 break
-            _score, target, target_file, span, anchor = best
+            _score, target, target_file, span, anchor, hop_reach = best
+            reaches.append(hop_reach)
             canonical = _canonical_symbol(target["label"])
             visited.add((target_file, canonical))
             item = by_symbol.get(canonical)
@@ -5646,8 +5655,32 @@ class AgentWiki:
         # at its last step that works. One that is a third or more setting up (a
         # framework dispatches the commands, so the graph sees only their
         # wiring) is not told at all; the Overview shows its architecture.
-        while len(path) > 1 and is_side_road(path[-1]["symbol"]):
+        # Past a step that sets up, the path is inside the wiring (prometheus'
+        # API.Register() into each handler's response): it ends before it.
+        side = next(
+            (
+                index
+                for index, step in enumerate(path)
+                if index > 0 and is_side_road(step["symbol"])
+            ),
+            None,
+        )
+        if side is not None:
+            del path[side:]
+        while len(path) > 1 and (
+            is_side_road(path[-1]["symbol"]) or is_detail_step(path[-1]["symbol"])
+        ):
             path.pop()
+        # A path whose every call reaches only a few functions never enters
+        # the system's work (babel's CLI keeping watch-mode books).
+        known_reach = [
+            value for value in reaches[1 : len(path)] if value is not None
+        ]
+        # A small repository's calls all reach a few functions; the bar
+        # scales with the graph, up to ten.
+        floor = min(_MIN_PATH_REACH, raw_graph.vcount() // 200)
+        if len(known_reach) == len(path) - 1 and max(known_reach, default=0) < floor:
+            return [], [], []
         steps = path[1:]
         if steps and 3 * sum(is_side_road(step["symbol"]) for step in steps) >= len(steps):
             return [], [], []

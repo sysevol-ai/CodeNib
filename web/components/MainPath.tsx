@@ -80,6 +80,8 @@ export default function MainPath({
   colors,
   citations,
   onSource,
+  roles = false,
+  renderAfter,
 }: {
   journey: Journey;
   onPick: (pageId: string) => void;
@@ -90,6 +92,10 @@ export default function MainPath({
   citations?: Citation[];
   /** Open a citation's source, by its index in `citations`. */
   onSource?: (index: number) => void;
+  /** The steps are the system's parts, named in words, not calls. */
+  roles?: boolean;
+  /** What a step hands to the next, set under its sentence. */
+  renderAfter?: (position: number) => ReactNode;
 }) {
   // A step's move right, in units: one for a call within an area, two where
   // the path drops into another.
@@ -163,16 +169,23 @@ export default function MainPath({
     <figure className="main-path" aria-label={journey.title}>
       <figcaption className="main-path-head">
         <h2 className="main-path-title">{titleWithCode(journey.title)}</h2>
-        <p
-          className="main-path-note"
-          title="Each step is a call found in the source, or a base method leading to the subclass that implements it."
-        >
-          One selected path from the code index{colors ? "; each line takes the colour of the area it enters." : "."}
-        </p>
+        {roles ? (
+          <p className="main-path-note">
+            The parts in the order work passes through them, each grounded in its cited source
+            {colors ? "; each line takes the colour of the area it enters." : "."}
+          </p>
+        ) : (
+          <p
+            className="main-path-note"
+            title="Each step is a call found in the source, or a base method leading to the subclass that implements it."
+          >
+            One selected path from the code index{colors ? "; each line takes the colour of the area it enters." : "."}
+          </p>
+        )}
       </figcaption>
       <ol
         ref={listRef}
-        className={`main-path-steps${colors ? " is-coloured" : ""}`}
+        className={`main-path-steps${colors ? " is-coloured" : ""}${roles ? " is-roles" : ""}`}
         style={{ "--cascade": `${step}px`, "--units": Math.max(units, 1) } as CSSProperties}
       >
         {journey.stages.map((stage, position) => {
@@ -227,9 +240,13 @@ export default function MainPath({
               </span>
               <div className="main-path-body">
                 <div className="main-path-symbol-row">
-                  <code className="main-path-symbol" title={stage.symbol}>
-                    <Call symbol={callLabel(displaySymbol(stage.symbol, { short: true }))} />
-                  </code>
+                  {roles ? (
+                    <h3 className="main-path-role">{stage.symbol}</h3>
+                  ) : (
+                    <code className="main-path-symbol" title={stage.symbol}>
+                      <Call symbol={callLabel(displaySymbol(stage.symbol, { short: true }))} />
+                    </code>
+                  )}
                   {source && file && (
                     <button
                       type="button"
@@ -246,6 +263,7 @@ export default function MainPath({
                 {!isBareHandoff(stage.text) && (
                   <div className="main-path-text">{renderText(stage.text)}</div>
                 )}
+                {renderAfter?.(position)}
               </div>
             </li>
           );

@@ -1272,6 +1272,10 @@ pre {
   .main-path-symbol {
     font-size: 15px;
   }
+  .main-path-role {
+    font-size: 17px;
+    line-height: 24px;
+  }
   .main-path-symbol .main-path-name {
     white-space: normal;
     overflow-wrap: anywhere;
@@ -1459,11 +1463,17 @@ pre {
 .toc-cache-state.ready {
   background: #42a36b;
 }
-.toc-cache-state.retryable {
-  background: #d99928;
-}
+/* A page that still needs work is marked by an empty ring, never by a hue:
+   hues on this list mean areas. */
+.toc-cache-state.retryable,
 .toc-cache-state.degraded {
-  background: #c35b43;
+  box-sizing: border-box;
+  border: 1.5px solid var(--text-muted);
+  background: transparent;
+}
+.toc-cache-state.cold {
+  border: 1.5px dashed var(--text-muted);
+  background: transparent;
 }
 .toc-link:hover {
   background: var(--bg-subtle);
@@ -4035,23 +4045,16 @@ a.evidence-row:hover {
   gap: 6px;
   margin-top: 10px;
 }
-.wiki-media-status span {
-  border-radius: var(--radius-pill);
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  background: var(--bg-subtle);
-  color: var(--muted);
-  font-size: var(--fs-micro);
-}
-.wiki-media-status .ready {
-  border-color: color-mix(in srgb, #10b981 42%, var(--border));
-  background: color-mix(in srgb, #10b981 13%, var(--bg-surface));
-  color: #047857;
-}
+/* Where a figure comes from, said as a caption, not as a badge. */
+.wiki-media-status span,
+.wiki-media-status .ready,
 .wiki-media-status .planned {
-  border-color: var(--accent-border);
-  background: var(--accent-soft);
-  color: var(--accent);
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
 }
 .wiki-media-open {
   display: inline-flex;
@@ -4811,6 +4814,14 @@ a.codepanel-name:hover {
   display: inline;
   margin-left: 6px;
   white-space: normal;
+}
+/* The last word and its sources stay on one line, so the sources never sit
+   alone on a line of their own; an opened list wraps as text. */
+.cite-tail {
+  white-space: nowrap;
+}
+.cite-tail > .cite-group:not(.open) {
+  white-space: nowrap;
 }
 /* A paragraph's sources trail it as a footnote would: small, grey, no box. */
 .cite-group-toggle {
@@ -6455,6 +6466,41 @@ a.code-activity-row:focus-visible {
 .arch {
   margin: 48px 0 12px;
   container-type: inline-size;
+}
+/* With no traced path, the architecture falls as the path does: the main
+   path's own figure, its roles named in words. */
+.arch.is-cascade {
+  margin: 0 0 12px;
+}
+/* The path's own room above it, as on a page with a traced path. */
+.wiki-story > .wiki-media-bridge .wiki-story-map-frame > .arch.is-cascade {
+  padding-top: 0;
+}
+.arch.is-cascade .main-path {
+  margin-top: 56px;
+}
+.main-path-role {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 26px;
+  letter-spacing: -0.015em;
+}
+.main-path-handoff {
+  max-width: 62ch;
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  line-height: 1.55;
+}
+.main-path-body > .arch-stages {
+  margin-top: 8px;
+}
+/* With no facts row between them, the lead's last margin would add to the
+   figure's own space above its title. */
+.wiki-story .markdown:has(+ .wiki-media-bridge) > :last-child {
+  margin-bottom: 0;
 }
 .arch-title {
   margin: 0 0 24px;

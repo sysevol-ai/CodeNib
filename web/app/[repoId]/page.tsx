@@ -14,7 +14,7 @@ import {
 import AskIcon from "@/components/AskIcon";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
-import SystemArchitecture, { type ArchitectureJourney } from "@/components/SystemArchitecture";
+import SystemArchitecture, { type ArchitectureCascade, type ArchitectureJourney } from "@/components/SystemArchitecture";
 import CodeActivity from "@/components/CodeActivity";
 import { activityMarks } from "@/lib/codeActivity";
 import PageBoundaryCard from "@/components/PageBoundary";
@@ -194,9 +194,11 @@ function mediaKindLabel(kind: WikiMediaSlot["kind"]): string {
 function MediaPreview({
   slot,
   trace,
+  cascade,
 }: {
   slot: WikiMediaSlot;
   trace?: ArchitectureJourney;
+  cascade?: ArchitectureCascade;
 }) {
   const adapter = slot.render_contract?.adapter;
   if (adapter === "flow") return <CallPathFigure slot={slot} />;
@@ -207,7 +209,7 @@ function MediaPreview({
     adapter === "architecture" &&
     slot.render_contract?.provenance === "architecture-plan"
   ) {
-    return <SystemArchitecture slot={slot} trace={trace} />;
+    return <SystemArchitecture slot={slot} trace={trace} cascade={cascade} />;
   }
   if (adapter === "storyboard") {
     return <StoryPath slot={slot} />;
@@ -329,12 +331,15 @@ function MultimodalMedia({
   repo,
   variant = "section",
   trace,
+  cascade,
 }: {
   slots: WikiMediaSlot[];
   repo: RepoInfo | null;
   variant?: "lead" | "bridge" | "section";
   /** The Overview's entry path, drawn inside the architecture card. */
   trace?: ArchitectureJourney;
+  /** The architecture drawn as the main path is, in the map's colours. */
+  cascade?: ArchitectureCascade;
 }) {
   // A call path is drawn from its contract, so it needs no stored image.
   const visibleSlots = slots.filter(
@@ -352,7 +357,7 @@ function MultimodalMedia({
           return (
             <article className="wiki-story-map" key={slot.id}>
               <div className="wiki-story-map-frame">
-                <MediaPreview slot={slot} trace={trace} />
+                <MediaPreview slot={slot} trace={trace} cascade={cascade} />
               </div>
               {/* A call path's own caption says where it came from. */}
               {slot.render_contract?.adapter !== "flow" && (
@@ -405,7 +410,7 @@ function MultimodalMedia({
       {primary && (
         <article className="wiki-media-feature">
           <div className="wiki-media-feature-preview">
-            <MediaPreview slot={primary} trace={trace} />
+            <MediaPreview slot={primary} trace={trace} cascade={cascade} />
           </div>
           <div className="wiki-media-feature-body">
             <div className="wiki-media-eyebrow">
@@ -437,7 +442,7 @@ function MultimodalMedia({
         <div className="wiki-media-grid">
           {secondary.map((slot) => (
             <article className="wiki-media-slot" key={slot.id}>
-              <MediaPreview slot={slot} trace={trace} />
+              <MediaPreview slot={slot} trace={trace} cascade={cascade} />
               <div className="wiki-media-body">
                 <div className="wiki-media-meta">
                   <span>{mediaKindLabel(slot.kind)}</span>
@@ -481,6 +486,19 @@ function writeStored(key: string, value: string) {
 
 /** A main path whose steps name their top-level area: a step told on a
  *  detail page takes the area that page sits under, as the map draws it. */
+/** The top-level area a page belongs to, as the map colours it. */
+function topAreaOf(pages: WikiPageRef[], pageId: string): { id: string; title: string } | undefined {
+  for (const area of pages) {
+    const stack = [area];
+    while (stack.length) {
+      const item = stack.pop()!;
+      if (item.id === pageId) return { id: area.id, title: area.title };
+      stack.push(...item.children);
+    }
+  }
+  return undefined;
+}
+
 function journeyByArea(journey: Journey, pages: WikiPageRef[]): Journey {
   const top = new Map<string, { id: string; title: string }>();
   for (const area of pages) {
@@ -1173,6 +1191,18 @@ export default function WikiPageView({
         renderText: renderStageText,
       }
     : undefined;
+  // Without a traced path, the architecture's roles fall as the path would.
+  const cascade =
+    activeId === "overview" && !lifted.journey && page
+      ? {
+          colors: wikiGraph.colors,
+          areaOf: (pageId: string) => topAreaOf(pages, pageId),
+          citations: page.citations,
+          onPick: pick,
+          onSource: (index: number) => setSourceCitation(page.citations[index] ?? null),
+          renderText: renderStageText,
+        }
+      : undefined;
   // The main path figure replaces its own contract slot, and the semantic
   // architecture waits behind a disclosure so the page leads with real calls.
   const bridgeSlots = wikiMedia.bridge.filter(
@@ -1603,6 +1633,7 @@ export default function WikiPageView({
                       repo={repo}
                       variant="lead"
                       trace={trace}
+                      cascade={cascade}
                     />
                   )}
                   {lifted.journey && (
@@ -1621,6 +1652,7 @@ export default function WikiPageView({
                       repo={repo}
                       variant="bridge"
                       trace={trace}
+                      cascade={cascade}
                     />
                   )}
                   {boundary?.available && (

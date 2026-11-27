@@ -61,3 +61,61 @@ def test_prefers_the_area_whose_outline_holds_the_file():
 def test_falls_back_to_the_page_that_cites_the_file():
     out = place_journey_areas("1. **`send()`**: Sends. [E2](#evidence-E2)", CITATIONS, PLACES, AREAS)
     assert "· [Session Orchestration](?p=sessions):" in out
+
+
+def test_a_file_no_area_lists_goes_with_its_folder():
+    areas = [
+        {"id": "runtime", "title": "Runtime", "files": ["tokio/src/runtime/handle.rs"]},
+        {"id": "tasks", "title": "Task Lifecycle", "files": ["tokio/src/task/join_set.rs", "tokio/src/task/local.rs"]},
+    ]
+    citations = [{"file": "tokio/src/task/spawn.rs", "start_line": 1}, {"file": "src/main.rs", "start_line": 1}]
+    out = place_journey_areas("1. **`spawn()`**: Spawns. [E1](#evidence-E1)", citations, {}, areas)
+    assert "· [Task Lifecycle](?p=tasks):" in out
+    # A folder no area touches stays outside.
+    main = "2. **`main()`**: Starts. [E2](#evidence-E2)"
+    assert place_journey_areas(main, citations, {}, areas) == main
+
+
+def test_lists_the_top_level_areas_the_path_enters_in_order():
+    from codenib.web.journey_areas import journey_area_ids
+
+    markdown = "\n".join(
+        [
+            "1. **`main()`**: Starts.",
+            "2. **`run()`** · [CLI](?p=cli-run): Runs.",
+            "3. **`check()`** · [Linter](?p=linter): Checks.",
+            "4. **`lint()`** · [Rules](?p=linter-rules): Lints.",
+            "5. **`exit()`** · [CLI](?p=cli): Exits.",
+        ]
+    )
+    top_of = {"cli": "cli", "cli-run": "cli", "linter": "linter", "linter-rules": "linter"}
+    assert journey_area_ids(markdown, top_of) == ["cli", "linter"]
+
+
+def test_gives_each_architecture_role_the_area_of_its_source():
+    from codenib.web.journey_areas import place_architecture_areas
+
+    slots = [
+        {"id": "x", "render_contract": {"adapter": "flow", "data": {}}},
+        {
+            "id": "arch",
+            "render_contract": {
+                "adapter": "architecture",
+                "data": {
+                    "primary_path": ["user", "engine"],
+                    "nodes": [
+                        {"id": "user", "label": "User code", "evidence": ["E3"]},
+                        {"id": "engine", "label": "Engine", "evidence": ["E9", "E1"]},
+                    ],
+                },
+            },
+        },
+    ]
+    citations = [{"file": "src/core/engine.c"}, {"file": "src/api.py"}, {"file": "README.md"}]
+    out = place_architecture_areas(slots, citations, {}, AREAS)
+    assert out[0] is slots[0]
+    nodes = out[1]["render_contract"]["data"]["nodes"]
+    assert "area" not in nodes[0]
+    assert nodes[1]["area"] == {"id": "core", "title": "Core"}
+    # The slot it was given is left as it was.
+    assert "area" not in slots[1]["render_contract"]["data"]["nodes"][1]

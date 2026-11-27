@@ -76,6 +76,19 @@ describe("buildWikiGraph", () => {
     expect(colors.get("p8")).toBe(NEUTRAL_COLOR);
     expect(colors.get("p9")).toBe(NEUTRAL_COLOR);
   });
+
+  it("gives the areas the main path enters their hues first", () => {
+    const many = [page("overview"), ...Array.from({ length: 10 }, (_, index) => page(`p${index}`))];
+    const map = { available: true, areas: [], links: [], colour_first: ["p9", "p8"] };
+    const { colors } = buildWikiGraph(many, map);
+    expect(colors.get("p8")).not.toBe(NEUTRAL_COLOR);
+    expect(colors.get("p9")).not.toBe(NEUTRAL_COLOR);
+    // Two areas off the path give up their hues; hues still run in outline order.
+    expect(colors.get("p6")).toBe(NEUTRAL_COLOR);
+    expect(colors.get("p7")).toBe(NEUTRAL_COLOR);
+    expect(colors.get("p0")).toBe(AREA_COLORS[0]);
+    expect(colors.get("p9")).toBe(AREA_COLORS[7]);
+  });
 });
 
 describe("neighborhood", () => {

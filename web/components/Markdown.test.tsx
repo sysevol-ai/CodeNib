@@ -142,7 +142,10 @@ describe("Markdown reading hierarchy", () => {
         {"## Retrieval\n\n*With memory built, the method retrieves context.* [E1](#evidence-E1)\n\nA *named* term stays italic."}
       </Markdown>,
     );
-    expect(html).toContain('<p class="md-bridge">With memory built, the method retrieves context.');
+    // The last word and its source share one unbreakable span.
+    expect(html).toContain(
+      '<p class="md-bridge">With memory built, the method retrieves <span class="cite-tail">context.<span class="cite-group"',
+    );
     expect(html).not.toContain("<em>With memory built");
     expect(html).toContain("<em>named</em>");
   });

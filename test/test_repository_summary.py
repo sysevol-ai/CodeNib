@@ -146,3 +146,12 @@ def test_readme_summary_skips_a_chinese_paragraph_that_introduces_a_list():
 def test_readme_summary_joins_wrapped_chinese_lines_without_a_space():
     text = "# 项目\n\n这个工具读取代码仓库，\n生成带行号引用的说明文档。\n"
     assert readme_summary(text) == "这个工具读取代码仓库，生成带行号引用的说明文档。"
+
+
+def test_skips_an_invitation_to_the_community_chat():
+    text = (
+        "# SymPy\n\n"
+        "We have a community chat at Gitter. Feel free to ask us anything there.\n\n"
+        "SymPy is a Python library for symbolic mathematics and computer algebra.\n"
+    )
+    assert readme_summary(text, limit=600).startswith("SymPy is a Python library")

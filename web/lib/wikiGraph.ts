@@ -66,6 +66,12 @@ export function buildWikiGraph(
   const nodes: WikiGraphNode[] = [];
   const edges: WikiGraphEdge[] = [];
   const colors = new Map<string, string>();
+  // Eight hues for the areas: those the Overview's main path enters take
+  // theirs first, the rest in outline order. Hues still run in outline order,
+  // so a repository with eight areas or fewer keeps the colours it had.
+  const tops = pages.filter((page) => page.id !== "overview" && !neutral.has(page.id)).map((page) => page.id);
+  const onPath = new Set((map?.colour_first ?? []).filter((id) => tops.includes(id)));
+  const hued = new Set([...tops.filter((id) => onPath.has(id)), ...tops.filter((id) => !onPath.has(id))].slice(0, AREA_COLORS.length));
   let colorSlot = 0;
 
   const addChildren = (parent: WikiPageRef, areaId: string, color: string) => {
@@ -91,7 +97,7 @@ export function buildWikiGraph(
       colors.set(page.id, NEUTRAL_COLOR);
       continue;
     }
-    const color = neutral.has(page.id) ? NEUTRAL_COLOR : (AREA_COLORS[colorSlot++] ?? NEUTRAL_COLOR);
+    const color = hued.has(page.id) ? (AREA_COLORS[colorSlot++] ?? NEUTRAL_COLOR) : NEUTRAL_COLOR;
     colors.set(page.id, color);
     const share = Math.sqrt((symbols.get(page.id) ?? mostSymbols / 3) / mostSymbols);
     nodes.push({
