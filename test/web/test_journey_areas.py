@@ -377,3 +377,56 @@ def test_a_shared_source_goes_to_the_step_named_for_it():
     ]["data"]["nodes"]
     assert dispatch["area"].get("evidence") == "E1"
     assert "evidence" not in clients["area"]
+
+
+FOLDER_AREAS = [
+    {
+        "id": "rules",
+        "title": "Recording and Alerting Rules",
+        "files": ["rules/manager.go"],
+    },
+    {
+        "id": "providers",
+        "title": "Providers and Plugin Protocol",
+        "files": ["internal/providers/provider.go"],
+    },
+    {
+        "id": "builtin",
+        "title": "Built-in Terraform Provider",
+        "files": ["internal/builtin/providers/terraform/provider.go"],
+    },
+    {"id": "core", "title": "Core Data Model", "files": ["xarray/codecs/api.py"]},
+    {"id": "io", "title": "Files and IO", "files": ["xarray/codecs/zarr.py"]},
+]
+
+
+def test_a_role_citing_no_code_takes_the_area_holding_its_folder():
+    from codenib.web.journey_areas import place_architecture_areas
+
+    def place(label, kind="backend"):
+        slot = {
+            "render_contract": {
+                "adapter": "architecture",
+                "data": {
+                    "primary_path": [],
+                    "nodes": [
+                        {"id": "n", "label": label, "kind": kind, "evidence": ["E1"]}
+                    ],
+                },
+            }
+        }
+        node = place_architecture_areas(
+            [slot], [{"file": "README.md"}], {}, FOLDER_AREAS
+        )[0]["render_contract"]["data"]["nodes"][0]
+        return (node.get("area") or {}).get("id")
+
+    # ``rules/`` holds the rule manager.
+    assert place("Rule Evaluation") == "rules"
+    # The shallower folder: ``internal/providers``, not the built-in one.
+    assert place("Providers", kind="cloud") == "providers"
+    # Two areas hold ``codecs/`` at the same depth: no guess.
+    assert place("Codec Registry") is None
+    # A part outside the code is never placed by a folder's name.
+    assert place("Rule Evaluation", kind="external") is None
+    # No folder is named with any of its words.
+    assert place("User-Facing Symbolic API") is None
