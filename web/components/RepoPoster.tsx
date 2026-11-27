@@ -328,6 +328,22 @@ export default function RepoPoster({
   };
   // The stop numbers of an area listed outside the drawing, as its box's
   // tags would show them.
+  // A listed name with its stop numbers: the last word and the numbers
+  // never part, so a number cannot drop onto a line of its own.
+  const nameWithStops = (title: string, areaId: string) => {
+    const badges = stopBadges(areaId);
+    if (!badges) return title;
+    const cut = title.lastIndexOf(" ") + 1;
+    return (
+      <>
+        {title.slice(0, cut)}
+        <span className="poster-name-tail">
+          {title.slice(cut)}
+          {badges}
+        </span>
+      </>
+    );
+  };
   const stopBadges = (areaId: string) => {
     const staged = stagedIn(areaId);
     if (!staged.length) return null;
@@ -775,11 +791,13 @@ export default function RepoPoster({
           <ul className="poster-rest" aria-label="Smaller areas">
             {atlas.rest.map((area) => (
               <li key={area.id}>
-                <button type="button" style={areaStyle(area.id)} onClick={() => onPick?.(area.id)}>
-                  <span className="poster-rest-name">
-                    {area.title}
-                    {stopBadges(area.id)}
-                  </span>
+                <button
+                  type="button"
+                  className={focusArea === area.id ? "is-now" : undefined}
+                  style={areaStyle(area.id)}
+                  onClick={() => onPick?.(area.id)}
+                >
+                  <span className="poster-rest-name">{nameWithStops(area.title, area.id)}</span>
                   <span className="poster-rest-share">
                     {area.symbols > 0 ? `${Math.max(1, Math.round(area.share * 100))}%` : plural(pagesIn(area.id), "page")}
                   </span>
@@ -946,10 +964,7 @@ export default function RepoPoster({
                 style={areaStyle(area.id)}
                 onClick={() => onPick?.(area.id)}
               >
-                <span className="poster-chip-name">
-                  {area.title}
-                  {stopBadges(area.id)}
-                </span>
+                <span className="poster-chip-name">{nameWithStops(area.title, area.id)}</span>
                 {/* An area with no symbols mapped still has its pages. */}
                 <span>{area.symbols > 0 ? plural(area.symbols, "symbol") : plural(pagesIn(area.id), "page")}</span>
               </button>
@@ -1109,7 +1124,7 @@ export default function RepoPoster({
                   "CodeNib ·" alone on a line. */}
               {brandHost ?? (typeof window !== "undefined" ? window.location.host : "demo.codenib.ai")}/
               <wbr />
-              {repoId}
+              <span className="poster-brand-repo">{repoId}</span>
             </>
           )}
         </span>
