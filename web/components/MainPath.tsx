@@ -35,6 +35,9 @@ function Call({ symbol, breakable = true }: { symbol: string; breakable?: boolea
  *  and each held to the word before it ("From get()", "to HTTPAdapter.send()"),
  *  so a heading breaks between them, never inside a call. */
 function titleWithCode(title: string): ReactNode[] {
+  // A "From `a` to `b`" title names two calls, written as the steps write
+  // them: `main` reads `main()`, as its step does.
+  const calls = /^From `[^`]+` to `[^`]+`$/.test(title.trim());
   const parts = title.split(/`([^`]+)`/);
   const out: ReactNode[] = [];
   parts.forEach((part, index) => {
@@ -52,7 +55,7 @@ function titleWithCode(title: string): ReactNode[] {
         {/* A no-break space keeps "to" with its call, even on a phone. */}
         {before ? before[1].replace(/\s+$/, "\u00a0") : ""}
         <code title={part}>
-          <Call symbol={displaySymbol(part, { short: true })} breakable={false} />
+          <Call symbol={calls ? callLabel(displaySymbol(part, { short: true })) : displaySymbol(part, { short: true })} breakable={false} />
         </code>
       </span>,
     );
