@@ -362,7 +362,34 @@
 .poster-chip.is-now,
 .poster-rest button.is-now {
   color: var(--p-text);
+}
+/* The tint is a rounded band a little wider than the row, under its text,
+   so the dot and the count sit inside it; it fades in with the drawing. */
+.poster-chip.is-area,
+.poster-rest button {
+  position: relative;
+  isolation: isolate;
+}
+.poster-chip.is-area::after,
+.poster-rest button::after {
+  content: "";
+  position: absolute;
+  inset: 1px -8px 0;
+  z-index: -1;
+  border-radius: 4px;
+  background: transparent;
+  transition: background-color 0.2s ease;
+  pointer-events: none;
+}
+.poster-chip.is-area.is-now::after,
+.poster-rest button.is-now::after {
   background: color-mix(in srgb, var(--area, var(--p-trace)) 12%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .poster-chip.is-area::after,
+  .poster-rest button::after {
+    transition: none;
+  }
 }
 .poster-cell-share {
   fill: var(--p-dim);

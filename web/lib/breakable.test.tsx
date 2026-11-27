@@ -18,6 +18,14 @@ describe("breakableCode", () => {
     );
   });
 
+  it("breaks a long camelCase name between its words only", () => {
+    expect(html("TestTargetSetGroupsOnConfigChange")).toBe(
+      "<code>Test<wbr/>Target<wbr/>Set<wbr/>Groups<wbr/>On<wbr/>Config<wbr/>Change</code>",
+    );
+    // A short segment keeps its humps whole.
+    expect(html("SessionRedirectMixin.should_strip_auth()")).toContain("SessionRedirectMixin.");
+  });
+
   it("leaves short names and leading separators alone", () => {
     expect(html("request()")).toBe("<code>request()</code>");
     expect(html("__init__")).toBe("<code>__init__</code>");
