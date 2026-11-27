@@ -638,3 +638,33 @@
   margin-left: 4px;
   vertical-align: -1px;
 }
+
+/* In the Overview the poster keys the coloured path: each area in its map
+   colour, the traced path in the colour of the area each call enters, and
+   light blue left to links and actions. */
+.repo-poster.has-colours {
+  --p-trace: rgba(232, 234, 237, 0.62);
+  --p-trace-ink: #e8eaed;
+}
+.poster-node.has-area .poster-node-box {
+  fill: color-mix(in srgb, var(--area) 14%, var(--p-raised));
+  stroke: color-mix(in srgb, var(--area) 72%, transparent);
+}
+.poster-node.has-area.is-active .poster-node-box,
+.poster-node.has-area.is-lit .poster-node-box {
+  stroke: var(--area);
+  stroke-width: 1.5;
+}
+.poster-edge.is-traced.has-area .poster-edge-line {
+  stroke: var(--area);
+}
+.poster-node.has-area .poster-node-stages rect {
+  fill: color-mix(in srgb, var(--area) 30%, transparent);
+}
+.poster-node.has-area .poster-node-stages rect.is-now {
+  fill: var(--area);
+}
+.poster-node.has-area .poster-node-stages text,
+.poster-node.has-area .poster-node-stages rect.is-now + text {
+  fill: #fff;
+}

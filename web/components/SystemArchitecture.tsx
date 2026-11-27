@@ -207,7 +207,8 @@ export default function SystemArchitecture({
         symbol: node.label,
         text: node.detail,
         evidence: node.evidence,
-        page: node.area ? cascade.areaOf(node.area.id) ?? node.area : undefined,
+        source: node.area?.evidence,
+        page: node.area ? cascade.areaOf(node.area.id) ?? { id: node.area.id, title: node.area.title } : undefined,
       })),
     };
     return (

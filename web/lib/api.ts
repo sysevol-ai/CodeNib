@@ -338,7 +338,7 @@ export interface WikiVisualNode {
   detail: string;
   evidence: string[];
   /** The map area its first cited source is in, when one holds it. */
-  area?: { id: string; title: string };
+  area?: { id: string; title: string; evidence?: string };
   kind?:
     | "external"
     | "frontend"

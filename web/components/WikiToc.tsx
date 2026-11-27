@@ -60,7 +60,17 @@ export default function WikiToc({
   const [choices, setChoices] = useState<Record<string, boolean>>({});
   const [allDocs, setAllDocs] = useState(false);
   const [moreChoice, setMoreChoice] = useState<boolean | null>(null);
-  const { primary, more } = partitionWikiNav(pages);
+  const split = partitionWikiNav(pages);
+  // An area in colour on the map (those the Overview's path enters take the
+  // hues first) is never hidden under "More topics" while grey ones show.
+  const hued = (page: WikiPageRef) => {
+    const color = colors?.get(page.id);
+    return !!color && color !== NEUTRAL_COLOR;
+  };
+  const promoted = new Set(split.more.filter(hued).map((page) => page.id));
+  const shown = new Set([...split.primary.map((page) => page.id), ...promoted]);
+  const primary = promoted.size ? pages.filter((page) => shown.has(page.id)) : split.primary;
+  const more = promoted.size ? split.more.filter((page) => !promoted.has(page.id)) : split.more;
   const activePath = pagePath(pages, activeId);
   const moreOpen = moreChoice ?? more.some((page) => activePath.includes(page.id));
 

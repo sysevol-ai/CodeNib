@@ -388,6 +388,42 @@ function MultimodalMedia({
     ? mediaAssetUrl(primary.asset.uri)
     : null;
 
+  // The repository's own figure leads as a figure: the image, then one
+  // line saying where it comes from. No card, label or chips around it.
+  if (variant === "lead" && primary && primary.asset?.provider === "repository" && !secondary.length) {
+    const files = primary.source_citations ?? [];
+    const asset = files.find((file) => !/(^|\/)readme[^/]*$/i.test(file)) ?? files[0];
+    const assetHref = asset ? ghFileUrl(repo?.repo, repo?.source_url, repo?.base_commit, asset) : null;
+    return (
+      <figure className="wiki-repo-figure" aria-label="Figure from the repository">
+        <MediaPreview slot={primary} trace={trace} cascade={cascade} />
+        <figcaption>
+          From the repository&apos;s README
+          {asset && (
+            <>
+              {": "}
+              {assetHref ? (
+                <a className="mono" href={assetHref} target="_blank" rel="noreferrer">
+                  {repoRelative(asset)}
+                </a>
+              ) : (
+                <span className="mono">{repoRelative(asset)}</span>
+              )}
+            </>
+          )}
+          {primaryAssetUrl && (
+            <>
+              {" · "}
+              <a href={primaryAssetUrl} target="_blank" rel="noreferrer">
+                Open full size
+              </a>
+            </>
+          )}
+        </figcaption>
+      </figure>
+    );
+  }
+
   return (
     <section
       className={`wiki-media ${variant === "lead" ? "wiki-media-lead" : ""}`}
@@ -413,11 +449,6 @@ function MultimodalMedia({
             <MediaPreview slot={primary} trace={trace} cascade={cascade} />
           </div>
           <div className="wiki-media-feature-body">
-            <div className="wiki-media-eyebrow">
-              {primary.asset?.provider === "repository"
-                ? "Repository visual"
-                : `${mediaKindLabel(primary.kind)} · ${primary.placement}`}
-            </div>
             <h3>{primary.title}</h3>
             <p>{primary.purpose}</p>
             <MediaStatus slot={primary} />
@@ -1171,7 +1202,10 @@ export default function WikiPageView({
   const overviewFacts =
     // Counted once the repository's own file count is in, so the line never
     // changes under the reader.
-    overviewWide && areaMap?.available && repo ? repositoryFacts(areaMap, repo.file_count) : null;
+    // A map with areas but no references between them still has its counts.
+    overviewWide && areaMap && (areaMap.available || areaMap.areas.length > 0) && repo
+      ? repositoryFacts(areaMap, repo.file_count)
+      : null;
   const renderStageText = (markdown: string) => (
     <Markdown
       citations={page?.citations}
@@ -1551,6 +1585,7 @@ export default function WikiPageView({
               onPick={pick}
               onOpenGraph={hasGraph ? () => openGraph() : undefined}
               titleAs="h1"
+              colors={wikiGraph.colors}
             />
           )}
           <div className="wiki-content" ref={contentRef}>
