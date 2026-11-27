@@ -178,10 +178,15 @@ def _area_by_title(
         return None
     scored = []
     for index, area in enumerate(areas):
-        title = _title_words(str(area.get("title") or ""))
-        shared = own & title
-        if len(shared) >= 2 or (shared and (own <= title or title <= own)):
-            scored.append((len(shared), index))
+        best = 0
+        # The area's own title and the titles of the pages inside it.
+        for text in [area.get("title"), *(area.get("titles") or [])]:  # type: ignore[misc]
+            title = _title_words(str(text or ""))
+            shared = own & title
+            if len(shared) >= 2 or (shared and (own <= title or title <= own)):
+                best = max(best, len(shared))
+        if best:
+            scored.append((best, index))
     scored.sort(reverse=True)
     if not scored or (len(scored) > 1 and scored[1][0] == scored[0][0]):
         return None

@@ -2063,11 +2063,19 @@ def _outline_areas(repo_id: str, bundle) -> list[dict]:
         for child in page.get("children") or []:
             yield from files(child)
 
+    def titles(page):
+        yield str(page.get("title") or "")
+        for child in page.get("children") or []:
+            yield from titles(child)
+
     return [
         {
             "id": top["id"],
             "title": top.get("title") or top["id"],
             "files": list(files(top)),
+            # Every page title in the area, so a part named after one of
+            # its pages finds the area.
+            "titles": [title for title in titles(top) if title],
         }
         for top in outline.get("pages") or []
         if top.get("id") != "overview"
