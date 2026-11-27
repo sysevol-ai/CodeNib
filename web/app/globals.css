@@ -6858,3 +6858,10 @@ a.code-activity-row:focus-visible {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* A line of prose holds about seventy characters however wide the column
+   grows (at 768 px the single column ran to ninety). */
+.wiki-story .markdown > p,
+.wiki-story .markdown > ul > li,
+.wiki-story .markdown > ol > li {
+  max-width: 70ch;
+}

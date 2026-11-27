@@ -241,6 +241,12 @@ def place_architecture_areas(
             out.append(slot)
             continue
         placed = []
+        previous_file = ""
+        by_evidence = dict(
+            _cited_files(
+                {"evidence": [f"E{i + 1}" for i in range(len(citations))]}, citations
+            )
+        )
         for node in nodes:
             if not isinstance(node, Mapping):
                 placed.append(node)
@@ -268,9 +274,18 @@ def place_architecture_areas(
                     None,
                 )
             else:
-                for evidence, file in cited:
-                    if is_test_path(file) or _is_readme(file):
-                        continue
+                # A part whose first source is the one that placed the step
+                # before it is told by its next source: two steps in a row
+                # are different parts (vue's Host Adapters cite the renderer
+                # first and runtime-dom after).
+                usable = [
+                    (evidence, file)
+                    for evidence, file in cited
+                    if not (is_test_path(file) or _is_readme(file))
+                ]
+                if len(usable) > 1 and usable[0][1] == previous_file:
+                    usable = usable[1:] + usable[:1]
+                for evidence, file in usable:
                     place = (
                         _area_of(file, areas)
                         or places.get(file)
@@ -279,6 +294,7 @@ def place_architecture_areas(
                     if place:
                         source = evidence
                         break
+            previous_file = by_evidence.get(source or "", "")
             if place and place.get("id") and place.get("title"):
                 area = {"id": str(place["id"]), "title": str(place["title"])}
                 if source:
