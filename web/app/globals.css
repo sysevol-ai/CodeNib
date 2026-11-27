@@ -1066,11 +1066,13 @@ pre {
 .main-path-step.is-entry:not(:last-child)::before {
   top: calc(var(--label-h, 18px) + 38px);
 }
+/* As wide as its words (it wraps at the column), so only the name itself
+   is a click target and its focus ring hugs the text. */
 .main-path-step > .main-path-area {
   position: absolute;
   top: 2px;
   left: 0;
-  right: 0;
+  max-width: 100%;
 }
 /* Inside a disclosure the parts' heading is a section's, not the page's. */
 .wiki-disclosure .main-path-title {
@@ -3263,12 +3265,15 @@ pre {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* It says more on hover: a dotted line and the help cursor say so. */
-.provenance-detail[title] {
-  cursor: help;
-  text-decoration: underline dotted;
-  text-decoration-color: var(--border-strong);
-  text-underline-offset: 3px;
+/* It says more on hover: a dotted line and the help cursor say so, where
+   a pointer can hover. */
+@media (hover: hover) {
+  .provenance-detail[title] {
+    cursor: help;
+    text-decoration: underline dotted;
+    text-decoration-color: var(--border-strong);
+    text-underline-offset: 3px;
+  }
 }
 .provenance-model {
   color: var(--text-muted);
@@ -4892,6 +4897,16 @@ a.codepanel-name:hover {
     max-width: 100%;
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+  /* A space, not a margin, before the sources: where they start a line the
+     space falls away and they stand flush. */
+  .cite-tail > .cite-group {
+    margin-left: 0;
+  }
+  .cite-tail > .cite-group::before {
+    content: " ";
+    /* The group keeps its sources together; the space before it may break. */
+    white-space: normal;
   }
 }
 .cite-tail > .cite-group:not(.open) {

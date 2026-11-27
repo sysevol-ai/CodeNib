@@ -314,6 +314,19 @@ export default function RepoPoster({
   const card = variant === "card";
   const hero = variant === "hero" || card;
   const stages = journey?.stages ?? [];
+  // The stop numbers of an area listed outside the drawing, as its box's
+  // tags would show them.
+  const stopBadges = (areaId: string) => {
+    const staged = stagedIn(areaId);
+    if (!staged.length) return null;
+    return (
+      <span className="poster-row-stops" aria-label={`Stops ${staged.map(({ index }) => index + 1).join(", ")}`}>
+        {staged.map(({ index }) => (
+          <span key={index} className="poster-step-no">{index + 1}</span>
+        ))}
+      </span>
+    );
+  };
   // The area a treemap cell opens: its own, or the one area a combined
   // cell names; none for "+3".
   const target = (cell: { id: string; lines: string[] }): string | null => {
@@ -356,7 +369,12 @@ export default function RepoPoster({
   // Too few recorded references to draw a map: show how the code divides
   // by size instead, and say how many references there were.
   const { mode, linked } = useMemo(() => posterMode(map.areas, map.links), [map]);
-  const shownAreas = useMemo(() => map.areas.filter((area) => area.symbols > 0), [map]);
+  // An area the path enters is shown even with no symbols mapped to it, so
+  // no stop number goes missing from the poster.
+  const shownAreas = useMemo(
+    () => map.areas.filter((area) => area.symbols > 0 || stopTags.has(area.id)),
+    [map, stopTags],
+  );
   const isolated = mode === "network" ? shownAreas.filter((area) => !linked.has(area.id)) : [];
   const layout = useMemo(
     () =>
@@ -696,7 +714,10 @@ export default function RepoPoster({
               <li key={area.id}>
                 <button type="button" style={areaStyle(area.id)} onClick={() => onPick?.(area.id)}>
                   <span className="poster-rest-name">{area.title}</span>
-                  <span className="poster-rest-share">{Math.max(1, Math.round(area.share * 100))}%</span>
+                  {stopBadges(area.id)}
+                  <span className="poster-rest-share">
+                    {area.symbols > 0 ? `${Math.max(1, Math.round(area.share * 100))}%` : "no symbols"}
+                  </span>
                 </button>
               </li>
             ))}
@@ -861,7 +882,8 @@ export default function RepoPoster({
                 onClick={() => onPick?.(area.id)}
               >
                 {area.title}
-                <span>{number.format(area.symbols)} symbol{area.symbols === 1 ? "" : "s"}</span>
+                {stopBadges(area.id)}
+                <span>{plural(area.symbols, "symbol")}</span>
               </button>
             ))}
           </div>

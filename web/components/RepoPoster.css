@@ -816,3 +816,14 @@
   font-family: var(--font-sans);
   font-size: 13px;
 }
+
+/* The stop numbers of an area listed outside the drawing. */
+.poster-row-stops {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 8px;
+}
+.poster-row-stops .poster-step-no {
+  background: color-mix(in srgb, var(--area, var(--p-trace)) 30%, transparent);
+  color: var(--p-text);
+}

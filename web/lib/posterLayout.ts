@@ -727,17 +727,19 @@ export function layoutAtlas(
         cell.id !== ATLAS_MORE && (!cell.lines.length || cell.lines.some((line) => line.endsWith("…"))),
     );
     if (!cut || folded >= movable.length) {
+      // Areas the path enters with no symbols cannot be drawn by size; they
+      // are listed below with their stops.
+      const empty = areas
+        .filter((area) => area.symbols <= 0 && tags.get(area.id))
+        .map((area) => ({ ...area, share: 0 }));
       // A single moved area named in its own cell is not listed again.
       const more = layout.cells.find((cell) => cell.id === ATLAS_MORE);
-      if (moved.length === 1 && more && !more.lines[0]?.startsWith("+")) return layout;
-      return moved.length
-        ? {
-            ...layout,
-            rest: moved
-              .map((area) => ({ ...area, share: area.symbols / total }))
-              .sort((a, b) => b.share - a.share),
-          }
-        : layout;
+      const named = moved.length === 1 && more && !more.lines[0]?.startsWith("+");
+      const rest = [
+        ...(named ? [] : moved.map((area) => ({ ...area, share: area.symbols / total }))),
+        ...empty,
+      ].sort((a, b) => b.share - a.share);
+      return rest.length ? { ...layout, rest } : layout;
     }
     folded += 1;
   }
