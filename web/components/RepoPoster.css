@@ -258,7 +258,9 @@
   display: inline-flex;
   align-items: baseline;
 }
-.poster-steps li + li::before {
+/* The arrow ends a stop rather than starting the next, so a line that
+   wraps never begins with one. */
+.poster-steps li:not(:last-child)::after {
   content: "→";
   margin: 0 8px 0 6px;
   color: var(--p-dim);

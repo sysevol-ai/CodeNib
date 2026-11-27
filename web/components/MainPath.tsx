@@ -207,6 +207,14 @@ export default function MainPath({
     const list = listRef.current;
     if (!list || typeof ResizeObserver === "undefined") return undefined;
     const check = () => {
+      // Each area name's own height, so a name that wraps on a phone pushes
+      // its step down instead of running into it.
+      for (const step of list.querySelectorAll<HTMLElement>(".main-path-step.is-entry")) {
+        const label = step.querySelector<HTMLElement>(":scope > .main-path-area");
+        if (!label) continue;
+        const height = Math.ceil(label.getBoundingClientRect().height);
+        step.style.setProperty("--label-h", `${Math.max(18, height)}px`);
+      }
       const rows = [...list.querySelectorAll<HTMLElement>(".main-path-symbol-row")];
       const tight = rows.some((row) => {
         const call = row.querySelector<HTMLElement>(".main-path-symbol");
@@ -219,6 +227,8 @@ export default function MainPath({
       list.classList.toggle("is-stacked", tight);
     };
     check();
+    // A name's wrapping can change once its face arrives.
+    void document.fonts?.ready.then(check);
     const observer = new ResizeObserver(check);
     observer.observe(list);
     return () => observer.disconnect();

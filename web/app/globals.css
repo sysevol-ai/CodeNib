@@ -1053,20 +1053,28 @@ pre {
 }
 /* Where the path drops into another area, the area is named in the drop,
    over the call it lands on, and the elbow falls through that room. */
+/* The area's name sits above the step it enters; where it wraps on a
+   phone, the step makes room for every line (MainPath measures it into
+   --label-h), and the elbow falls through that room to the ring. */
 .main-path-step.is-entry {
-  padding-top: 26px;
+  padding-top: calc(var(--label-h, 18px) + 8px);
 }
 .main-path-step.is-entry:not(:first-child)::after {
-  height: 40px;
+  height: calc(var(--label-h, 18px) + 22px);
   border-bottom-left-radius: 12px;
 }
 .main-path-step.is-entry:not(:last-child)::before {
-  top: 56px;
+  top: calc(var(--label-h, 18px) + 38px);
 }
 .main-path-step > .main-path-area {
   position: absolute;
   top: 2px;
   left: 0;
+  right: 0;
+}
+/* Inside a disclosure the parts' heading is a section's, not the page's. */
+.wiki-disclosure .main-path-title {
+  font-size: 22px;
 }
 .main-path-area.is-outside {
   cursor: default;
@@ -3255,6 +3263,13 @@ pre {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* It says more on hover: a dotted line and the help cursor say so. */
+.provenance-detail[title] {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
 .provenance-model {
   color: var(--text-muted);
   font-size: var(--fs-micro);
@@ -4868,6 +4883,16 @@ a.codepanel-name:hover {
    alone on a line of their own; an opened list wraps as text. */
 .cite-tail {
   white-space: nowrap;
+}
+/* A last word and its source wider than the column (a long name on a
+   320 px phone) may wrap inside their pair rather than run past it. */
+@media (max-width: 480px) {
+  .cite-tail {
+    display: inline-block;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
 .cite-tail > .cite-group:not(.open) {
   white-space: nowrap;
@@ -6727,6 +6752,11 @@ a.code-activity-row:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+/* A long traced call wraps inside its part rather than past the column. */
+.arch-stages code {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .arch-source {
   padding: 0;
