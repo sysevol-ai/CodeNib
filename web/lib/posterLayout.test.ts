@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ATLAS_MORE,
   layoutAtlas,
   layoutPoster,
   nodeWidth,
@@ -326,5 +327,45 @@ describe("layoutAtlas height", () => {
     );
     expect(three.height).toBeLessThan(many.height);
     expect(three.height).toBeLessThanOrEqual(252);
+  });
+});
+
+describe("wrapTitle hyphenation", () => {
+  it("breaks only a word longer than a whole line, three letters each side", () => {
+    expect(wrapTitle("Controller Orchestration", 16, 4, 9, true)).toEqual(["", "Controller", "Orchestration"]);
+    const lines = wrapTitle("Internationalization and Translations", 16, 4, 16, true);
+    expect(lines[0]).toBe("Internationaliz-");
+    expect(lines.every((line) => !line.includes("- "))).toBe(true);
+    expect(lines.join(" ")).not.toContain("…");
+  });
+});
+
+describe("layoutAtlas folding", () => {
+  const areas = [
+    { id: "a", title: "Rendering Backends", symbols: 1059, files: 10 },
+    { id: "b", title: "Plotting Methods", symbols: 787, files: 10 },
+    { id: "c", title: "Artists and Primitives", symbols: 690, files: 6 },
+    { id: "d", title: "Toolkits and Projections", symbols: 651, files: 6 },
+    { id: "e", title: "Figure and Axes Model", symbols: 462, files: 3 },
+    { id: "f", title: "Color and Colormapping", symbols: 359, files: 4 },
+    { id: "g", title: "Axes Decoration", symbols: 282, files: 2 },
+    { id: "h", title: "Interaction and Widgets", symbols: 201, files: 3 },
+    { id: "i", title: "Animation and Output", symbols: 92, files: 2 },
+    { id: "j", title: "Specialty Plots and Gallery Workflows", symbols: 80, files: 2 },
+  ];
+  it("keeps every cell at its true share and folds only small areas off the path", () => {
+    const layout = layoutAtlas(areas, 330, new Map([["j", 1]]));
+    const total = areas.reduce((sum, area) => sum + area.symbols, 0);
+    const drawn = layout.cells.reduce((sum, cell) => sum + cell.w * cell.h, 0);
+    for (const cell of layout.cells) {
+      if (cell.id === ATLAS_MORE) continue;
+      const area = areas.find((item) => item.id === cell.id)!;
+      // Gaps aside, the cell's part of the picture is the area's part of the code.
+      expect(Math.abs((cell.w * cell.h) / drawn - area.symbols / total)).toBeLessThan(0.03);
+    }
+    for (const area of layout.rest ?? []) {
+      expect(area.id).not.toBe("j");
+      expect(area.symbols / total).toBeLessThan(0.05);
+    }
   });
 });

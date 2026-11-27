@@ -315,9 +315,15 @@ pre {
     display: block;
   }
 }
-/* The narrowest phones: the nib already leads home, where the Wikis are. */
+/* The narrowest phones: the nib already leads home, where the Wikis are.
+   A Wiki's header also carries Notes, so it gives up the link sooner. */
 @media (max-width: 359px) {
   .site-header .header-right .header-link {
+    display: none;
+  }
+}
+@media (max-width: 400px) {
+  .wiki-reading .site-header .header-right .header-link {
     display: none;
   }
 }
@@ -1117,12 +1123,15 @@ pre {
 }
 /* Where a file:line would fall onto a line of its own, every step sets it
    under its call. */
-.main-path-steps.is-stacked .main-path-symbol-row {
+.main-path-steps.is-stacked .main-path-symbol-row,
+.main-path-steps.is-roles .main-path-symbol-row {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
 }
-.main-path-steps.is-stacked .main-path-source {
+/* A part's name is words, so its source always sits under it. */
+.main-path-steps.is-stacked .main-path-source,
+.main-path-steps.is-roles .main-path-source {
   margin-left: 0;
 }
 /* A long call breaks after its owner, never inside a name. */
@@ -6863,5 +6872,6 @@ a.code-activity-row:focus-visible {
 .wiki-story .markdown > p,
 .wiki-story .markdown > ul > li,
 .wiki-story .markdown > ol > li {
-  max-width: 70ch;
+  /* Geist's ch is wide; 36em holds about seventy characters. */
+  max-width: 36em;
 }

@@ -242,12 +242,7 @@ def place_architecture_areas(
             out.append(slot)
             continue
         placed = []
-        previous_file = ""
-        by_evidence = dict(
-            _cited_files(
-                {"evidence": [f"E{i + 1}" for i in range(len(citations))]}, citations
-            )
-        )
+        previous_source = ""
         for node in nodes:
             if not isinstance(node, Mapping):
                 placed.append(node)
@@ -275,16 +270,16 @@ def place_architecture_areas(
                     None,
                 )
             else:
-                # A part whose first source is the one that placed the step
-                # before it is told by its next source: two steps in a row
-                # are different parts (vue's Host Adapters cite the renderer
-                # first and runtime-dom after).
+                # A part whose first source is the very source that placed
+                # the step before it is told by its next source: two steps
+                # in a row are different parts (vue's Host Adapters cite the
+                # renderer's E4 first and runtime-dom after).
                 usable = [
                     (evidence, file)
                     for evidence, file in cited
                     if not (is_test_path(file) or _is_readme(file))
                 ]
-                if len(usable) > 1 and usable[0][1] == previous_file:
+                if len(usable) > 1 and usable[0][0] == previous_source:
                     usable = usable[1:] + usable[:1]
                 for evidence, file in usable:
                     place = (
@@ -295,7 +290,7 @@ def place_architecture_areas(
                     if place:
                         source = evidence
                         break
-            previous_file = by_evidence.get(source or "", "")
+            previous_source = source or ""
             if place and place.get("id") and place.get("title"):
                 area = {"id": str(place["id"]), "title": str(place["title"])}
                 if source:

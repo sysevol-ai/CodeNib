@@ -78,8 +78,9 @@ export const TAG_W = 17;
 // Schematic routing: lane spacing in a channel and the bend radius.
 const LANE_GAP = 6;
 const BEND_R = 5;
-// Average advance of Geist at 14px/600, used to wrap titles without layout.
-const CHAR_W = 7.6;
+// Average advance of Geist at 14px/600, used to wrap titles without layout;
+// WebKit sets it a little wider than Chromium, so the estimate takes its.
+const CHAR_W = 7.9;
 
 /** Box width for `count` columns across `width`, keeping room for curves. */
 export function nodeWidth(width: number, count: number): number {
@@ -98,19 +99,21 @@ export function wrapTitle(
   firstMax = max,
   hyphenate = false,
 ): string[] {
-  // A word longer than a line breaks with a hyphen where the box cannot
-  // grow wider ("Internationaliza-tion"), rather than lose its end.
+  // Only a word longer than a whole line breaks, with a hyphen, keeping at
+  // least three letters on each side ("Internationaliza-tion"); the part
+  // before the hyphen ends its line. Shorter words never break.
   const words = title
     .split(/\s+/)
     .filter(Boolean)
     .flatMap((word) => {
-      const limit = Math.max(4, Math.min(max, firstMax));
-      if (!hyphenate || word.length <= limit) return [word];
+      if (!hyphenate || word.length <= max || max < 7) return [word];
       const parts: string[] = [];
       let rest = word;
-      while (rest.length > limit) {
-        parts.push(`${rest.slice(0, limit - 1)}-`);
-        rest = rest.slice(limit - 1);
+      while (rest.length > max) {
+        let cut = max - 1;
+        if (rest.length - cut < 3) cut = rest.length - 3;
+        parts.push(`${rest.slice(0, cut)}-`);
+        rest = rest.slice(cut);
       }
       return [...parts, rest];
     });
@@ -125,6 +128,11 @@ export function wrapTitle(
     } else {
       lines.push(line);
       line = word;
+    }
+    // A hyphenated part ends its line.
+    if (line.endsWith("-") && word.endsWith("-")) {
+      lines.push(line);
+      line = "";
     }
   }
   if (line) lines.push(line);
@@ -299,7 +307,7 @@ export function layoutPoster(
     tags.get(id) ? Math.floor((NODE_W - 28 - (tags.get(id)! * TAG_W + 4)) / CHAR_W) : titleMax;
   const wrapped = new Map(
     // A box grows a line rather than cut its name.
-    shown.map((area) => [area.id, wrapTitle(area.title, titleMax, MAX_LINES + 1, firstMax(area.id), true)]),
+    shown.map((area) => [area.id, wrapTitle(area.title, titleMax, MAX_LINES + 2, firstMax(area.id), true)]),
   );
   const heightOf = (id: string) => nodeHeight(wrapped.get(id)!.length);
   const place = (id: string, x: number, y: number, column: number): PosterNode => {
@@ -606,6 +614,8 @@ export interface AtlasCell extends PosterArea {
   titleOffset: number;
   /** A tall, narrow cell names its area up its side, in one line. */
   vertical?: boolean;
+  /** The cell's name needed the corner its share would take. */
+  noShare?: boolean;
 }
 
 export interface AtlasLayout {
@@ -641,28 +651,38 @@ export function layoutAtlas(
   );
   const total = sorted.reduce((sum, area) => sum + area.symbols, 0) || 1;
   // Every cell keeps its true size. While a name cannot fit its cell whole,
-  // the smallest drawn area moves under the picture; the moved areas share
-  // one cell sized by their combined symbols, so the picture still adds up.
+  // the smallest area moves under the picture, but only an area under 5%
+  // that the traced path does not enter. Two or more moved areas share one
+  // cell sized by their combined symbols; a single one keeps its own cell,
+  // unnamed, and is named in the row under the picture.
+  const movable = [...sorted]
+    .reverse()
+    .filter((area) => !tags.get(area.id) && area.symbols / total < 0.05);
   let folded = 0;
   for (;;) {
-    const drawn = sorted.slice(0, sorted.length - folded);
-    const moved = sorted.slice(sorted.length - folded);
-    const list = moved.length
-      ? [
-          ...drawn,
-          {
-            id: ATLAS_MORE,
-            title: `${moved.length} more`,
-            symbols: moved.reduce((sum, area) => sum + area.symbols, 0),
-            files: moved.reduce((sum, area) => sum + area.files, 0),
-          } as PosterArea,
-        ]
-      : drawn;
-    const layout = packAtlas(list, sorted, width, tags);
+    const moved = movable.slice(0, folded);
+    const movedIds = new Set(moved.map((area) => area.id));
+    const drawn = sorted.filter((area) => !movedIds.has(area.id));
+    const list =
+      moved.length > 1
+        ? [
+            ...drawn,
+            {
+              id: ATLAS_MORE,
+              title: `${moved.length} more`,
+              symbols: moved.reduce((sum, area) => sum + area.symbols, 0),
+              files: moved.reduce((sum, area) => sum + area.files, 0),
+            } as PosterArea,
+          ]
+        : sorted;
+    const layout = packAtlas(list, sorted, width, tags, movedIds);
     const cut = layout.cells.some(
-      (cell) => cell.id !== ATLAS_MORE && (!cell.lines.length || cell.lines.some((line) => line.endsWith("…"))),
+      (cell) =>
+        cell.id !== ATLAS_MORE &&
+        !movedIds.has(cell.id) &&
+        (!cell.lines.length || cell.lines.some((line) => line.endsWith("…"))),
     );
-    if (!cut || drawn.length <= 2) {
+    if (!cut || folded >= movable.length) {
       return moved.length
         ? { ...layout, rest: moved.map((area) => ({ ...area, share: area.symbols / total })) }
         : layout;
@@ -676,13 +696,15 @@ function packAtlas(
   all: PosterArea[],
   width: number,
   tags: Map<string, number>,
+  /** Areas drawn at their size but named only in the rows under the picture. */
+  silent: Set<string> = new Set(),
 ): AtlasLayout {
   // A handful of areas needs less room than a dozen; tall empty cells read
   // as a missing picture.
   const few = all.length <= 4 ? 180 + 24 * all.length : Infinity;
   const height = Math.round(
     width < VERTICAL_BELOW
-      ? Math.max(Math.min(320, few), Math.min(640, width * 1.15, few * 1.6))
+      ? Math.max(Math.min(320, few), Math.min(720, width * 1.45, few * 1.6))
       : Math.max(Math.min(280, few), Math.min(460, width * 0.42, few)),
   );
   const total = all.reduce((sum, area) => sum + area.symbols, 0) || 1;
@@ -748,30 +770,66 @@ function packAtlas(
       : Math.round(Math.max(13, Math.min(22, Math.sqrt(cell.w * cell.h) / 16)));
     const titleOffset = tags.get(area.id) ? 18 : 0;
     const fits = cell.w >= 72 && cell.h >= 40 + titleOffset;
-    // The share sits in the bottom corner; the name keeps clear of it.
-    const shareRoom = cell.w >= 64 && cell.h >= 40 ? 18 : 0;
+    // The share sits in the bottom corner; the name keeps clear of it, and
+    // where a name needs that room, the share gives way (the rows and the
+    // box's own title still give it).
+    let shareRoom = cell.w >= 64 && cell.h >= 40 ? 18 : 0;
+    let noShare = false;
     // The name steps down in size until every word of it fits whole.
     let fontSize = largest;
     let maxLines = 1;
-    for (let size = largest; size >= 11; size -= 1) {
-      fontSize = size;
-      // A narrow, tall cell stacks its name a word or two to a line.
-      const lineCap = narrow ? 5 : 3;
-      maxLines = Math.max(1, Math.min(lineCap, Math.floor((cell.h - 30 - titleOffset - shareRoom) / Math.round(size * 1.25))));
-      const lines = wrapTitle(area.title, Math.floor((cell.w - 20) / (size * CHAR_EM)), maxLines);
-      if (!lines.some((line) => line.endsWith("…"))) break;
+    for (let pass = 0; pass < 2; pass += 1) {
+      let fitted = false;
+      for (let size = largest; size >= 10; size -= 1) {
+        fontSize = size;
+        const lineCap = narrow ? 6 : 3;
+        maxLines = Math.max(1, Math.min(lineCap, Math.floor((cell.h - 30 - titleOffset - shareRoom) / Math.round(size * 1.25))));
+        const lines = wrapTitle(area.title, Math.floor((cell.w - 20) / (size * CHAR_EM)), maxLines);
+        if (!lines.some((line) => line.endsWith("…"))) {
+          fitted = true;
+          break;
+        }
+      }
+      if (fitted || !shareRoom) break;
+      shareRoom = 0;
+      noShare = true;
     }
+
     // Too narrow for its name across, but tall: the name runs up its side.
     const vertical = !fits && cell.w >= 28 && cell.h >= 80 + titleOffset;
+    const across = (hyphenate: boolean) =>
+      wrapTitle(area.title, Math.floor((cell.w - 20) / (fontSize * CHAR_EM)), maxLines, undefined, hyphenate);
+    // Whole words first; a word longer than the cell breaks with a hyphen
+    // before a name would lose its end.
+    const whole = fits ? across(false) : [];
+    // Up the side, in one line, or two side by side where the cell is wide
+    // enough for both.
+    const up = (size: number) =>
+      wrapTitle(
+        area.title,
+        Math.floor((cell.h - 24 - titleOffset) / (size * CHAR_EM)),
+        cell.w >= 2 * Math.round(size * 1.25) + 16 ? 2 : 1,
+      );
+    let sideways = vertical;
+    let lines: string[] = [];
+    if (silent.has(area.id)) {
+      lines = [];
+    } else if (fits) {
+      lines = whole.some((line) => line.endsWith("…")) ? across(true) : whole;
+      // Too narrow across even hyphenated, but tall: the name runs up its side.
+      if (lines.some((line) => line.endsWith("…")) && cell.h >= 100 && !up(fontSize).some((l) => l.endsWith("…"))) {
+        lines = up(fontSize);
+        sideways = true;
+      }
+    } else if (vertical) {
+      lines = up(fontSize);
+    }
     return {
       ...area,
       ...cell,
-      lines: fits
-        ? wrapTitle(area.title, Math.floor((cell.w - 20) / (fontSize * CHAR_EM)), maxLines)
-        : vertical
-          ? wrapTitle(area.title, Math.floor((cell.h - 24 - titleOffset) / (fontSize * CHAR_EM)), 1)
-          : [],
-      vertical,
+      lines,
+      vertical: sideways,
+      noShare,
       share: area.symbols / total,
       fontSize,
       titleOffset,
