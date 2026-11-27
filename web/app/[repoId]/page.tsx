@@ -519,6 +519,19 @@ function writeStored(key: string, value: string) {
 
 /** A main path whose steps name their top-level area: a step told on a
  *  detail page takes the area that page sits under, as the map draws it. */
+/** How a page's sources were found, in words a reader knows. */
+const ROUTE_WORDS: Record<string, string> = {
+  bm25: "keyword search",
+  embedding: "meaning search",
+  vector: "meaning search",
+  outline: "the page outline",
+  repository: "the repository's README and manifests",
+  "entry path": "the traced call path",
+  graph: "the code graph",
+  regex: "pattern search",
+  trigram: "text search",
+};
+
 /** The architecture's primary path as a journey through the map's areas,
  *  so the poster can mark it as it marks a traced call path. */
 function architectureJourney(page: WikiPage | null, pages: WikiPageRef[]): Journey | null {
@@ -1615,6 +1628,7 @@ export default function WikiPageView({
               titleAs="h1"
               colors={wikiGraph.colors}
               pathLabel={lifted.journey ? "Traced call path" : "The parts in order"}
+              roles={!lifted.journey}
             />
           )}
           <div className="wiki-content" ref={contentRef}>
@@ -1758,6 +1772,7 @@ export default function WikiPageView({
                         repo={repo}
                         variant="bridge"
                         trace={trace}
+                        cascade={cascade}
                       />
                     </details>
                   )}
@@ -1844,7 +1859,11 @@ export default function WikiPageView({
                       className="provenance-detail"
                       // How the sources were found, for a reader who asks;
                       // the pipeline's review notes stay out of the page.
-                      title={evidenceRoutes.length > 0 ? `Evidence routes: ${evidenceRoutes.join(" + ")}` : undefined}
+                      title={
+                        evidenceRoutes.length > 0
+                          ? `Sources found by: ${evidenceRoutes.map((route) => ROUTE_WORDS[route] ?? route).join(", ")}`
+                          : undefined
+                      }
                     >
                       {page.grounding.evidence_count} cited symbols
                       {page.grounding.relation_count > 0 &&
