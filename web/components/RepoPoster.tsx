@@ -143,7 +143,7 @@ function EdgeCallout({
         </button>
       </div>
       <div className="poster-callout-meta">
-        {number.format(edge.weight)} recorded references
+        {plural(edge.weight, "recorded reference")}
         {edge.calls !== edge.weight && <> · {number.format(edge.calls)} distinct pairs</>}
       </div>
       {link && (
@@ -198,6 +198,12 @@ function EdgeCallout({
  * between them, with the traced entry path played along it. Everything drawn
  * comes from the code index; the model wrote none of it.
  */
+const counted = new Intl.NumberFormat("en-US");
+/** "1 file", "12 files": one wording for every count the poster prints. */
+function plural(count: number, noun: string): string {
+  return `${counted.format(count)} ${noun}${count === 1 ? "" : "s"}`;
+}
+
 export default function RepoPoster({
   repoId,
   repo,
@@ -564,8 +570,8 @@ export default function RepoPoster({
                 >
                   <title>
                     {cell.id === ATLAS_MORE
-                      ? `${cell.title} smaller areas, listed below: ${number.format(cell.symbols)} symbols`
-                      : `${cell.title}: ${number.format(cell.symbols)} symbols in ${cell.files} files`}
+                      ? `${plural((cell as { moreCount?: number }).moreCount ?? 1, "smaller area")}, listed below: ${plural(cell.symbols, "symbol")}`
+                      : `${cell.title}: ${plural(cell.symbols, "symbol")} in ${plural(cell.files, "file")}`}
                   </title>
                   <rect
                     className="poster-node-box"
@@ -699,7 +705,7 @@ export default function RepoPoster({
                     onClick={() => setSelected((current) => (current === key ? null : key))}
                   >
                     <title>
-                      {`${titles.get(edge.source)} → ${titles.get(edge.target)}: ${number.format(edge.weight)} references`}
+                      {`${titles.get(edge.source)} → ${titles.get(edge.target)}: ${plural(edge.weight, "reference")}`}
                     </title>
                   </path>
                 </g>

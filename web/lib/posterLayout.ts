@@ -712,10 +712,12 @@ export function layoutAtlas(
             ...drawn,
             {
               id: ATLAS_MORE,
-              title: `${moved.length} more`,
+              // One moved area keeps its own name if the cell can hold it.
+              title: moved.length === 1 ? moved[0].title : `${moved.length} more`,
               symbols: moved.reduce((sum, area) => sum + area.symbols, 0),
               files: moved.reduce((sum, area) => sum + area.files, 0),
-            } as PosterArea,
+              moreCount: moved.length,
+            } as PosterArea & { moreCount: number },
           ]
         : sorted;
     const layout = packAtlas(list, sorted, width, tags);
@@ -862,11 +864,13 @@ function packAtlas(
     if (silent.has(area.id)) {
       lines = [];
     } else if (area.id === ATLAS_MORE) {
-      // The cell for the areas listed below always says so: "+3" if
-      // "3 more" does not fit. Its share gives way first.
-      const count = area.title.split(" ")[0];
+      // The cell for the areas listed below always says so, level at its
+      // top: its name or "3 more" where that fits, else "+3". Its share
+      // gives way first; it never turns on its side.
+      const count = (area as PosterArea & { moreCount?: number }).moreCount ?? 1;
       lines = fits && !whole.some((line) => line.endsWith("…")) ? whole : [`+${count}`];
       noShare = noShare || !fits;
+      sideways = false;
     } else if (fits) {
       const tall = cell.h >= 100 && cell.h >= 2.5 * cell.w && !up(fontSize).some((l) => l.endsWith("…"));
       if (whole.some((line) => line.endsWith("…")) && tall) {

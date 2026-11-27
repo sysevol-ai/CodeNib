@@ -288,11 +288,27 @@ def place_architecture_areas(
         # The steps the waterfall draws claim before the parts listed beside
         # it (vue's VNode Tree must not take the Renderer's one source).
         on_path = {str(item) for item in (data.get("primary_path") or [])}
+
+        def affinity(index: int) -> int:
+            # How well a step's name fits the code it cites: valkey's Command
+            # Dispatcher, not Client Connections, takes processCommand.
+            label = _title_words(str((nodes[index] or {}).get("label") or ""))
+            best = 0
+            for evidence, _place in plans[index][1]:
+                match = re.fullmatch(r"E(\d+)", evidence)
+                position = int(match.group(1)) - 1 if match else -1
+                cite = citations[position] if 0 <= position < len(citations) else None
+                name = str((cite or {}).get("node_name") or "")
+                words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name).replace("_", " ")
+                best = max(best, len(label & _title_words(words)))
+            return best
+
         order = sorted(
             (index for index, plan in enumerate(plans) if plan and plan[1]),
             key=lambda index: (
                 str((nodes[index] or {}).get("id")) not in on_path,
                 len(plans[index][1]),
+                -affinity(index),
                 index,
             ),
         )

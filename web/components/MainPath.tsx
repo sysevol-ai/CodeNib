@@ -177,10 +177,21 @@ export default function MainPath({
     const title = titleRef.current;
     if (!title || typeof ResizeObserver === "undefined") return undefined;
     const check = () => {
+      // A heading that would run to four lines on a phone sets a size
+      // smaller, so it reads as a heading, not a column.
+      title.classList.remove("is-crowded");
       for (const unit of title.querySelectorAll<HTMLElement>(".main-path-title-unit")) {
         // Measured whole, on one line: an inline span has no scroll width.
         unit.classList.remove("is-long");
         unit.classList.toggle("is-long", unit.getBoundingClientRect().width > title.clientWidth + 1);
+      }
+      const lineHeight = parseFloat(getComputedStyle(title).lineHeight) || 1;
+      if (window.innerWidth <= 600 && title.getBoundingClientRect().height / lineHeight > 3.5) {
+        title.classList.add("is-crowded");
+        for (const unit of title.querySelectorAll<HTMLElement>(".main-path-title-unit")) {
+          unit.classList.remove("is-long");
+          unit.classList.toggle("is-long", unit.getBoundingClientRect().width > title.clientWidth + 1);
+        }
       }
     };
     check();
