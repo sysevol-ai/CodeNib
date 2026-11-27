@@ -261,11 +261,25 @@ function placeLabels(
           });
         }
       }
-      // What a place costs: the other areas it covers, and a little for each
-      // pixel it sits away from its own mark, so the name reads as its own.
-      const cost = (candidate: typeof box) =>
-        coverage(candidate) +
-        30 * Math.max(0, Math.hypot(Math.max(candidate.left - sx, 0, sx - candidate.right), Math.max(candidate.top - sy, 0, sy - candidate.bottom)) - radius);
+      // What a place costs: first how deep it cuts into another area's mark;
+      // only among places clear of every other mark (by a pixel) does nearness to its own mark
+      // decide, so the name reads as its own without covering another.
+      const depth = (candidate: typeof box) =>
+        marks.reduce((deepest, mark) => {
+          if (mark.id === node.id) return deepest;
+          const cx = (mark.left + mark.right) / 2;
+          const cy = (mark.top + mark.bottom) / 2;
+          const r = (mark.right - mark.left) / 2;
+          const gap = Math.hypot(Math.max(candidate.left - cx, 0, cx - candidate.right), Math.max(candidate.top - cy, 0, cy - candidate.bottom));
+          return Math.max(deepest, r - gap);
+        }, 0);
+      const cost = (candidate: typeof box) => {
+        // Measured on the place grown by 2 px: drawn glyphs run a little past
+        // the estimated box.
+        const cut = depth({ left: candidate.left - 2, right: candidate.right + 2, top: candidate.top - 2, bottom: candidate.bottom + 2 });
+        const away = Math.max(0, Math.hypot(Math.max(candidate.left - sx, 0, sx - candidate.right), Math.max(candidate.top - sy, 0, sy - candidate.bottom)) - radius);
+        return (cut > 0 ? (cut + 1) * 1000 + coverage(candidate) : 0) + away;
+      };
       const ownMark = marks.find((mark) => mark.id === node.id);
       const overOwn = (candidate: typeof box) =>
         !!ownMark &&
@@ -314,11 +328,12 @@ function placeLabels(
               : 0;
         const sideBox = { ...box, left: sideLeft + shift, right: sideLeft + shift + width };
         const onOwn =
-          !!ownMark &&
-          sideBox.left < ownMark.right &&
-          sideBox.right > ownMark.left &&
-          sideBox.top < ownMark.bottom &&
-          sideBox.bottom > ownMark.top;
+          (!!ownMark &&
+            sideBox.left < ownMark.right &&
+            sideBox.right > ownMark.left &&
+            sideBox.top < ownMark.bottom &&
+            sideBox.bottom > ownMark.top) ||
+          sideBox.top < ceiling;
         return { placed: { id: node.id, lines, anchor: side, dx: sideDx + shift, dy, box: sideBox }, onOwn };
       };
       const usual = settle(anchor, dx);
@@ -665,7 +680,8 @@ export default function WikiGraphPane({
     const floor = footHeight ? size.height - footHeight + 8 : Infinity;
     // A phone-sized map's header wraps over the top of the map: names keep
     // below it. Wider maps place as they always have.
-    const ceiling = header && headHeight && size.width < 520 ? headHeight + 4 : -Infinity;
+    // The header sits 14 px down from the map's top edge.
+    const ceiling = header && headHeight && size.width < 520 ? headHeight + 18 : -Infinity;
     return placeLabels(graph.nodes, points, view, center, size.width, (node) => {
       // The chapter being written keeps its name, so the reader can follow it.
       if (states?.[node.id] === "running") return 4;
