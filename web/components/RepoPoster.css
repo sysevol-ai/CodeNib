@@ -357,9 +357,12 @@
   text-decoration-color: var(--p-line-strong);
   text-underline-offset: 3px;
 }
-/* Lit by the trace: brighter, not bolder, so nothing beside it moves. */
-.poster-chip.is-now {
+/* Lit by the trace: tinted in its area's hue, not bolder, so nothing
+   beside it moves while the drawing dims around it. */
+.poster-chip.is-now,
+.poster-rest button.is-now {
   color: var(--p-text);
+  background: color-mix(in srgb, var(--area, var(--p-trace)) 12%, transparent);
 }
 .poster-cell-share {
   fill: var(--p-dim);
@@ -897,4 +900,17 @@
 }
 .poster-chip-name {
   min-width: 0;
+}
+.poster-name-tail,
+.poster-brand-repo {
+  white-space: nowrap;
+}
+/* A stop no area holds is numbered in grey, as the reading column shows
+   it; blue means links. */
+.repo-poster.has-colours .poster-step:not(.has-area) .poster-step-no {
+  background: color-mix(in srgb, var(--p-dim) 30%, transparent);
+  color: var(--p-text);
+}
+.repo-poster.has-colours .poster-step.is-now:not(.has-area) .poster-step-no {
+  background: var(--p-dim);
 }
