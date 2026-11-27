@@ -793,13 +793,28 @@
   margin-right: -2px;
   border-radius: 50%;
   background: var(--area, var(--p-dim));
-  align-self: center;
+  /* Level with the name's first line when the name wraps. */
+  align-self: flex-start;
+  margin-top: 0.45em;
 }
 .poster-chip.is-area {
   justify-content: flex-start;
 }
-.poster-chip.is-area span {
+/* The count at the row's end; the stop numbers sit just after the name. */
+.poster-chip.is-area > span:last-child {
   margin-left: auto;
+}
+/* A stop listed outside the drawing fills in its area's colour when the
+   trace reaches it, as a box's tag does. */
+.poster-row-stops .poster-step-no.is-now {
+  background: var(--area, var(--p-trace));
+  color: #fff;
+}
+/* A copy is made at rest: no fade or motion caught mid-way. */
+.repo-poster.is-exporting,
+.repo-poster.is-exporting * {
+  transition: none !important;
+  animation: none !important;
 }
 
 /* The list under the map numbers each stop in its area's colour, as the
