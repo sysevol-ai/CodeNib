@@ -79,6 +79,7 @@ collection, joins, or custom runs rather than as scored benchmarks.
 | [ContextBench](contextbench.md) | L2 Agent context | Real issues; an agent explores, and everything it reads is scored | C, C++, Go, Java, JavaScript, Python, Rust, TypeScript | `codenib-contextbench` | [Measured](contextbench-results.md); 500 canonical tasks with a research route; leaderboard review pending |
 | [SWE-QA-Pro](swe_qa_pro.md) | QA Answer quality | Answer repository-level code questions with source exploration | Python repositories | `python -m codenib.eval.benchmarks.swe_qa_pro` | Runnable; CodeNib answers with official scoring |
 | [ContextBench Pass@1](#l3-resolution) | L3 Resolution | The same tasks; a solver writes a patch, and native tests judge it | C, C++, Go, Java, JavaScript, Python, Rust, TypeScript | `scripts/benchmark_context_solver.py`, `scripts/contextbench_verified.py` | [Measured](contextbench-results.md); 388/500 resolved with a research route; leaderboard review pending |
+| [SWE-Milestone](#l3-resolution) | L3 Resolution | Inspect specifications and grade saved source snapshots with an external harness | Set by the external workspace | `python -m codenib.eval.benchmarks.swe_milestone_runner` | Tested; adapter tested and one saved Navidrome submission graded; agent execution pending |
 | [DeepSWE](#l3-resolution) | L3 Resolution | Solve the task in a container; an external harness runs the solver | Set by the external harness | `codenib.eval.benchmarks.deepswe`, `python -m scripts.guardian.deepswe.results` | Tested; artifact analysis only; no published result |
 <!-- END CODENIB_SUPPORT_MATRIX:benchmarks -->
 
@@ -220,6 +221,67 @@ An external harness runs the solver in task containers. CodeNib packages only
 the analysis of its trial artifacts, and keeps the harness adapter, launchers,
 and dashboard under `scripts/guardian/deepswe/`. No DeepSWE result is
 published on this site.
+
+### SWE-Milestone artifact adapter
+
+Use the SWE-Milestone adapter to read local milestone specifications and inspect
+saved evaluation results, or grade a saved source snapshot through a pinned
+external harness. It preserves missing-test counts and rejects comparison cohorts
+with different evaluator commits or settings, or where one milestone was graded
+in different container images. Agent execution still belongs to the external
+harness.
+
+```bash
+python -m codenib.eval.benchmarks.swe_milestone_runner inspect WORKSPACE --milestone milestone_003_sub-01
+python -m codenib.eval.benchmarks.swe_milestone_runner summarize RESULT.json --evaluator-commit FULL_SHA --settings SETTINGS.json
+python -m codenib.eval.benchmarks.swe_milestone_runner compare SUMMARIZED_ROWS.json
+python -m codenib.eval.benchmarks.swe_milestone_runner score WORKSPACE --checkout HARNESS_CHECKOUT --evaluator-commit FULL_SHA --milestone milestone_003_sub-01 --snapshot SOURCE.tar --classification CLASSIFICATION.json --repo-config REPO_CONFIG.yaml --output-dir NEW_OUTPUT_DIRECTORY
+```
+
+`SETTINGS.json` must describe the effective grading policy, including pruning
+settings. Its declaration is supplied by the caller; this adapter does not
+authenticate the external harness or retrospectively prove how a result was
+produced. Use the same verified evaluator and settings for each condition.
+
+The `score` command verifies the external checkout revision and refuses any
+local change to tracked files, plus new files in the harness code and its
+per-repository quarantine settings. It records the invoked command and hashes of the source
+snapshot, classification and repo configuration, alongside the raw result and
+summary. Install the external harness dependencies in the same Python environment
+and make Docker available before scoring. Results go in a new directory; existing
+artifacts are never overwritten. Partial build reports and legacy snapshots
+require explicit flags, so use the same choices across a comparison cohort.
+For a snapshot bound to a frozen runtime policy, also supply `--runtime-policy`
+and `--runtime-policy-mode` together. The policy and workspace metadata hashes
+become part of the grading identity; the evaluator continues to enforce the
+snapshot's original bindings.
+
+??? note "Integration scope and evaluation policy"
+    Snapshot grading was checked on one saved Navidrome submission through the
+    external Docker evaluator. Native CodeNib agent execution is still pending.
+    The external
+    harness owns image selection and container cleanup; inspect its artifacts
+    before treating a cohort as comparable. Use its `prune_start_guard_exempt`
+    repo setting for migration directories where appropriate, rather than a
+    filename-specific repair. Imported summaries cannot prove past settings.
+
+<!-- BEGIN CODENIB_SUPPORT_MATRIX:card:swe_milestone -->
+| Benchmark card | |
+| --- | --- |
+| Layer | L3 Resolution: whether the patch produced for the task passes the task's tests |
+| Origin | External |
+| Task | Inspect specifications and grade saved source snapshots with an external harness |
+| Ground truth | External milestone test classifications |
+| Granularity | Milestone and classified test outcomes |
+| Languages | Set by the external workspace |
+| Size | Set by the external workspace |
+| Pinned revisions | Explicit evaluator commit and hashed repo configuration |
+| Scorer | External evaluator; this adapter preserves missing-test counts |
+| Setup | Local SWE-Milestone workspace and saved evaluation artifacts |
+| CodeNib entry point | `python -m codenib.eval.benchmarks.swe_milestone_runner` |
+| Evidence | Tested; adapter tested and one saved Navidrome submission graded; agent execution pending |
+| Upstream | <https://github.com/DeepCommit-ai/SWE-Milestone> |
+<!-- END CODENIB_SUPPORT_MATRIX:card:swe_milestone -->
 
 <!-- BEGIN CODENIB_SUPPORT_MATRIX:card:deepswe -->
 | Benchmark card | |

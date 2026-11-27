@@ -284,6 +284,31 @@ benchmarks:
     results: evaluation/contextbench-results.md
     page: evaluation/index.md#l3-resolution
 
+  - id: swe_milestone
+    name: SWE-Milestone
+    column: SWE-Milestone
+    url: https://github.com/DeepCommit-ai/SWE-Milestone
+    layer: L3
+    origin: External
+    task: Inspect specifications and grade saved source snapshots with an external harness
+    ground_truth: External milestone test classifications
+    granularity: Milestone and classified test outcomes
+    languages: Set by the external workspace
+    size: Set by the external workspace
+    pins: Explicit evaluator commit and hashed repo configuration
+    scorer: External evaluator; this adapter preserves missing-test counts
+    setup: Local SWE-Milestone workspace and saved evaluation artifacts
+    entry:
+      - module: codenib.eval.benchmarks.swe_milestone_runner
+        run: true
+    level: Tested
+    level_note: adapter tested and one saved Navidrome submission graded; agent execution pending
+    page: evaluation/index.md#l3-resolution
+    in_grid: false
+    modules:
+      - codenib/eval/benchmarks/swe_milestone_runner.py
+      - codenib/eval/benchmarks/swe_milestone_harness.py
+
   - id: deepswe
     name: DeepSWE
     column: DeepSWE
