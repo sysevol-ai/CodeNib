@@ -36,8 +36,11 @@ function Call({ symbol, breakable = true }: { symbol: string; breakable?: boolea
   const [owner, name] = splitCall(symbol);
   // Where a long name must break, "()" never stands alone: it keeps the
   // name's last letters with it.
-  const tail = /\(\)$/.test(name) && name.length > 8 ? name.slice(-5) : "";
-  const head = tail ? name.slice(0, -5) : name;
+  // The last segment stays whole too ("handler()", not "handle" / "r()").
+  const segments = name.split(/(?<=_)|(?<=[a-z0-9])(?=[A-Z])/);
+  const last = segments.length > 1 ? segments[segments.length - 1] : "";
+  const tail = /\(\)$/.test(name) && name.length > 8 ? (last && last.length <= 18 ? last : name.slice(-5)) : "";
+  const head = tail ? name.slice(0, -tail.length) : name;
   return (
     <>
       {owner && <span className="main-path-owner">{owner}</span>}
