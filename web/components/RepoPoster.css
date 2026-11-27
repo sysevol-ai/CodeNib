@@ -799,3 +799,18 @@
 .poster-chip.is-area span {
   margin-left: auto;
 }
+
+/* The list under the map numbers each stop in its area's colour, as the
+   tags on the boxes do; a named part reads in words, not code. */
+.poster-step.has-area .poster-step-no {
+  background: color-mix(in srgb, var(--area) 30%, transparent);
+  color: var(--p-text);
+}
+.poster-step.has-area.is-now .poster-step-no {
+  background: var(--area);
+  color: #fff;
+}
+.poster-step-role {
+  font-family: var(--font-sans);
+  font-size: 13px;
+}

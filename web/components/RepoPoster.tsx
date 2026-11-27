@@ -275,6 +275,7 @@ export default function RepoPoster({
   titleAs: Title = "h2",
   colors,
   pathLabel = "Traced call path",
+  roles = false,
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -306,6 +307,8 @@ export default function RepoPoster({
   colors?: Map<string, string>;
   /** What the marked path is: traced calls, or the architecture's parts. */
   pathLabel?: string;
+  /** The path's stops are named parts in words, not calls. */
+  roles?: boolean;
 }) {
   // "card": the static 1200x630 link-preview image; no motion, no controls.
   const card = variant === "card";
@@ -507,6 +510,8 @@ export default function RepoPoster({
       try {
         url = await toPng(node, {
           pixelRatio: 2,
+          // The poster's own margin would shift the copy inside its frame.
+          style: { margin: "0" },
           // The theme's own ground: a light page exports a light poster.
           backgroundColor: plainColor(getComputedStyle(node).backgroundColor) || "#070b14",
           filter: (child) =>
@@ -616,8 +621,8 @@ export default function RepoPoster({
                   key={cell.id}
                   className={`poster-node poster-cell${lit ? " is-lit" : ""}${
                     focusArea === cell.id ? " is-active" : ""
-                  }${colors?.get(cell.id) ? " has-area" : ""}${cell.id === ATLAS_MORE ? " is-more" : ""}`}
-                  style={areaStyle(cell.id)}
+                  }${colors?.get(target(cell) ?? "") ? " has-area" : ""}${cell.id === ATLAS_MORE && !target(cell) ? " is-more" : ""}`}
+                  style={areaStyle(target(cell) ?? cell.id)}
                   transform={`translate(${cell.x} ${cell.y})`}
                   onMouseEnter={() => setHoverNode(cell.id)}
                   onMouseLeave={() => setHoverNode(null)}
@@ -925,14 +930,21 @@ export default function RepoPoster({
               <li key={stage.index}>
                 <button
                   type="button"
-                  className={`poster-step${stageNow === index ? " is-now" : ""}`}
+                  className={`poster-step${stageNow === index ? " is-now" : ""}${
+                    stageAreas[index] && colors?.get(stageAreas[index]!) ? " has-area" : ""
+                  }`}
+                  style={stageAreas[index] ? areaStyle(stageAreas[index]!) : undefined}
                   onMouseEnter={() => !playing && setActiveStage(index)}
                   onMouseLeave={() => !playing && setActiveStage(null)}
                   onClick={() => stage.page && onPick?.(stage.page.id)}
                   title={stage.page ? `Open ${stage.page.title}` : undefined}
                 >
                   <span className="poster-step-no">{index + 1}</span>
-                  <code title={stage.symbol}>{breakableCode(displaySymbol(stage.symbol, { short: true }))}</code>
+                  {roles ? (
+                    <span className="poster-step-role">{stage.symbol}</span>
+                  ) : (
+                    <code title={stage.symbol}>{breakableCode(displaySymbol(stage.symbol, { short: true }))}</code>
+                  )}
                 </button>
               </li>
             ))}
