@@ -962,24 +962,38 @@ export default function RepoPoster({
           <ol className="poster-steps">
             {stages.map((stage, index) => (
               <li key={stage.index}>
-                <button
-                  type="button"
-                  className={`poster-step${stageNow === index ? " is-now" : ""}${
+                {(() => {
+                  const className = `poster-step${stageNow === index ? " is-now" : ""}${
                     stageAreas[index] && colors?.get(stageAreas[index]!) ? " has-area" : ""
-                  }`}
-                  style={stageAreas[index] ? areaStyle(stageAreas[index]!) : undefined}
-                  onMouseEnter={() => !playing && setActiveStage(index)}
-                  onMouseLeave={() => !playing && setActiveStage(null)}
-                  onClick={() => stage.page && onPick?.(stage.page.id)}
-                  title={stage.page ? `Open ${stage.page.title}` : undefined}
-                >
-                  <span className="poster-step-no">{index + 1}</span>
-                  {roles ? (
-                    <span className="poster-step-role">{stage.symbol}</span>
-                  ) : (
-                    <code title={stage.symbol}>{breakableCode(displaySymbol(stage.symbol, { short: true }))}</code>
-                  )}
-                </button>
+                  }`;
+                  const style = stageAreas[index] ? areaStyle(stageAreas[index]!) : undefined;
+                  const body = (
+                    <>
+                      <span className="poster-step-no">{index + 1}</span>
+                      {roles ? (
+                        <span className="poster-step-role">{stage.symbol}</span>
+                      ) : (
+                        <code title={stage.symbol}>{breakableCode(displaySymbol(stage.symbol, { short: true }))}</code>
+                      )}
+                    </>
+                  );
+                  // The copy is drawn with its own font metrics, so a saved
+                  // image gets text, not a box sized on the page.
+                  if (exporting) return <span className={className} style={style}>{body}</span>;
+                  return (
+                    <button
+                      type="button"
+                      className={className}
+                      style={style}
+                      onMouseEnter={() => !playing && setActiveStage(index)}
+                      onMouseLeave={() => !playing && setActiveStage(null)}
+                      onClick={() => stage.page && onPick?.(stage.page.id)}
+                      title={stage.page ? `Open ${stage.page.title}` : undefined}
+                    >
+                      {body}
+                    </button>
+                  );
+                })()}
               </li>
             ))}
           </ol>

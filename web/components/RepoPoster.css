@@ -842,3 +842,42 @@
   background: color-mix(in srgb, var(--area, var(--p-trace)) 30%, transparent);
   color: var(--p-text);
 }
+
+/* A saved image lays the stops out as running text. The copy is drawn with
+   its own font metrics, and a flex box keeps the width measured on the
+   page, so an arrow stood off from a long name. Inline boxes have no fixed
+   width; a stop stays whole and a line may break after its arrow. */
+.repo-poster.is-exporting .poster-steps {
+  display: block;
+  line-height: 2;
+}
+.repo-poster.is-exporting .poster-steps li {
+  display: inline;
+  white-space: nowrap;
+}
+.repo-poster.is-exporting .poster-steps li:not(:last-child)::after {
+  content: "\2192  ";
+  white-space: normal;
+  margin-right: 4px;
+}
+.repo-poster.is-exporting .poster-step {
+  display: inline;
+}
+.repo-poster.is-exporting .poster-step .poster-step-no {
+  margin-right: 7px;
+}
+/* The copy draws each font size rounded down, less 0.1px (html-to-image),
+   so 12.5px text comes out at 11.9px inside boxes measured at 12.5px.
+   Saved, the stops and the title's code use whole sizes, which the copy
+   draws within 0.1px of the page. */
+.repo-poster.is-exporting .poster-step code,
+.repo-poster.is-exporting .poster-trace-title code {
+  font-size: 12px;
+}
+/* Inline, not an inline grid: WebKit breaks a line after an atomic box
+   even where breaking is off, parting a number from its name. */
+.repo-poster.is-exporting .poster-steps .poster-step-no {
+  display: inline;
+  padding: 1px 5px;
+  font-size: 10px;
+}
