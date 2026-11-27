@@ -317,34 +317,46 @@
   font-size: 12px;
   line-height: 1.5;
 }
+/* The references between areas, as a ruled list of lines to select: no
+   chips, the count after each pair in figures. */
 .poster-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  gap: 0;
+  margin-top: 4px;
 }
 .poster-chip {
-  display: inline-flex;
+  display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 5px 10px;
-  border: 1px solid var(--p-line-strong);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.03);
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 0;
+  border: 0;
+  border-top: 1px solid var(--p-line);
+  border-radius: 0;
+  background: none;
   color: var(--p-text);
-  font-size: 12px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
   cursor: pointer;
-  transition: border-color 0.2s ease;
 }
 .poster-chip span {
+  flex: none;
   color: var(--p-muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .poster-chip:hover {
-  border-color: var(--p-hover);
+  text-decoration: underline;
+  text-decoration-color: var(--p-line-strong);
+  text-underline-offset: 3px;
 }
 .poster-chip.is-now {
-  border-color: var(--p-trace);
+  color: var(--p-text);
+  font-weight: 600;
 }
 .poster-cell-share {
   fill: var(--p-dim);
@@ -666,5 +678,41 @@
 }
 .poster-node.has-area .poster-node-stages text,
 .poster-node.has-area .poster-node-stages rect.is-now + text {
+  fill: #fff;
+}
+/* On a light page the Overview's poster is light too: the same map on paper,
+   the areas still in their hues. The home hero and the link card stay dark. */
+[data-theme="light"] .repo-poster.has-colours {
+  --p-bg: #ffffff;
+  --p-raised: #f6f7f8;
+  --p-line: rgba(32, 33, 36, 0.1);
+  --p-line-strong: rgba(32, 33, 36, 0.22);
+  --p-hover: rgba(32, 33, 36, 0.6);
+  --p-text: #202124;
+  --p-soft: #3c4043;
+  --p-muted: #5f6368;
+  --p-dim: #80868b;
+  --p-trace: rgba(32, 33, 36, 0.55);
+  --p-trace-ink: #202124;
+  border-color: #dadce0;
+  box-shadow: none;
+}
+[data-theme="light"] .repo-poster.has-colours .poster-edge-line {
+  stroke: rgba(32, 33, 36, 0.1);
+}
+[data-theme="light"] .repo-poster.has-colours .poster-arrow {
+  fill: rgba(32, 33, 36, 0.5);
+}
+[data-theme="light"] .poster-node.has-area .poster-node-box {
+  fill: color-mix(in srgb, var(--area) 10%, #ffffff);
+}
+[data-theme="light"] .repo-poster.has-colours .poster-title,
+[data-theme="light"] .repo-poster.has-colours .poster-brand b {
+  color: var(--p-text);
+}
+[data-theme="light"] .poster-node.has-area .poster-node-stages text {
+  fill: #202124;
+}
+[data-theme="light"] .poster-node.has-area .poster-node-stages rect.is-now + text {
   fill: #fff;
 }

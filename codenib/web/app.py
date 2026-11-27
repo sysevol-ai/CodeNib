@@ -73,6 +73,7 @@ from .journey_areas import (
     journey_area_ids,
     place_architecture_areas,
     place_journey_areas,
+    sync_journey_title,
 )
 from .native_authority import authorize_local_manifest_vector
 from .overview_lead import replace_unfit_lead
@@ -1504,7 +1505,9 @@ async def wiki_page(
             purpose = await _run_pinned_thread(_card_line, bundle)
             page = {
                 **page,
-                "markdown": replace_unfit_lead(str(page["markdown"]), purpose),
+                "markdown": sync_journey_title(
+                    replace_unfit_lead(str(page["markdown"]), purpose)
+                ),
             }
             page = {
                 **page,

@@ -575,6 +575,8 @@ export interface AtlasCell extends PosterArea {
   fontSize: number;
   /** Space above the title for inset journey tags. */
   titleOffset: number;
+  /** A tall, narrow cell names its area up its side, in one line. */
+  vertical?: boolean;
 }
 
 export interface AtlasLayout {
@@ -611,7 +613,14 @@ export function layoutAtlas(
   // Inset like the map's boxes so the cells line up with the heading above.
   const inner = { x: PAD_X - ATLAS_GAP / 2, w: width - (PAD_X - ATLAS_GAP / 2) * 2 };
   const scale = (inner.w * height) / total;
-  const values = shown.map((area) => area.symbols * scale);
+  // Every area keeps room for its name: a cell never shrinks below about
+  // 110 by 74 px (as long as the areas leave room for that), and the rest
+  // share what is left by their size. Each cell still says its true share.
+  const room = inner.w * height;
+  const floor = Math.min(110 * 74, (0.6 * room) / Math.max(shown.length, 1));
+  const raw = shown.map((area) => Math.max(area.symbols * scale, floor));
+  const rawSum = raw.reduce((sum, value) => sum + value, 0) || 1;
+  const values = raw.map((value) => (value * room) / rawSum);
 
   const rects: Array<{ x: number; y: number; w: number; h: number }> = [];
   let box = { x: inner.x, y: 0, w: inner.w, h: height };
@@ -671,12 +680,17 @@ export function layoutAtlas(
     const titleOffset = tags.get(area.id) ? 18 : 0;
     const fits = cell.w >= 72 && cell.h >= 40 + titleOffset;
     const maxLines = Math.max(1, Math.min(3, Math.floor((cell.h - 30 - titleOffset) / lineHeight)));
+    // Too narrow for its name across, but tall: the name runs up its side.
+    const vertical = !fits && cell.w >= 28 && cell.h >= 80 + titleOffset;
     return {
       ...area,
       ...cell,
       lines: fits
         ? wrapTitle(area.title, Math.floor((cell.w - 20) / (fontSize * 0.56)), maxLines)
-        : [],
+        : vertical
+          ? wrapTitle(area.title, Math.floor((cell.h - 24 - titleOffset) / (fontSize * 0.56)), 1)
+          : [],
+      vertical,
       share: area.symbols / total,
       fontSize,
       titleOffset,

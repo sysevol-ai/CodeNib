@@ -1498,7 +1498,7 @@ export default function WikiPageView({
                 pages={pages}
                 activeId={walking ? "" : activeId}
                 onPick={pick}
-                colors={workspace ? wikiGraph.colors : undefined}
+                colors={workspace || showPoster ? wikiGraph.colors : undefined}
                 promote={areaPath}
                 walks={walkthroughs?.walks.map((item) => ({ id: item.id, label: item.tab }))}
                 docs={repoDocs}

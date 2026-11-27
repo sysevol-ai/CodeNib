@@ -230,3 +230,17 @@ def test_a_test_file_never_decides_a_role_area():
         [{"id": "p", "label": "Cloud Plugins", "evidence": ["E2", "E1"]}], citations
     )
     assert "area" not in providers
+
+
+def test_the_path_title_names_the_first_and_last_steps_it_heads():
+    from codenib.web.journey_areas import sync_journey_title
+
+    markdown = (
+        "## From `run()` to `prepare()`\n\n1. **`run()`**: Runs. [E1](#evidence-E1)\n"
+        "2. **`generate()`**: Generates. [E2](#evidence-E2)\n\n## Next\n\n3. **`x()`**: no."
+    )
+    assert sync_journey_title(markdown).startswith("## From `run()` to `generate()`\n")
+    assert (
+        sync_journey_title("## From `a()` to `b()`\n\nNo steps.")
+        == "## From `a()` to `b()`\n\nNo steps."
+    )
