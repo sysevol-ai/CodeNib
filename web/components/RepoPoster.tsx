@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { breakableCode } from "@/lib/breakable";
 import { ghFileUrl } from "@/lib/github";
+import { NEUTRAL_COLOR } from "@/lib/wikiGraph";
 import {
   ATLAS_MORE,
   layoutAtlas,
@@ -299,9 +300,18 @@ export default function RepoPoster({
         : null,
     [map, mode, linked, hops, canvasWidth, stopTags],
   );
+  // Areas with a hue of their own on the map; in the Overview, the others
+  // wait under the picture so grey there means only "listed below".
+  const huedAreas = useMemo(
+    () =>
+      colors
+        ? new Set([...colors.entries()].filter(([, color]) => color !== NEUTRAL_COLOR).map(([id]) => id))
+        : undefined,
+    [colors],
+  );
   const atlas = useMemo(
-    () => (mode === "atlas" ? layoutAtlas(map.areas, canvasWidth, stopTags) : null),
-    [map, mode, canvasWidth, stopTags],
+    () => (mode === "atlas" ? layoutAtlas(map.areas, canvasWidth, stopTags, huedAreas) : null),
+    [map, mode, canvasWidth, stopTags, huedAreas],
   );
   const edges = layout?.edges ?? [];
   // In the atlas the recorded links are listed, not drawn; they still open

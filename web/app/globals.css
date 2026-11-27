@@ -6884,3 +6884,14 @@ a.code-activity-row:focus-visible {
 .main-path-title-unit.is-long {
   white-space: normal;
 }
+
+/* A long name's seams ("project_files_in_" | "path()") open only where a
+   line may break: a title call wider than its heading, a step on a phone. */
+.main-path-title-unit.is-long .seam::after {
+  content: "\200B";
+}
+@media (max-width: 600px) {
+  .main-path-symbol .seam::after {
+    content: "\200B";
+  }
+}

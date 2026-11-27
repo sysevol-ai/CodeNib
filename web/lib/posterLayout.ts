@@ -105,7 +105,10 @@ function hyphenAt(word: string, limit: number): number {
   let best = 0;
   for (const suffix of SUFFIXES) {
     for (let p = lower.indexOf(suffix, 3); p > 0; p = lower.indexOf(suffix, p + 1)) {
-      if (fits(p)) best = Math.max(best, p);
+      // A doubled consonant before the suffix splits between its two
+      // letters: "Colormap-ping", not "Colormapp-ing".
+      const at = lower[p - 1] === lower[p - 2] && !VOWEL.test(lower[p - 1]) ? p - 1 : p;
+      if (fits(at)) best = Math.max(best, at);
     }
   }
   for (let p = Math.min(limit, word.length - 3); p > best && p >= 3; p -= 1) {
@@ -677,6 +680,9 @@ export function layoutAtlas(
   areas: PosterArea[],
   width: number,
   tags: Map<string, number> = new Map(),
+  /** Areas with a hue of their own; the rest wait under the picture, so
+   *  grey in the picture means only "listed below". */
+  hued?: ReadonlySet<string>,
 ): AtlasLayout {
   const sorted = areas.filter((area) => area.symbols > 0).sort(
     (a, b) => b.symbols - a.symbols || a.id.localeCompare(b.id),
@@ -687,16 +693,21 @@ export function layoutAtlas(
   // that the traced path does not enter. Two or more moved areas share one
   // cell sized by their combined symbols; a single one keeps its own cell,
   // unnamed, and is named in the row under the picture.
+  // Small grey areas join them too; a large one stays drawn at its size.
+  const grey = hued && hued.size
+    ? sorted.filter((area) => !hued.has(area.id) && !tags.get(area.id) && area.symbols / total < 0.05)
+    : [];
+  const greyIds = new Set(grey.map((area) => area.id));
   const movable = [...sorted]
     .reverse()
-    .filter((area) => !tags.get(area.id) && area.symbols / total < 0.05);
+    .filter((area) => !greyIds.has(area.id) && !tags.get(area.id) && area.symbols / total < 0.05);
   let folded = 0;
   for (;;) {
-    const moved = movable.slice(0, folded);
+    const moved = [...grey, ...movable.slice(0, folded)];
     const movedIds = new Set(moved.map((area) => area.id));
     const drawn = sorted.filter((area) => !movedIds.has(area.id));
     const list =
-      moved.length > 1
+      moved.length > 0
         ? [
             ...drawn,
             {
@@ -707,12 +718,10 @@ export function layoutAtlas(
             } as PosterArea,
           ]
         : sorted;
-    const layout = packAtlas(list, sorted, width, tags, movedIds);
+    const layout = packAtlas(list, sorted, width, tags);
     const cut = layout.cells.some(
       (cell) =>
-        cell.id !== ATLAS_MORE &&
-        !movedIds.has(cell.id) &&
-        (!cell.lines.length || cell.lines.some((line) => line.endsWith("…"))),
+        cell.id !== ATLAS_MORE && (!cell.lines.length || cell.lines.some((line) => line.endsWith("…"))),
     );
     if (!cut || folded >= movable.length) {
       return moved.length

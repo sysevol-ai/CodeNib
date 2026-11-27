@@ -241,16 +241,28 @@ def place_architecture_areas(
         ):
             out.append(slot)
             continue
-        placed = []
-        # Sources already shown by a step of this path: each step shows its
-        # own (astropy's steps 1 and 3 both cited hdulist.py:1).
-        used: set[str] = set()
+
+        # Each step shows a source of its own. Steps list the sources that
+        # could place them; the steps with fewest claim first, so one with a
+        # single source keeps it (vue's Renderer keeps renderer.ts:347 and
+        # Host Adapters, which also cites it, shows runtime-dom).
+        def area_of_file(file: str):
+            return (
+                _area_of(file, areas)
+                or places.get(file)
+                or _area_by_folder(file, areas)
+            )
+
+        plans = []
         for node in nodes:
             if not isinstance(node, Mapping):
-                placed.append(node)
+                plans.append(None)
                 continue
-            cited = _cited_files(node, citations)
-            place, source = None, None
+            usable = [
+                (evidence, file)
+                for evidence, file in _cited_files(node, citations)
+                if not (is_test_path(file) or _is_readme(file))
+            ]
             # A part outside the code (the user's program, a client) is
             # never placed by its name.
             named = (
@@ -259,47 +271,51 @@ def place_architecture_areas(
                 else _area_by_title(str(node.get("label") or ""), areas)
             )
             if named is not None:
-                place = named
-                # The citation shown is one in that area, if the role cites one.
-                source = next(
-                    (
-                        evidence
-                        for evidence, file in cited
-                        if evidence not in used
-                        and not (is_test_path(file) or _is_readme(file))
-                        and (_area_of(file, areas) or _area_by_folder(file, areas))
-                        is named
-                    ),
-                    None,
-                )
+                candidates = [
+                    (evidence, named)
+                    for evidence, file in usable
+                    if (_area_of(file, areas) or _area_by_folder(file, areas)) is named
+                ]
             else:
-                # A part is told by a source no other step of the path shows
-                # where it has one: two steps are different parts (vue's Host
-                # Adapters cite the renderer's E4 first and runtime-dom after).
-                usable = [
-                    (evidence, file)
-                    for evidence, file in cited
-                    if not (is_test_path(file) or _is_readme(file))
+                candidates = [
+                    (evidence, place)
+                    for evidence, file in usable
+                    if (place := area_of_file(file))
                 ]
-                # A source another step already shows goes last.
-                usable = [item for item in usable if item[0] not in used] + [
-                    item for item in usable if item[0] in used
-                ]
-                for evidence, file in usable:
-                    place = (
-                        _area_of(file, areas)
-                        or places.get(file)
-                        or _area_by_folder(file, areas)
-                    )
-                    if place:
-                        source = evidence
-                        break
-            if source in used:
-                # Placed by a source another step shows: the colour holds,
-                # the citation is not repeated.
-                source = None
-            if source:
-                used.add(source)
+            plans.append((named, candidates))
+        assigned: dict[int, tuple[str, Mapping[str, object]]] = {}
+        used: set[str] = set()
+        # The steps the waterfall draws claim before the parts listed beside
+        # it (vue's VNode Tree must not take the Renderer's one source).
+        on_path = {str(item) for item in (data.get("primary_path") or [])}
+        order = sorted(
+            (index for index, plan in enumerate(plans) if plan and plan[1]),
+            key=lambda index: (
+                str((nodes[index] or {}).get("id")) not in on_path,
+                len(plans[index][1]),
+                index,
+            ),
+        )
+        for index in order:
+            for evidence, place in plans[index][1]:
+                if evidence not in used:
+                    assigned[index] = (evidence, place)
+                    used.add(evidence)
+                    break
+        placed = []
+        for index, node in enumerate(nodes):
+            plan = plans[index]
+            if plan is None:
+                placed.append(node)
+                continue
+            named, candidates = plan
+            source, place = assigned.get(index, (None, None))
+            if named is not None:
+                place = named
+            elif place is None and candidates:
+                # Every source it could show is shown by another step: the
+                # colour holds, the citation is not repeated.
+                place = candidates[0][1]
             if place and place.get("id") and place.get("title"):
                 area = {"id": str(place["id"]), "title": str(place["title"])}
                 if source:

@@ -20,17 +20,30 @@ export function splitCall(symbol: string): [string, string] {
   return [symbol.slice(0, cut + 1), symbol.slice(cut + 1)];
 }
 
+/** A long name's own seams, after "_" and before an inner capital, where a
+ *  line may break before it would break mid-word: "project_files_in_" /
+ *  "path()". */
+function withSeams(text: string): ReactNode[] {
+  // An empty span, not <wbr>: Chromium breaks at <wbr> even in nowrap text.
+  // CSS turns a seam into a break only where breaking is allowed: a title
+  // call wider than its heading, or a step's name on a phone.
+  return text
+    .split(/(?<=_)|(?<=[a-z0-9])(?=[A-Z])/)
+    .flatMap((part, index) => (index ? [<span className="seam" key={index} />, part] : [part]));
+}
+
 function Call({ symbol, breakable = true }: { symbol: string; breakable?: boolean }) {
   const [owner, name] = splitCall(symbol);
   // Where a long name must break, "()" never stands alone: it keeps the
   // name's last letters with it.
   const tail = /\(\)$/.test(name) && name.length > 8 ? name.slice(-5) : "";
+  const head = tail ? name.slice(0, -5) : name;
   return (
     <>
       {owner && <span className="main-path-owner">{owner}</span>}
       {owner && breakable && <wbr />}
       <span className="main-path-name">
-        {tail ? name.slice(0, -5) : name}
+        {name.length > 14 ? withSeams(head) : head}
         {tail && <span className="main-path-name-end">{tail}</span>}
       </span>
     </>

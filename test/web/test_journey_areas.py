@@ -322,3 +322,34 @@ def test_a_cached_path_drops_its_trailing_getter():
     out = sync_journey_title(trim_path_tail(markdown))
     assert "get_content" not in out
     assert out.startswith("## From `main` to `OrcarAgent.run_search_agent()`")
+
+
+def test_a_step_on_the_path_keeps_its_only_source_from_a_part_beside_it():
+    from codenib.web.journey_areas import place_architecture_areas
+
+    areas = [
+        {
+            "id": "render",
+            "title": "Rendering and Patching",
+            "files": ["core/renderer.ts"],
+        },
+        {"id": "dom", "title": "Runtime DOM", "files": ["dom/element.ts"]},
+    ]
+    citations = [{"file": "core/renderer.ts"}, {"file": "dom/element.ts"}]
+    nodes = [
+        {"id": "vnode", "label": "VNode Tree", "evidence": ["E1"]},
+        {"id": "renderer", "label": "Renderer", "evidence": ["E1"]},
+        {"id": "host", "label": "Host Adapters", "evidence": ["E1", "E2"]},
+    ]
+    slot = {
+        "render_contract": {
+            "adapter": "architecture",
+            "data": {"primary_path": ["renderer", "host"], "nodes": nodes},
+        }
+    }
+    vnode, renderer, host = place_architecture_areas([slot], citations, {}, areas)[0][
+        "render_contract"
+    ]["data"]["nodes"]
+    assert renderer["area"]["evidence"] == "E1"
+    assert host["area"] == {"id": "dom", "title": "Runtime DOM", "evidence": "E2"}
+    assert "evidence" not in vnode["area"]
