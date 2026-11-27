@@ -4,8 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Run the Python inside a built CodeNib.app the way the app does: start
-# `codenib wiki` on a small repository, wait for its address, fetch the Wiki
-# and save a note through the printed session key.
+# `codenib wiki --preset graph` on a small repository, wait for its address,
+# fetch the Wiki, read the symbol graph that Map and Impact draw from, and
+# save a note through the printed session key. The app's binaries carry the
+# hardened runtime, so this also shows that runtime lets CodeNib work.
 set -euo pipefail
 
 APP="$(cd "${1:?usage: smoke-bundle.sh path/to/CodeNib.app}" && pwd)"
@@ -35,6 +37,15 @@ class Store:
     def put(self, key, value):
         self.items = {**getattr(self, "items", {}), key: value}
 PY
+cat > "$REPO/pkg/api.py" <<'PY'
+from pkg.store import Store
+
+
+def remember(key, value):
+    store = Store()
+    store.put(key, value)
+    return store
+PY
 printf '# tiny\n\nA bundle smoke repository.\n' > "$REPO/README.md"
 git -C "$REPO" init --quiet
 git -C "$REPO" add .
@@ -52,7 +63,7 @@ done
   cd "$REPO"
   exec env -i HOME="$WORK/home" PATH="$APP/Contents/Resources/python/bin:/usr/bin:/bin" \
     PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 \
-    "$PY" -m codenib wiki "$REPO" --no-open --port "$PORT" --api-port "$API"
+    "$PY" -m codenib wiki "$REPO" --preset graph --no-open --port "$PORT" --api-port "$API"
 ) > "$LOG" 2>&1 &
 PID=$!
 
@@ -73,4 +84,12 @@ curl --fail --silent -X POST "http://127.0.0.1:$PORT/api/repos/$REPO_ID/annotati
   -H "Content-Type: application/json" -H "X-CodeNib-Session: $SESSION" \
   -d '{"kind":"note","text":"bundle smoke note","on":{"page":"overview","quote":"tiny"}}' > /dev/null
 grep -rq "bundle smoke note" "$REPO/.codenib/notes"
-echo "bundled CodeNib served the Wiki and saved a note"
+curl --fail --silent "http://127.0.0.1:$PORT/api/repos/$REPO_ID/codemap?symbol=remember&direction=callees&depth=1" |
+  "$PY" -c '
+import json, sys
+graph = json.load(sys.stdin)
+names = " ".join(str(node) for node in graph.get("nodes", []))
+if not graph.get("available") or "put" not in names:
+    sys.exit(f"the symbol graph does not show remember() calling Store.put: {graph}")
+'
+echo "bundled CodeNib served the Wiki, built the symbol graph and saved a note"

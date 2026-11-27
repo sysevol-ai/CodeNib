@@ -16,6 +16,10 @@ on:
   push:
     branches:
       - main
+    # A desktop-v<version> tag publishes that build as a GitHub release.
+    # Path filters are not applied to tag pushes.
+    tags:
+      - "desktop-v*"
     paths:
       - "desktop/**"
       - ".github/workflows/desktop.yml"
@@ -31,16 +35,33 @@ concurrency:
 jobs:
   macos:
     # Builds CodeNib.app for Apple silicon and a disk image to try it from.
-    # The app is signed ad hoc, not with a Developer ID, so macOS asks once
-    # before it first opens.
+    # Every binary carries the hardened runtime that notarization requires.
+    # On main and manual runs, with the Apple secrets set (desktop/README.md,
+    # "Sign and notarize"), the app and disk image are signed with a Developer
+    # ID and notarized, so macOS opens them without asking. Otherwise they are
+    # signed ad hoc and macOS asks once before the app first opens.
     name: Build the macOS app
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
+    env:
+      DEVELOPER_ID: ${{ github.event_name != 'pull_request' && secrets.APPLE_CERTIFICATE != '' }}
+    outputs:
+      notarized: ${{ steps.notarize.outcome == 'success' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+
+      - name: Check the tag names the app's version
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("desktop/src-tauri/tauri.conf.json"))["version"])')"
+          CRATE="$(python3 -c 'import tomllib; print(tomllib.load(open("desktop/src-tauri/Cargo.toml", "rb"))["package"]["version"])')"
+          if [[ "$GITHUB_REF_NAME" != "desktop-v$VERSION" || "$CRATE" != "$VERSION" ]]; then
+            echo "tag $GITHUB_REF_NAME, tauri.conf.json ($VERSION) and Cargo.toml ($CRATE) must name one version" >&2
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -62,9 +83,46 @@ jobs:
           npm ci
           npm run build
 
+      - name: Import the Developer ID certificate
+        if: env.DEVELOPER_ID == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/codenib-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          umask 077
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -f pkcs12 -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN" \
+            $(security list-keychains -d user | tr -d '"')
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" |
+            awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          if [[ -z "$IDENTITY" ]]; then
+            echo "the certificate holds no Developer ID Application identity" >&2
+            exit 1
+          fi
+          echo "Signing as: $IDENTITY"
+          {
+            echo "CODENIB_SIGN_IDENTITY=$IDENTITY"
+            echo "APPLE_SIGNING_IDENTITY=$IDENTITY"
+            echo "CODENIB_KEYCHAIN=$KEYCHAIN"
+          } >> "$GITHUB_ENV"
+
       - name: Bundle Python and this CodeNib into the app
         run: desktop/scripts/bundle-python.sh
 
+      # Tauri signs the app as APPLE_SIGNING_IDENTITY when the certificate was
+      # imported. The notary credentials stay out of this step: it runs npm
+      # packages' code, and Tauri would try to notarize even with empty values.
       - name: Build the app and disk image
         working-directory: desktop
         run: |
@@ -82,11 +140,70 @@ jobs:
             "$APP/Contents/Info.plist" | grep -qx true
           test -x "$APP/Contents/Resources/python/bin/python3.12"
           codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --display --verbose=2 "$APP" 2>&1 | grep -E '^(Authority|Format|CodeDirectory)'
           du -sh "$APP"
           ls -la desktop/src-tauri/target/release/bundle/dmg/
 
+      - name: Check every binary is ready for notarization
+        run: |
+          APP="desktop/src-tauri/target/release/bundle/macos/CodeNib.app"
+          if [[ "$DEVELOPER_ID" == "true" ]]; then
+            desktop/scripts/check-notarizable.sh --release "$APP"
+          else
+            desktop/scripts/check-notarizable.sh "$APP"
+          fi
+
       - name: Run the app's own CodeNib on a repository
         run: desktop/scripts/smoke-bundle.sh desktop/src-tauri/target/release/bundle/macos/CodeNib.app
+
+      - name: Notarize and staple the app and its disk image
+        id: notarize
+        if: env.DEVELOPER_ID == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          BUNDLE="desktop/src-tauri/target/release/bundle"
+          APP="$BUNDLE/macos/CodeNib.app"
+          DMG="$(ls "$BUNDLE"/dmg/*.dmg)"
+          notarize() {
+            local result="$RUNNER_TEMP/notary.json" id status
+            xcrun notarytool submit "$1" --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+              --wait --timeout 30m --output-format json > "$result" || true
+            cat "$result"
+            id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("id", ""))' "$result" 2>/dev/null || true)"
+            status="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status", ""))' "$result" 2>/dev/null || true)"
+            if [[ "$status" != "Accepted" ]]; then
+              # The log names each file Apple refused and why.
+              if [[ -n "$id" ]]; then
+                xcrun notarytool log "$id" --apple-id "$APPLE_ID" \
+                  --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"
+              fi
+              echo "notarization of $1 ended as '${status:-unknown}'" >&2
+              exit 1
+            fi
+          }
+          # The app first, so its ticket is stapled to it before it goes into
+          # the disk image: it then opens without asking Apple, even offline.
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/CodeNib.zip"
+          notarize "$RUNNER_TEMP/CodeNib.zip"
+          xcrun stapler staple "$APP"
+          spctl --assess --type execute --verbose=2 "$APP"
+          # Then the disk image, made again around the stapled app.
+          STAGE="$RUNNER_TEMP/dmg"
+          rm -rf "$STAGE" && mkdir "$STAGE"
+          ditto "$APP" "$STAGE/CodeNib.app"
+          ln -s /Applications "$STAGE/Applications"
+          rm -f "$DMG"
+          hdiutil create -volname CodeNib -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+          codesign --force --timestamp --sign "$CODENIB_SIGN_IDENTITY" "$DMG"
+          notarize "$DMG"
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl --assess --type open --context context:primary-signature \
+            --verbose=2 "$DMG"
 
       - name: Upload the disk image
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
@@ -95,3 +212,49 @@ jobs:
           path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
           retention-days: 30
+
+      - name: Remove the signing keychain
+        if: always() && env.DEVELOPER_ID == 'true'
+        run: |
+          if [[ -n "${CODENIB_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$CODENIB_KEYCHAIN"
+          fi
+
+  release:
+    # A desktop-v<version> tag puts its disk image on a GitHub release, where
+    # anyone can download it without signing in. It is never marked latest:
+    # that stays the Python package's release.
+    name: Publish the disk image
+    needs: macos
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the disk image
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: CodeNib-macos-apple-silicon
+          path: dist
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTARIZED: ${{ needs.macos.outputs.notarized }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#desktop-v}"
+          DMG="dist/CodeNib-${VERSION}-macos-apple-silicon.dmg"
+          mv dist/*.dmg "$DMG"
+          (cd dist && sha256sum "$(basename "$DMG")" > SHA256SUMS)
+          FLAGS=(--latest=false)
+          if [[ "$NOTARIZED" == "true" ]]; then
+            NOTES="CodeNib for macOS $VERSION, for Apple silicon Macs on macOS 12 or later. Open the disk image and drag CodeNib to Applications."
+          else
+            # Without the Apple secrets the build is signed ad hoc: say so,
+            # and keep it a pre-release.
+            FLAGS+=(--prerelease)
+            NOTES="CodeNib for macOS $VERSION, for Apple silicon Macs on macOS 12 or later. This build is not notarized: open it once, then choose Open Anyway in System Settings, then Privacy & Security."
+          fi
+          gh release create "$GITHUB_REF_NAME" "$DMG" dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --title "CodeNib for macOS $VERSION" \
+            --notes "$NOTES" "${FLAGS[@]}"
