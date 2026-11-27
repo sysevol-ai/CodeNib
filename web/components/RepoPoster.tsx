@@ -314,6 +314,13 @@ export default function RepoPoster({
   const card = variant === "card";
   const hero = variant === "hero" || card;
   const stages = journey?.stages ?? [];
+  // How many Wiki pages an area holds, itself included.
+  const pagesIn = (areaId: string): number => {
+    const count = (list: WikiPageRef[]): number =>
+      list.reduce((sum, page) => sum + 1 + count(page.children ?? []), 0);
+    const area = pages.find((page) => page.id === areaId);
+    return area ? count([area]) : 0;
+  };
   // The stop numbers of an area listed outside the drawing, as its box's
   // tags would show them.
   const stopBadges = (areaId: string) => {
@@ -322,7 +329,7 @@ export default function RepoPoster({
     return (
       <span className="poster-row-stops" aria-label={`Stops ${staged.map(({ index }) => index + 1).join(", ")}`}>
         {staged.map(({ index }) => (
-          <span key={index} className="poster-step-no">{index + 1}</span>
+          <span key={index} className={`poster-step-no${stageNow === index ? " is-now" : ""}`}>{index + 1}</span>
         ))}
       </span>
     );
@@ -449,6 +456,7 @@ export default function RepoPoster({
   const pulseRef = useRef<SVGCircleElement | null>(null);
   const rootRef = useRef<HTMLElement | null>(null);
   const played = useRef(false);
+  const autoplayRef = useRef<number | null>(null);
 
   // One timeline: rest on each stage, travel along the hop when the next
   // stage lives in another area.
@@ -503,7 +511,7 @@ export default function RepoPoster({
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting) && !played.current) {
         played.current = true;
-        window.setTimeout(() => setPlaying(true), 500);
+        autoplayRef.current = window.setTimeout(() => setPlaying(true), 500);
         observer.disconnect();
       }
     }, { threshold: 0.4 });
@@ -516,6 +524,9 @@ export default function RepoPoster({
   const exportImage = async () => {
     const node = rootRef.current;
     if (!node || exporting) return;
+    // A copy is of the poster at rest: no trace running or about to start.
+    played.current = true;
+    if (autoplayRef.current) window.clearTimeout(autoplayRef.current);
     setSelected(null);
     setPlaying(false);
     setActiveStage(null);
@@ -716,7 +727,7 @@ export default function RepoPoster({
                   <span className="poster-rest-name">{area.title}</span>
                   {stopBadges(area.id)}
                   <span className="poster-rest-share">
-                    {area.symbols > 0 ? `${Math.max(1, Math.round(area.share * 100))}%` : "no symbols"}
+                    {area.symbols > 0 ? `${Math.max(1, Math.round(area.share * 100))}%` : plural(pagesIn(area.id), "page")}
                   </span>
                 </button>
               </li>
@@ -883,7 +894,8 @@ export default function RepoPoster({
               >
                 {area.title}
                 {stopBadges(area.id)}
-                <span>{plural(area.symbols, "symbol")}</span>
+                {/* An area with no symbols mapped still has its pages. */}
+                <span>{area.symbols > 0 ? plural(area.symbols, "symbol") : plural(pagesIn(area.id), "page")}</span>
               </button>
             ))}
           </div>
@@ -950,24 +962,38 @@ export default function RepoPoster({
           <ol className="poster-steps">
             {stages.map((stage, index) => (
               <li key={stage.index}>
-                <button
-                  type="button"
-                  className={`poster-step${stageNow === index ? " is-now" : ""}${
+                {(() => {
+                  const className = `poster-step${stageNow === index ? " is-now" : ""}${
                     stageAreas[index] && colors?.get(stageAreas[index]!) ? " has-area" : ""
-                  }`}
-                  style={stageAreas[index] ? areaStyle(stageAreas[index]!) : undefined}
-                  onMouseEnter={() => !playing && setActiveStage(index)}
-                  onMouseLeave={() => !playing && setActiveStage(null)}
-                  onClick={() => stage.page && onPick?.(stage.page.id)}
-                  title={stage.page ? `Open ${stage.page.title}` : undefined}
-                >
-                  <span className="poster-step-no">{index + 1}</span>
-                  {roles ? (
-                    <span className="poster-step-role">{stage.symbol}</span>
-                  ) : (
-                    <code title={stage.symbol}>{breakableCode(displaySymbol(stage.symbol, { short: true }))}</code>
-                  )}
-                </button>
+                  }`;
+                  const style = stageAreas[index] ? areaStyle(stageAreas[index]!) : undefined;
+                  const body = (
+                    <>
+                      <span className="poster-step-no">{index + 1}</span>
+                      {roles ? (
+                        <span className="poster-step-role">{stage.symbol}</span>
+                      ) : (
+                        <code title={stage.symbol}>{breakableCode(displaySymbol(stage.symbol, { short: true }))}</code>
+                      )}
+                    </>
+                  );
+                  // The copy is drawn with its own font metrics, so a saved
+                  // image gets text, not a box sized on the page.
+                  if (exporting) return <span className={className} style={style}>{body}</span>;
+                  return (
+                    <button
+                      type="button"
+                      className={className}
+                      style={style}
+                      onMouseEnter={() => !playing && setActiveStage(index)}
+                      onMouseLeave={() => !playing && setActiveStage(null)}
+                      onClick={() => stage.page && onPick?.(stage.page.id)}
+                      title={stage.page ? `Open ${stage.page.title}` : undefined}
+                    >
+                      {body}
+                    </button>
+                  );
+                })()}
               </li>
             ))}
           </ol>
