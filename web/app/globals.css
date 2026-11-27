@@ -4905,6 +4905,8 @@ a.codepanel-name:hover {
   }
   .cite-tail > .cite-group::before {
     content: " ";
+    /* The group keeps its sources together; the space before it may break. */
+    white-space: normal;
   }
 }
 .cite-tail > .cite-group:not(.open) {
