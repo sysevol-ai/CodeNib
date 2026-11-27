@@ -353,11 +353,16 @@ describe("repositoryFacts", () => {
       links: [{ weight: 40 }, { weight: 2 }],
     };
     expect(repositoryFacts(map)).toEqual([
-      { label: "areas", value: 2 },
+      { label: "areas", value: 3 },
       { label: "symbols", value: 284 },
       { label: "files", value: 7 },
       { label: "recorded references", value: 42 },
     ]);
     expect(repositoryFacts(map, 22)[2]).toEqual({ label: "files", value: 22 });
+  });
+
+  it("leaves out references when the areas record none", () => {
+    const facts = repositoryFacts({ areas: [{ symbols: 10, files: 2 }], links: [] }, 4);
+    expect(facts.map((fact) => fact.label)).toEqual(["areas", "symbols", "files"]);
   });
 });

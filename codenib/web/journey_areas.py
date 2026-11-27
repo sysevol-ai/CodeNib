@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import Mapping, Sequence
 
+from ..ops.filter import is_test_path
+
 _STEP = re.compile(r"^(\s*\d+\.\s+\*\*`[^`]+`\*\*)(\s*:\s*)(.*)$")
 _EVIDENCE = re.compile(r"\(#evidence-E(\d+)\)")
 
@@ -119,18 +121,107 @@ def journey_area_ids(markdown: str, top_of: Mapping[str, str]) -> list[str]:
     return seen
 
 
+_TITLE_STOP = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "api",
+        "code",
+        "core",
+        "data",
+        "for",
+        "from",
+        "in",
+        "into",
+        "layer",
+        "model",
+        "of",
+        "on",
+        "or",
+        "system",
+        "the",
+        "to",
+        "user",
+        "with",
+    }
+)
+_SUFFIXES = ("ings", "ing", "ers", "er", "ions", "ion", "ed", "es", "s")
+
+
+def _stem(word: str) -> str:
+    for suffix in _SUFFIXES:
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[: -len(suffix)]
+    return word
+
+
+def _title_words(text: str) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return {_stem(word) for word in words if word not in _TITLE_STOP and len(word) > 2}
+
+
+def _area_by_title(
+    label: str, areas: Sequence[Mapping[str, object]]
+) -> Mapping[str, object] | None:
+    """The one area a role is named after.
+
+    A role and an area match when they share two words, or when one's words
+    all appear in the other's: ``Renderer`` and Rendering Backends,
+    ``Persistence and Replication`` and Replication, ``Local Time Series
+    Storage`` and Time Series Database. One shared word is not enough
+    (``Loss and Gradient Computation`` is not Gradient Boosting), and a tie
+    names none: no colour is better than a guess.
+    """
+    own = _title_words(label)
+    if not own:
+        return None
+    scored = []
+    for index, area in enumerate(areas):
+        title = _title_words(str(area.get("title") or ""))
+        shared = own & title
+        if len(shared) >= 2 or (shared and (own <= title or title <= own)):
+            scored.append((len(shared), index))
+    scored.sort(reverse=True)
+    if not scored or (len(scored) > 1 and scored[1][0] == scored[0][0]):
+        return None
+    return areas[scored[0][1]]
+
+
+def _cited_files(
+    node: Mapping[str, object], citations: Sequence[Mapping[str, object] | None]
+) -> list[tuple[str, str]]:
+    """A role's cited sources as (evidence id, file), tests and READMEs last."""
+    out = []
+    for evidence in node.get("evidence") or []:  # type: ignore[union-attr]
+        match = re.fullmatch(r"E(\d+)", str(evidence))
+        position = int(match.group(1)) - 1 if match else -1
+        cite = citations[position] if 0 <= position < len(citations) else None
+        file = str((cite or {}).get("file") or "")
+        if file:
+            out.append((str(evidence), file))
+    return sorted(out, key=lambda item: (is_test_path(item[1]) or _is_readme(item[1])))
+
+
+def _is_readme(file: str) -> bool:
+    return bool(re.search(r"(^|/)readme[^/]*$", file, re.IGNORECASE))
+
+
 def place_architecture_areas(
     slots: Sequence[Mapping[str, object]],
     citations: Sequence[Mapping[str, object] | None],
     places: Mapping[str, Mapping[str, object]],
     areas: Sequence[Mapping[str, object]] = (),
 ) -> list[Mapping[str, object]]:
-    """Give each role of the Overview's architecture the area its source is in.
+    """Give each role of the Overview's architecture its area on the map.
 
-    The architecture is drawn as the main path is, a stair coloured by area,
-    so each role takes the area of the first source it cites, found as a
-    path step's is. A role citing only the README, or code no area holds,
-    stays outside.
+    The architecture is drawn as the main path is, a stair coloured by area.
+    A role whose name matches one area's title takes that area (the plan
+    names roles after the parts the map draws); otherwise it takes the area
+    of the first code it cites, a test's or a README's only when nothing
+    else is cited. The source that placed it is recorded, so the step shows
+    the citation its colour comes from. A role citing only the README, or
+    code no area holds, stays outside.
     """
     out: list[Mapping[str, object]] = []
     for slot in slots:
@@ -146,33 +237,48 @@ def place_architecture_areas(
             continue
         placed = []
         for node in nodes:
-            place = None
-            for evidence in (
-                node.get("evidence") or [] if isinstance(node, Mapping) else []
-            ):
-                match = re.fullmatch(r"E(\d+)", str(evidence))
-                position = int(match.group(1)) - 1 if match else -1
-                cite = citations[position] if 0 <= position < len(citations) else None
-                file = str((cite or {}).get("file") or "")
-                if not file:
-                    continue
-                place = (
-                    _area_of(file, areas)
-                    or places.get(file)
-                    or _area_by_folder(file, areas)
+            if not isinstance(node, Mapping):
+                placed.append(node)
+                continue
+            cited = _cited_files(node, citations)
+            place, source = None, None
+            # A part outside the code (the user's program, a client) is
+            # never placed by its name.
+            named = (
+                None
+                if node.get("kind") == "external"
+                else _area_by_title(str(node.get("label") or ""), areas)
+            )
+            if named is not None:
+                place = named
+                # The citation shown is one in that area, if the role cites one.
+                source = next(
+                    (
+                        evidence
+                        for evidence, file in cited
+                        if not (is_test_path(file) or _is_readme(file))
+                        and (_area_of(file, areas) or _area_by_folder(file, areas))
+                        is named
+                    ),
+                    None,
                 )
-                if place:
-                    break
-            if (
-                isinstance(node, Mapping)
-                and place
-                and place.get("id")
-                and place.get("title")
-            ):
-                node = {
-                    **node,
-                    "area": {"id": str(place["id"]), "title": str(place["title"])},
-                }
+            else:
+                for evidence, file in cited:
+                    if is_test_path(file) or _is_readme(file):
+                        continue
+                    place = (
+                        _area_of(file, areas)
+                        or places.get(file)
+                        or _area_by_folder(file, areas)
+                    )
+                    if place:
+                        source = evidence
+                        break
+            if place and place.get("id") and place.get("title"):
+                area = {"id": str(place["id"]), "title": str(place["title"])}
+                if source:
+                    area["evidence"] = source
+                node = {**node, "area": area}
             placed.append(node)
         out.append(
             {**slot, "render_contract": {**contract, "data": {**data, "nodes": placed}}}

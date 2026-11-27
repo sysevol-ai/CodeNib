@@ -7,7 +7,7 @@ import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "rea
 import type { Citation } from "@/lib/api";
 import { callLabel } from "@/lib/mapRoute";
 import { displaySymbol } from "@/lib/symbols";
-import { isBareHandoff, type Journey } from "@/lib/wikiPresentation";
+import { isBareHandoff, type Journey, type JourneyStage } from "@/lib/wikiPresentation";
 
 /** A call's owner and its own name, so the name can stand forward:
  *  `Session.` + `request()`, `dragonbox::` + `to_decimal()`. */
@@ -60,12 +60,45 @@ function titleWithCode(title: string): ReactNode[] {
   return out;
 }
 
-/** Whether every source a step cites is the README. */
+const README = /(^|\/)readme[^/]*$/i;
+const TEST = /(^|\/)(tests?|testing|specs?|__tests__)\/|(^|\/)test_[^/]*$|[._-](tests?|spec)\.[^/.]+$/i;
+const citationIndex = (id: string) => Number(id.replace(/^E/, "")) - 1;
+
+/** Whether every source a step cites, tests aside, is the README. */
 function describedInReadme(evidence: string[], citations?: Citation[]): boolean {
   const files = evidence
-    .map((id) => citations?.[Number(id.replace(/^E/, "")) - 1]?.file)
-    .filter((file): file is string => !!file);
-  return files.length > 0 && files.every((file) => /(^|\/)readme[^/]*$/i.test(file));
+    .map((id) => citations?.[citationIndex(id)]?.file)
+    .filter((file): file is string => !!file && !TEST.test(file));
+  return files.length > 0 && files.every((file) => README.test(file));
+}
+
+/** Whether a step cites any source outside the tests. */
+function citesCode(evidence: string[], citations?: Citation[]): boolean {
+  return evidence.some((id) => {
+    const file = citations?.[citationIndex(id)]?.file;
+    return !!file && !TEST.test(file);
+  });
+}
+
+/** The citation a step shows beside its name, by index in `citations`.
+ *  A call shows its first cited source. A part shows the source that placed
+ *  it in its area; one placed by its name alone, or described only in the
+ *  README, shows none, so a step never shows a citation its colour did not
+ *  come from. */
+function shownCitation(stage: JourneyStage, roles: boolean, citations?: Citation[]): number | undefined {
+  const usable = (index: number) => index >= 0 && !!citations?.[index]?.file;
+  if (!roles) return stage.evidence.map(citationIndex).find(usable);
+  if (stage.source) {
+    const index = citationIndex(stage.source);
+    return usable(index) ? index : undefined;
+  }
+  if (stage.page) return undefined;
+  return stage.evidence
+    .map(citationIndex)
+    .find((index) => {
+      const file = citations?.[index]?.file;
+      return !!file && usable(index) && !README.test(file) && !TEST.test(file);
+    });
 }
 
 /** Each step sits right of the one that calls it; a drop into another area
@@ -202,10 +235,15 @@ export default function MainPath({
           // of where that call lands, as on the map.
           const nextStage = journey.stages[position + 1];
           const next = nextStage?.page ? colors?.get(nextStage.page.id) : undefined;
-          const cited = stage.evidence
-            .map((id) => Number(id.replace(/^E/, "")) - 1)
-            .find((index) => index >= 0 && !!citations?.[index]?.file);
-          const source = cited !== undefined && citations ? citations[cited] : null;
+          const cited = shownCitation(stage, roles, citations);
+          // Two steps in a row on the same line show it once, on the first.
+          const before = position > 0 ? shownCitation(journey.stages[position - 1], roles, citations) : undefined;
+          const repeated =
+            cited !== undefined &&
+            before !== undefined &&
+            citations?.[cited]?.file === citations?.[before]?.file &&
+            citations?.[cited]?.start_line === citations?.[before]?.start_line;
+          const source = cited !== undefined && citations && !repeated ? citations[cited] : null;
           const file = source?.file ? source.file.split("/").pop() : null;
           // The path names an area where it enters one; the steps after it
           // keep its colour on their rings and lines.
@@ -250,7 +288,11 @@ export default function MainPath({
               )}
               {outside && (
                 <span className="main-path-area is-outside">
-                  {readmeOnly ? "Described in the README" : "Outside the map's areas"}
+                  {readmeOnly
+                    ? "Described in the README"
+                    : roles && !citesCode(stage.evidence, citations)
+                      ? "Not placed on the map"
+                      : "Outside the map's areas"}
                 </span>
               )}
               <span className="main-path-index" aria-hidden="true">

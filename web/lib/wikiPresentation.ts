@@ -160,6 +160,8 @@ export interface JourneyStage {
   /** The stage's one admitted sentence, still Markdown (code spans, cites). */
   text: string;
   evidence: string[];
+  /** The one cited source that places this step in its area, when known. */
+  source?: string;
 }
 
 export interface Journey {
@@ -307,11 +309,16 @@ export function repositoryFacts(
   map: { areas: { symbols: number; files: number }[]; links: { weight: number }[] },
   fileCount?: number,
 ): { label: string; value: number }[] {
+  // Every area the map draws, as its own count says; symbols and files are
+  // those of the areas holding code.
   const areas = map.areas.filter((area) => area.symbols > 0);
+  const references = map.links.reduce((sum, link) => sum + link.weight, 0);
   return [
-    { label: "areas", value: areas.length },
-    { label: "symbols", value: areas.reduce((sum, area) => sum + area.symbols, 0) },
+    { label: "areas", value: map.areas.length },
+    // A map that counted no symbols says nothing about them.
+    ...(areas.length > 0 ? [{ label: "symbols", value: areas.reduce((sum, area) => sum + area.symbols, 0) }] : []),
     { label: "files", value: fileCount || areas.reduce((sum, area) => sum + area.files, 0) },
-    { label: "recorded references", value: map.links.reduce((sum, link) => sum + link.weight, 0) },
+    // A repository whose areas never call each other has nothing to count here.
+    ...(references > 0 ? [{ label: "recorded references", value: references }] : []),
   ];
 }

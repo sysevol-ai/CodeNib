@@ -1865,6 +1865,8 @@ pre {
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
   transition: background-color 0.15s;
+  /* Safari keeps a long name such as a Go test whole and widens the page. */
+  overflow-wrap: anywhere;
 }
 .cite-chip:hover > code,
 .cite-chip:focus-visible > code {
@@ -3749,6 +3751,33 @@ a.evidence-row:hover {
   color: var(--text-secondary);
   font-size: var(--fs-small);
   line-height: 1.55;
+}
+/* The repository's own figure, leading the Overview as a figure: the image
+   on a hairline, its source said in one caption line. */
+.wiki-repo-figure {
+  margin: 40px 0 8px;
+}
+.wiki-repo-figure .wiki-media-asset {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--panel-line);
+  border-radius: 10px;
+}
+.wiki-repo-figure figcaption {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+}
+.wiki-repo-figure figcaption a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+.wiki-repo-figure figcaption a:hover {
+  color: var(--accent);
 }
 .wiki-media-eyebrow {
   margin-bottom: 10px;

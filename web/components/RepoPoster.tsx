@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
 
 import "./RepoPoster.css";
 
@@ -212,6 +212,7 @@ export default function RepoPoster({
   wikiHref,
   at,
   titleAs: Title = "h2",
+  colors,
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -238,11 +239,19 @@ export default function RepoPoster({
   at?: number;
   /** "h1" where the poster opens a page and nothing above it names the page. */
   titleAs?: "h1" | "h2";
+  /** Each area's colour on the Wiki map, so the poster keys the Overview's
+   *  coloured path; without it the poster keeps its own palette. */
+  colors?: Map<string, string>;
 }) {
   // "card": the static 1200x630 link-preview image; no motion, no controls.
   const card = variant === "card";
   const hero = variant === "hero" || card;
   const stages = journey?.stages ?? [];
+  // An area's map colour as --area, for its box, its path and its tags.
+  const areaStyle = (areaId: string): CSSProperties | undefined => {
+    const color = colors?.get(areaId);
+    return color ? ({ "--area": color } as CSSProperties) : undefined;
+  };
   const stageAreas = useMemo(() => journeyAreas(stages, pages), [stages, pages]);
   const { hops } = useMemo(() => tracedHops(stageAreas), [stageAreas]);
   const stopTags = useMemo(() => {
@@ -481,7 +490,7 @@ export default function RepoPoster({
 
   return (
     <section
-      className={`repo-poster${hero ? " is-hero" : ""}${card ? " is-card" : ""}${exporting ? " is-exporting" : ""}`}
+      className={`repo-poster${hero ? " is-hero" : ""}${card ? " is-card" : ""}${exporting ? " is-exporting" : ""}${colors ? " has-colours" : ""}`}
       ref={rootRef}
       aria-label={`System map of ${repo?.repo || repoId}`}
     >
@@ -524,7 +533,8 @@ export default function RepoPoster({
                   key={cell.id}
                   className={`poster-node poster-cell${lit ? " is-lit" : ""}${
                     focusArea === cell.id ? " is-active" : ""
-                  }`}
+                  }${colors?.get(cell.id) ? " has-area" : ""}`}
+                  style={areaStyle(cell.id)}
                   transform={`translate(${cell.x} ${cell.y})`}
                   onMouseEnter={() => setHoverNode(cell.id)}
                   onMouseLeave={() => setHoverNode(null)}
@@ -621,7 +631,8 @@ export default function RepoPoster({
                   key={key}
                   data-source={edge.source}
                   data-target={edge.target}
-                  className={`poster-edge${edge.traced ? " is-traced" : ""}${dim ? " is-dim" : ""}${hot ? " is-hot" : ""}`}
+                  className={`poster-edge${edge.traced ? " is-traced" : ""}${dim ? " is-dim" : ""}${hot ? " is-hot" : ""}${colors?.get(edge.target) ? " has-area" : ""}`}
+                  style={areaStyle(edge.target)}
                 >
                   <path
                     className="poster-edge-line"
@@ -663,7 +674,8 @@ export default function RepoPoster({
                   data-area={node.id}
                   className={`poster-node${lit ? " is-lit" : ""}${dim ? " is-dim" : ""}${
                     focusArea === node.id ? " is-active" : ""
-                  }`}
+                  }${colors?.get(node.id) ? " has-area" : ""}`}
+                  style={areaStyle(node.id)}
                   transform={`translate(${node.x} ${node.y})`}
                   onMouseEnter={() => setHoverNode(node.id)}
                   onMouseLeave={() => setHoverNode(null)}
