@@ -244,3 +244,35 @@ def test_the_path_title_names_the_first_and_last_steps_it_heads():
         sync_journey_title("## From `a()` to `b()`\n\nNo steps.")
         == "## From `a()` to `b()`\n\nNo steps."
     )
+
+
+def test_a_role_named_after_a_page_inside_an_area_takes_that_area():
+    from codenib.web.journey_areas import place_architecture_areas
+
+    areas = [
+        {
+            "id": "sd",
+            "title": "Service Discovery",
+            "files": [],
+            "titles": ["Service Discovery", "Discovery Manager and Target Groups"],
+        },
+        {
+            "id": "scrape",
+            "title": "Scrape Pipeline",
+            "files": [],
+            "titles": ["Scrape Pipeline", "Target Label Population"],
+        },
+    ]
+    slot = {
+        "render_contract": {
+            "adapter": "architecture",
+            "data": {
+                "primary_path": [],
+                "nodes": [{"id": "t", "label": "Target Discovery", "evidence": []}],
+            },
+        }
+    }
+    (node,) = place_architecture_areas([slot], [], {}, areas)[0]["render_contract"][
+        "data"
+    ]["nodes"]
+    assert node["area"]["id"] == "sd"
