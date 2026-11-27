@@ -249,6 +249,10 @@ summary. Install the external harness dependencies in the same Python environmen
 and make Docker available before scoring. Results go in a new directory; existing
 artifacts are never overwritten. Partial build reports and legacy snapshots
 require explicit flags, so use the same choices across a comparison cohort.
+For a snapshot bound to a frozen runtime policy, also supply `--runtime-policy`
+and `--runtime-policy-mode` together. The policy and workspace metadata hashes
+become part of the grading identity; the evaluator continues to enforce the
+snapshot's original bindings.
 
 ??? note "Integration scope and evaluation policy"
     The subprocess boundary is tested without Docker. A full Docker grading

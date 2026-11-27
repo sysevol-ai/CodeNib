@@ -61,6 +61,8 @@ def score_snapshot(
     output_dir: Path,
     allow_partial: bool = False,
     allow_legacy: bool = False,
+    runtime_policy: Path | None = None,
+    runtime_policy_mode: str | None = None,
 ) -> dict:
     """Grade in a new directory and retain command, policy and artifact hashes.
 
@@ -69,19 +71,33 @@ def score_snapshot(
     owns pruning policy, including ``prune_start_guard_exempt`` where needed.
     Docker lifecycle remains owned by the external evaluator.
     """
+    if (runtime_policy is None) != (runtime_policy_mode is None):
+        raise ValueError("runtime policy path and mode must be supplied together")
+    if runtime_policy_mode is not None and runtime_policy_mode not in {
+        "protected",
+        "unprotected",
+        "absent",
+    }:
+        raise ValueError("invalid runtime policy mode")
     checkout = checkout.resolve()
     verify_checkout(checkout, commit)
     inputs = {
         "snapshot": snapshot.resolve(),
         "classification": classification.resolve(),
         "repo_config": repo_config.resolve(),
+        "workspace_metadata": workspace.resolve() / "metadata.json",
     }
+    if runtime_policy is not None:
+        inputs["runtime_policy"] = runtime_policy.resolve()
     before = {name: file_sha256(path) for name, path in inputs.items()}
     policy = {
         "repo_config_sha256": before["repo_config"],
         "allow_partial_build_reports": allow_partial,
         "allow_legacy_snapshot": allow_legacy,
         "filter_src_only": True,
+        "runtime_policy_sha256": before.get("runtime_policy"),
+        "runtime_policy_mode": runtime_policy_mode,
+        "workspace_metadata_sha256": before["workspace_metadata"],
     }
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -112,6 +128,17 @@ def score_snapshot(
     ]
     if allow_legacy:
         command.append("--allow-legacy-snapshot")
+    if runtime_policy is not None:
+        command.extend(
+            [
+                "--runtime-policy",
+                str(inputs["runtime_policy"]),
+                "--runtime-policy-sha256",
+                before["runtime_policy"],
+                "--runtime-policy-mode",
+                runtime_policy_mode,
+            ]
+        )
     receipt = {
         "evaluator_commit": commit,
         "settings": policy,

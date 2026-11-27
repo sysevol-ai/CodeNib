@@ -121,6 +121,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     score.add_argument("--output-dir", type=Path, required=True)
     score.add_argument("--allow-partial-build-reports", action="store_true")
     score.add_argument("--allow-legacy-snapshot", action="store_true")
+    score.add_argument("--runtime-policy", type=Path)
+    score.add_argument(
+        "--runtime-policy-mode", choices=["protected", "unprotected", "absent"]
+    )
     args = parser.parse_args(argv)
     if args.command == "inspect":
         cases = load_swe_milestone_cases(args.workspace, instance_ids=args.milestone)
@@ -144,6 +148,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             output_dir=args.output_dir,
             allow_partial=args.allow_partial_build_reports,
             allow_legacy=args.allow_legacy_snapshot,
+            runtime_policy=args.runtime_policy,
+            runtime_policy_mode=args.runtime_policy_mode,
         )
         identity = evaluator_identity(receipt["evaluator_commit"], receipt["settings"])
         output = summarize_result(

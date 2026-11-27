@@ -66,9 +66,12 @@ def test_unresolved_grade_retains_policy_and_snapshot_receipts(harness, tmp_path
     snapshot = tmp_path / "source snapshot.tar"
     config = tmp_path / "repo_config.yaml"
     classification = tmp_path / "classification.json"
+    runtime_policy = tmp_path / "runtime_policy.yaml"
     snapshot.write_bytes(b"saved submission")
     config.write_text("prune_start_guard_exempt: [db/migrations]\n")
     classification.write_text("{}")
+    runtime_policy.write_text("{}\n")
+    (tmp_path / "metadata.json").write_text("{}\n")
     destination = tmp_path / "score"
     receipt = score_snapshot(
         checkout=checkout,
@@ -79,11 +82,15 @@ def test_unresolved_grade_retains_policy_and_snapshot_receipts(harness, tmp_path
         classification=classification,
         repo_config=config,
         output_dir=destination,
+        runtime_policy=runtime_policy,
+        runtime_policy_mode="protected",
     )
     assert receipt["returncode"] == 1
     assert receipt["input_sha256"]["snapshot"] == file_sha256(snapshot)
     assert receipt["settings"]["repo_config_sha256"] == file_sha256(config)
     assert "--fail-closed-build-reports" in receipt["command"]
+    assert receipt["settings"]["runtime_policy_sha256"] == file_sha256(runtime_policy)
+    assert "--runtime-policy" in receipt["command"]
     assert json.loads((destination / "evaluation_result.json").read_text()) == {
         "resolved": False
     }
@@ -98,3 +105,20 @@ def test_unresolved_grade_retains_policy_and_snapshot_receipts(harness, tmp_path
             repo_config=config,
             output_dir=destination,
         )
+
+
+def test_incomplete_runtime_policy_cannot_start_grading(harness, tmp_path):
+    checkout, commit = harness
+    with pytest.raises(ValueError, match="together"):
+        score_snapshot(
+            checkout=checkout,
+            commit=commit,
+            workspace=tmp_path,
+            milestone="milestone_003_sub-01",
+            snapshot=tmp_path / "unused",
+            classification=tmp_path / "unused",
+            repo_config=tmp_path / "unused",
+            output_dir=tmp_path / "must_not_exist",
+            runtime_policy_mode="protected",
+        )
+    assert not (tmp_path / "must_not_exist").exists()
