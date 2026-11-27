@@ -20,7 +20,9 @@ _STEP = re.compile(r"^(\s*\d+\.\s+\*\*`[^`]+`\*\*)(\s*:\s*)(.*)$")
 _EVIDENCE = re.compile(r"\(#evidence-E(\d+)\)")
 
 
-def _area_of(file: str, areas: Sequence[Mapping[str, object]]) -> Mapping[str, object] | None:
+def _area_of(
+    file: str, areas: Sequence[Mapping[str, object]]
+) -> Mapping[str, object] | None:
     """The top-level area whose outline holds the file, or a folder above it."""
     for area in areas:
         for owned in area.get("files") or []:  # type: ignore[union-attr]
@@ -30,7 +32,9 @@ def _area_of(file: str, areas: Sequence[Mapping[str, object]]) -> Mapping[str, o
     return None
 
 
-def _area_by_folder(file: str, areas: Sequence[Mapping[str, object]]) -> Mapping[str, object] | None:
+def _area_by_folder(
+    file: str, areas: Sequence[Mapping[str, object]]
+) -> Mapping[str, object] | None:
     """The area listing the most files in this file's own folder, if any."""
     folder = file.rsplit("/", 1)[0] if "/" in file else ""
     best, most = None, 0
@@ -77,7 +81,11 @@ def place_journey_areas(
             # A file no area lists and no page cites goes with the area
             # listing the most files in its own folder: tokio's
             # ``task/spawn.rs`` with the area holding ``task/join_set.rs``.
-            place = _area_of(file, areas) or places.get(file) or _area_by_folder(file, areas)
+            place = (
+                _area_of(file, areas)
+                or places.get(file)
+                or _area_by_folder(file, areas)
+            )
             if place:
                 break
         if not place or not place.get("id") or not place.get("title"):
@@ -88,7 +96,9 @@ def place_journey_areas(
     return "\n".join(lines) if changed else markdown
 
 
-_LINKED_STEP = re.compile(r"^\s*\d+\.\s+\*\*`[^`]+`\*\*\s*·\s*\[[^\]]*\]\(\?p=([^)\s]+)\)")
+_LINKED_STEP = re.compile(
+    r"^\s*\d+\.\s+\*\*`[^`]+`\*\*\s*·\s*\[[^\]]*\]\(\?p=([^)\s]+)\)"
+)
 
 
 def journey_area_ids(markdown: str, top_of: Mapping[str, str]) -> list[str]:
@@ -137,18 +147,34 @@ def place_architecture_areas(
         placed = []
         for node in nodes:
             place = None
-            for evidence in node.get("evidence") or [] if isinstance(node, Mapping) else []:
+            for evidence in (
+                node.get("evidence") or [] if isinstance(node, Mapping) else []
+            ):
                 match = re.fullmatch(r"E(\d+)", str(evidence))
                 position = int(match.group(1)) - 1 if match else -1
                 cite = citations[position] if 0 <= position < len(citations) else None
                 file = str((cite or {}).get("file") or "")
                 if not file:
                     continue
-                place = _area_of(file, areas) or places.get(file) or _area_by_folder(file, areas)
+                place = (
+                    _area_of(file, areas)
+                    or places.get(file)
+                    or _area_by_folder(file, areas)
+                )
                 if place:
                     break
-            if isinstance(node, Mapping) and place and place.get("id") and place.get("title"):
-                node = {**node, "area": {"id": str(place["id"]), "title": str(place["title"])}}
+            if (
+                isinstance(node, Mapping)
+                and place
+                and place.get("id")
+                and place.get("title")
+            ):
+                node = {
+                    **node,
+                    "area": {"id": str(place["id"]), "title": str(place["title"])},
+                }
             placed.append(node)
-        out.append({**slot, "render_contract": {**contract, "data": {**data, "nodes": placed}}})
+        out.append(
+            {**slot, "render_contract": {**contract, "data": {**data, "nodes": placed}}}
+        )
     return out

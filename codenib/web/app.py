@@ -69,7 +69,13 @@ from .card_summary import card_summary
 from .config import load_config
 from .experience import router as experience_router
 from .index_status import build_repo_index_status
+from .journey_areas import (
+    journey_area_ids,
+    place_architecture_areas,
+    place_journey_areas,
+)
 from .native_authority import authorize_local_manifest_vector
+from .overview_lead import replace_unfit_lead
 from .ports import argparse_tcp_port
 from .prerender import (
     attr,
@@ -100,11 +106,6 @@ from .schemas import (
 from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
-from .journey_areas import (
-    journey_area_ids,
-    place_architecture_areas,
-    place_journey_areas,
-)
 from .symbol_search import symbol_index
 from .visitor_wikis import router as visitor_wiki_router
 from .walkthroughs import load_walkthroughs, walkthrough_path
@@ -1498,6 +1499,13 @@ async def wiki_page(
             places = await _run_pinned_thread(_symbol_pages, repo_id)
             areas = await _run_pinned_thread(_outline_areas, repo_id, bundle)
             placing = (places, areas)
+            # An opening on where to ask questions gives way to the project's
+            # own one-line purpose, as its card says it.
+            purpose = await _run_pinned_thread(_card_line, bundle)
+            page = {
+                **page,
+                "markdown": replace_unfit_lead(str(page["markdown"]), purpose),
+            }
             page = {
                 **page,
                 "markdown": place_journey_areas(
@@ -1925,7 +1933,17 @@ async def wiki_area_map(repo_id: str) -> dict:
         return result
 
 
-def _overview_path_areas(repo_id: str, builder, outline: dict, areas: list[dict]) -> list[str]:
+def _card_line(bundle) -> str:
+    """The repository's one-line purpose, as its card shows it."""
+    try:
+        return bundle.card_summary(None, bundle._description()) or ""
+    except Exception:  # noqa: BLE001 - the lead is then only dropped
+        return ""
+
+
+def _overview_path_areas(
+    repo_id: str, builder, outline: dict, areas: list[dict]
+) -> list[str]:
     """The top-level areas the cached Overview's main path enters, in order."""
     cached_page = getattr(builder, "cached_page", None)
     try:
@@ -2043,7 +2061,11 @@ def _outline_areas(repo_id: str, bundle) -> list[dict]:
             yield from files(child)
 
     return [
-        {"id": top["id"], "title": top.get("title") or top["id"], "files": list(files(top))}
+        {
+            "id": top["id"],
+            "title": top.get("title") or top["id"],
+            "files": list(files(top)),
+        }
         for top in outline.get("pages") or []
         if top.get("id") != "overview"
     ]
