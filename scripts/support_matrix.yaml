@@ -302,7 +302,7 @@ benchmarks:
       - module: codenib.eval.benchmarks.swe_milestone_runner
         run: true
     level: Tested
-    level_note: adapter and subprocess boundary tested; full Docker grading and agent execution pending
+    level_note: adapter tested and one saved Navidrome submission graded; agent execution pending
     page: evaluation/index.md#l3-resolution
     in_grid: false
     modules:
