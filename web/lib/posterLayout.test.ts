@@ -334,7 +334,9 @@ describe("wrapTitle hyphenation", () => {
   it("breaks only a word longer than a whole line, three letters each side", () => {
     expect(wrapTitle("Controller Orchestration", 16, 4, 9, true)).toEqual(["", "Controller", "Orchestration"]);
     const lines = wrapTitle("Internationalization and Translations", 16, 4, 16, true);
-    expect(lines[0]).toBe("Internationaliz-");
+    // At a syllable seam, not wherever the line runs out.
+    expect(lines[0]).toBe("Internationali-");
+    expect(wrapTitle("Axes Decoration", 8, 4, 8, true)).toEqual(["Axes", "Decora-", "tion"]);
     expect(lines.every((line) => !line.includes("- "))).toBe(true);
     expect(lines.join(" ")).not.toContain("…");
   });

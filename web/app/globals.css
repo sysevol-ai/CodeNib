@@ -1293,11 +1293,12 @@ pre {
   .arch-title {
     font-size: 29px;
   }
-  /* A phone's heading may break a long call after its owner. */
-  .main-path-title-unit {
+  /* A phone's heading breaks a call after its owner only when the call is
+     wider than the heading (MainPath marks it). */
+  .main-path-title-unit.is-long {
     white-space: normal;
   }
-  .main-path-title .main-path-owner::after {
+  .main-path-title-unit.is-long .main-path-owner::after {
     content: "\200B";
   }
   .main-path-step {
@@ -6874,4 +6875,12 @@ a.code-activity-row:focus-visible {
 .wiki-story .markdown > ol > li {
   /* Geist's ch is wide; 36em holds about seventy characters. */
   max-width: 36em;
+}
+
+/* The last letters of a call and its "()" stay together. */
+.main-path-name-end {
+  white-space: nowrap;
+}
+.main-path-title-unit.is-long {
+  white-space: normal;
 }

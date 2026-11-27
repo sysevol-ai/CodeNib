@@ -22,11 +22,17 @@ export function splitCall(symbol: string): [string, string] {
 
 function Call({ symbol, breakable = true }: { symbol: string; breakable?: boolean }) {
   const [owner, name] = splitCall(symbol);
+  // Where a long name must break, "()" never stands alone: it keeps the
+  // name's last letters with it.
+  const tail = /\(\)$/.test(name) && name.length > 8 ? name.slice(-5) : "";
   return (
     <>
       {owner && <span className="main-path-owner">{owner}</span>}
       {owner && breakable && <wbr />}
-      <span className="main-path-name">{name}</span>
+      <span className="main-path-name">
+        {tail ? name.slice(0, -5) : name}
+        {tail && <span className="main-path-name-end">{tail}</span>}
+      </span>
     </>
   );
 }
@@ -151,6 +157,26 @@ export default function MainPath({
   const step = units > 0 ? Math.min(CASCADE_STEP_PX, CASCADE_PX / units) : 0;
   let offset = 0;
   const listRef = useRef<HTMLOListElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  // A "to …" call stays on one line wherever it fits; only a call wider
+  // than the whole heading may break, after its owner.
+  useLayoutEffect(() => {
+    const title = titleRef.current;
+    if (!title || typeof ResizeObserver === "undefined") return undefined;
+    const check = () => {
+      for (const unit of title.querySelectorAll<HTMLElement>(".main-path-title-unit")) {
+        // Measured whole, on one line: an inline span has no scroll width.
+        unit.classList.remove("is-long");
+        unit.classList.toggle("is-long", unit.getBoundingClientRect().width > title.clientWidth + 1);
+      }
+    };
+    check();
+    // The heading's face may arrive after the first layout.
+    void document.fonts?.ready.then(check);
+    const observer = new ResizeObserver(check);
+    observer.observe(title);
+    return () => observer.disconnect();
+  }, [journey]);
   // Where any call's file:line would fall onto a line of its own, every
   // step sets its place under its call, so the rows stay alike.
   useLayoutEffect(() => {
@@ -212,7 +238,7 @@ export default function MainPath({
   return (
     <figure className="main-path" aria-label={journey.title}>
       <figcaption className="main-path-head">
-        <h2 className="main-path-title">{titleWithCode(journey.title)}</h2>
+        <h2 className="main-path-title" ref={titleRef}>{titleWithCode(journey.title)}</h2>
         {roles ? (
           <p className="main-path-note">
             The system&apos;s parts in the order work passes through them
