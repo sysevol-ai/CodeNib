@@ -9301,12 +9301,12 @@ def test_the_readme_command_picks_the_subcommand_the_path_follows(tmp_path):
     functions = [
         ("crates/tool/src/main.rs:main()", "crates/tool/src/main.rs", 0, 5),
         ("crates/tool/src/lib.rs:run()", "crates/tool/src/lib.rs", 0, 20),
-        ("crates/tool/src/lib.rs:check()", "crates/tool/src/lib.rs", 30, 60),
+        ("crates/tool/src/lib.rs:audit()", "crates/tool/src/lib.rs", 30, 60),
         ("crates/tool/src/lib.rs:linter()", "crates/tool/src/lib.rs", 70, 90),
     ]
     calls = [
         ("crates/tool/src/main.rs:main()", "crates/tool/src/lib.rs:run()", 2),
-        ("crates/tool/src/lib.rs:run()", "crates/tool/src/lib.rs:check()", 3),
+        ("crates/tool/src/lib.rs:run()", "crates/tool/src/lib.rs:audit()", 3),
         ("crates/tool/src/lib.rs:run()", "crates/tool/src/lib.rs:linter()", 4),
     ]
     # Give both subcommands far reach; linter() reaches a little further.
@@ -9321,7 +9321,7 @@ def test_the_readme_command_picks_the_subcommand_the_path_follows(tmp_path):
         )
         calls.append(
             (
-                "crates/tool/src/lib.rs:check()",
+                "crates/tool/src/lib.rs:audit()",
                 f"crates/core/src/c{index}.rs:f{index}()",
                 31 + index,
             )
@@ -9345,9 +9345,9 @@ def test_the_readme_command_picks_the_subcommand_the_path_follows(tmp_path):
 
     plain = _path_wiki(tmp_path, functions, calls, repo="org/tool")
     plain = plain._entry_path([], [])[2]
-    readme = "Lint a project:\n\n```shell\ntool check .\n```\n"
+    readme = "Lint a project:\n\n```shell\ntool audit .\n```\n"
     named = _path_wiki(tmp_path, functions, calls, readme=readme, repo="org/tool")
     path = named._entry_path([], [])[2]
 
     assert plain[2]["symbol"].endswith(":linter()")
-    assert path[2]["symbol"].endswith(":check()")
+    assert path[2]["symbol"].endswith(":audit()")

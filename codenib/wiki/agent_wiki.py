@@ -68,6 +68,8 @@ from .evidence import (
 )
 from .fences import fence_marker as _fence_marker
 from .importance import (
+    is_side_road,
+    path_weight,
     TIER_DETAIL,
     TIER_PRIMARY,
     file_weights,
@@ -5570,11 +5572,15 @@ class AgentWiki:
                     reach >= _README_WORD_MIN_REACH
                     and leaf_name(target["label"]) in commands
                 )
+                # Setting up (constructors, configuration, registration)
+                # reaches far without being the work; it counts for a quarter,
+                # so the call that does the work wins at comparable reach.
+                worth = path_weight(target["label"], reach)
                 score = (
                     int(named),
-                    min(reach, 40),
+                    min(worth, 40),
                     int(target_file != current.file),
-                    reach,
+                    worth,
                     -len(target["label"]),
                 )
                 anchor = f"{self._rel(edge.anchor_file)}:{edge.anchor_line + 1}"
@@ -5636,8 +5642,25 @@ class AgentWiki:
                 {"evidence": item.id, "symbol": item.symbol, "relation": relation_id}
             )
             current = item
+        # A path that ends setting something up ends on a detail: it stops
+        # at its last step that works. One that is a third or more setting up (a
+        # framework dispatches the commands, so the graph sees only their
+        # wiring) is not told at all; the Overview shows its architecture.
+        while len(path) > 1 and is_side_road(path[-1]["symbol"]):
+            path.pop()
+        steps = path[1:]
+        if steps and 3 * sum(is_side_road(step["symbol"]) for step in steps) >= len(steps):
+            return [], [], []
         if len(path) < 3:
             return [], [], []
+        kept = {step["symbol"] for step in path}
+        kept_ids = {step["evidence"] for step in path}
+        new_items = [item for item in new_items if item.id in kept_ids]
+        new_relations = [
+            relation
+            for relation in new_relations
+            if relation.source in kept and relation.target in kept
+        ]
         return new_items, new_relations, path
 
     def graph_main_path(

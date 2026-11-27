@@ -116,6 +116,123 @@ _REPORTING_WORDS = frozenset(
         "warnings",
     }
 )
+# Setting things up is a side road from a main path: the path follows the
+# work a program does (``run()``, ``render()``, ``check()``), not the
+# constructors, configuration and registration done before it
+# (``NewHugoSites()``, ``App.config()``, ``loadI18n()``, ``initCommands()``).
+_SETUP_WORDS = frozenset(
+    {
+        "config",
+        "configs",
+        "configuration",
+        "configure",
+        "default",
+        "defaults",
+        "env",
+        "environment",
+        "factory",
+        "flags",
+        "i18n",
+        "init",
+        "initialise",
+        "initialize",
+        "instrumented",
+        "instrumentation",
+        "locale",
+        "locales",
+        "localization",
+        "localize",
+        "metrics",
+        "new",
+        "options",
+        "opts",
+        "register",
+        "registration",
+        "registry",
+        "settings",
+        "setup",
+        "telemetry",
+        "translate",
+        "translation",
+    }
+)
+
+
+# Names that say a callable does a program's work: ``run_controller()``,
+# ``Controller.run()``, ``render()``, ``Session.send()``.
+_WORK_WORDS = frozenset(
+    {
+        "apply",
+        "build",
+        "check",
+        "compile",
+        "dispatch",
+        "emit",
+        "eval",
+        "evaluate",
+        "exec",
+        "execute",
+        "format",
+        "generate",
+        "handle",
+        "interpret",
+        "invoke",
+        "lint",
+        "print",
+        "process",
+        "render",
+        "run",
+        "send",
+        "serve",
+        "transform",
+        "write",
+    }
+)
+# Reporting a problem is a side road too: ``NewDiagnostic()``, ``warn()``.
+_SIDE_WORDS = _REPORTING_WORDS | {"diagnostic", "diagnostics", "describe", "help", "usage", "version"}
+
+
+def path_weight(name: str, reach: int) -> int:
+    """How much a callee's reach counts when a main path picks its next step.
+
+    Setting up or reporting counts for a quarter; a name that says it does the
+    work counts double, so ``run_controller()`` wins over ``list_themes()``
+    and ``App.config()`` though both reach further.
+    """
+
+    words = _symbol_words(name)
+    if is_side_road(name):
+        return reach // 4
+    if words & _WORK_WORDS:
+        return reach * 2
+    return reach
+
+
+def is_side_road(name: str) -> bool:
+    """Whether a callable sets something up or reports, rather than works."""
+
+    words = _symbol_words(name)
+    lowered = name.lower()
+    return bool(
+        words & _SETUP_WORDS
+        or words & _SIDE_WORDS
+        # ``loadI18n()`` splits into "I", "18", "n".
+        or "i18n" in lowered
+        or "l10n" in lowered
+    )
+
+
+def is_setup_callable(name: str) -> bool:
+    """Whether a callable's name says it sets something up rather than works.
+
+    ``NewHugoSites()``, ``App.config()``, ``initCommands()`` and
+    ``WorkerMetrics.from_config()`` set up; ``Session.send()`` and
+    ``render()`` work.
+    """
+
+    return bool(_symbol_words(name) & _SETUP_WORDS)
+
+
 # A callable called from this many files (or the repository's top 1%, if that
 # is more) is a helper everything uses, not a step on one path.
 HELPER_MIN_CALLER_FILES = 8
