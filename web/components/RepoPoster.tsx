@@ -513,7 +513,9 @@ export default function RepoPoster({
             <dt>files</dt>
             <dd>{number.format(totals.files ?? shownAreas.reduce((sum, area) => sum + area.files, 0))}</dd>
           </div>
-          <div><dt>recorded references</dt><dd>{number.format(totals.references)}</dd></div>
+          {totals.references > 0 && (
+            <div><dt>recorded references</dt><dd>{number.format(totals.references)}</dd></div>
+          )}
         </dl>
       </header>
 
@@ -553,18 +555,29 @@ export default function RepoPoster({
                     rx="4"
                     style={{ fillOpacity: 0.55 + Math.min(0.45, cell.share * 2.2) }}
                   />
-                  {cell.lines.map((line, index) => (
-                    <text
-                      key={index}
-                      className="poster-node-title"
-                      x="12"
-                      y={10 + cell.titleOffset + cell.fontSize + index * lineHeight}
-                      style={{ fontSize: cell.fontSize }}
-                    >
-                      {line}
-                    </text>
-                  ))}
-                  {cell.lines.length > 0 && cell.w >= 150 && cell.h >= cell.titleOffset + cell.lines.length * lineHeight + 44 && (
+                  {cell.vertical
+                    ? cell.lines.slice(0, 1).map((line) => (
+                        <text
+                          key="vertical"
+                          className="poster-node-title"
+                          transform={`translate(${Math.round(cell.w / 2 + cell.fontSize * 0.36)} ${cell.h - 12}) rotate(-90)`}
+                          style={{ fontSize: cell.fontSize }}
+                        >
+                          {line}
+                        </text>
+                      ))
+                    : cell.lines.map((line, index) => (
+                        <text
+                          key={index}
+                          className="poster-node-title"
+                          x="12"
+                          y={10 + cell.titleOffset + cell.fontSize + index * lineHeight}
+                          style={{ fontSize: cell.fontSize }}
+                        >
+                          {line}
+                        </text>
+                      ))}
+                  {!cell.vertical && cell.lines.length > 0 && cell.w >= 150 && cell.h >= cell.titleOffset + cell.lines.length * lineHeight + 44 && (
                     <text
                       className="poster-node-meta"
                       x="12"
@@ -574,7 +587,7 @@ export default function RepoPoster({
                     </text>
                   )}
                   <text className="poster-cell-share" x={cell.w - 12} y={cell.h - 12} textAnchor="end">
-                    {cell.w >= 64 && cell.h >= 40 ? `${Math.round(cell.share * 100)}%` : ""}
+                    {!cell.vertical && cell.w >= 64 && cell.h >= 40 ? `${Math.round(cell.share * 100)}%` : ""}
                   </text>
                   {pins(cell.id, cell.w)}
                 </g>

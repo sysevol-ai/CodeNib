@@ -1868,6 +1868,10 @@ pre {
   /* Safari keeps a long name such as a Go test whole and widens the page. */
   overflow-wrap: anywhere;
 }
+/* The reading column's own code rule is more specific; a cited name still wraps. */
+.markdown .cite-chip > code {
+  overflow-wrap: anywhere;
+}
 .cite-chip:hover > code,
 .cite-chip:focus-visible > code {
   background: color-mix(in srgb, var(--accent) 26%, transparent);
@@ -3761,6 +3765,12 @@ a.evidence-row:hover {
   display: block;
   width: 100%;
   height: auto;
+  /* The image's own shape: no 16:9 plate or padding around it. */
+  min-height: 0;
+  aspect-ratio: auto;
+  padding: 0;
+  object-fit: contain;
+  background: transparent;
   border: 1px solid var(--panel-line);
   border-radius: 10px;
 }

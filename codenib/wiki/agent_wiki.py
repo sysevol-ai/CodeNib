@@ -2704,6 +2704,15 @@ def _fact_plan_markdown(
                 f"{head}: {statement}. " + " ".join(f"[{item}]" for item in ids)
             )
         journey_block = "\n".join(lines)
+        # A "From `a` to `b`" title names the stages it heads: when the
+        # path was cut after the title was written, the title follows it.
+        named = re.fullmatch(r"From `[^`]+` to `[^`]+`", journey_title)
+        entities = [
+            str(stage.get("stage") or "").strip().strip("`")
+            for stage in journey["stages"]
+        ]
+        if named and len(entities) >= 2 and all(entities):
+            journey_title = f"From `{entities[0]}` to `{entities[-1]}`"
     journey_statements = [
         str(stage.get("statement") or "") for stage in journey.get("stages") or []
     ]

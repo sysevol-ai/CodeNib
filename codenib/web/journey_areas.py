@@ -284,3 +284,31 @@ def place_architecture_areas(
             {**slot, "render_contract": {**contract, "data": {**data, "nodes": placed}}}
         )
     return out
+
+
+_JOURNEY_TITLE = re.compile(r"^## From `[^`]+` to `[^`]+`\s*$")
+_STAGE_ENTITY = re.compile(r"^\s*\d+\.\s+\*\*`([^`]+)`\*\*")
+
+
+def sync_journey_title(markdown: str) -> str:
+    """Make a "From `a` to `b`" heading name the first and last steps under it.
+
+    The title is written before the path's tail is cut, so a cached page can
+    name a step its list no longer shows (smolagents' title ended on a
+    method the path had dropped).
+    """
+    lines = markdown.split("\n")
+    for index, line in enumerate(lines):
+        if not _JOURNEY_TITLE.match(line):
+            continue
+        entities = []
+        for following in lines[index + 1 :]:
+            if following.startswith("## "):
+                break
+            match = _STAGE_ENTITY.match(following)
+            if match:
+                entities.append(match.group(1))
+        if len(entities) >= 2:
+            lines[index] = f"## From `{entities[0]}` to `{entities[-1]}`"
+        break
+    return "\n".join(lines)
