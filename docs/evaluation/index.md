@@ -227,8 +227,9 @@ published on this site.
 Use the SWE-Milestone adapter to read local milestone specifications and inspect
 saved evaluation results, or grade a saved source snapshot through a pinned
 external harness. It preserves missing-test counts and rejects comparison cohorts
-with different evaluator commits or settings. Agent execution still belongs to
-the external harness.
+with different evaluator commits or settings, or where one milestone was graded
+in different container images. Agent execution still belongs to the external
+harness.
 
 ```bash
 python -m codenib.eval.benchmarks.swe_milestone_runner inspect WORKSPACE --milestone milestone_003_sub-01
@@ -242,8 +243,9 @@ settings. Its declaration is supplied by the caller; this adapter does not
 authenticate the external harness or retrospectively prove how a result was
 produced. Use the same verified evaluator and settings for each condition.
 
-The `score` command verifies the external checkout revision and refuses local
-changes to harness code. It records the invoked command and hashes of the source
+The `score` command verifies the external checkout revision and refuses any
+local change to tracked files, plus new files in the harness code and its
+per-repository quarantine settings. It records the invoked command and hashes of the source
 snapshot, classification and repo configuration, alongside the raw result and
 summary. Install the external harness dependencies in the same Python environment
 and make Docker available before scoring. Results go in a new directory; existing

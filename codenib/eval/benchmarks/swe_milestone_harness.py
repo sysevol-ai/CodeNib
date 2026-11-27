@@ -29,7 +29,14 @@ def verify_checkout(checkout: Path, commit: str) -> None:
     ).strip()
     if head != commit:
         raise ValueError("external evaluator checkout differs from requested commit")
-    dirty = subprocess.check_output(
+    # Any edited tracked file can change grading (the evaluator also reads
+    # quarantine_configs/<repo>.yaml), so the whole tracked tree must be clean.
+    modified = subprocess.check_output(
+        ["git", "-C", str(checkout), "status", "--porcelain", "--untracked-files=no"],
+        text=True,
+    )
+    # Untracked files only matter where the evaluator looks them up by name.
+    added = subprocess.check_output(
         [
             "git",
             "-C",
@@ -40,10 +47,11 @@ def verify_checkout(checkout: Path, commit: str) -> None:
             "--",
             "harness",
             "pyproject.toml",
+            "quarantine_configs",
         ],
         text=True,
     )
-    if dirty.strip():
+    if modified.strip() or added.strip():
         raise ValueError("external evaluator code has local changes")
     if not (checkout / "harness/e2e/evaluator.py").is_file():
         raise ValueError("checkout has no SWE-Milestone evaluator")

@@ -39,6 +39,27 @@ class SWEMilestoneCase:
         }
 
 
+def _reject_cycles(rows: dict[str, dict]) -> None:
+    """A dependency cycle has no valid execution order."""
+    state: dict[str, int] = {}  # 1 = on the current path, 2 = finished
+
+    def visit(mid: str) -> None:
+        state[mid] = 1
+        parents = rows[mid].get("parent_milestones", [])
+        for parent in parents if isinstance(parents, list) else []:
+            if parent not in rows:
+                continue  # reported as an invalid dependency by the caller
+            if state.get(parent) == 1:
+                raise ValueError(f"dependency cycle through: {parent}")
+            if parent not in state:
+                visit(parent)
+        state[mid] = 2
+
+    for mid in rows:
+        if mid not in state:
+            visit(mid)
+
+
 def load_swe_milestone_cases(
     workspace: str | Path, *, instance_ids: Sequence[str] = ()
 ) -> tuple[SWEMilestoneCase, ...]:
@@ -61,6 +82,7 @@ def load_swe_milestone_cases(
         if mid in indexed:
             raise ValueError(f"duplicate milestone: {mid}")
         indexed[mid] = row
+    _reject_cycles(indexed)
     requested = {_identity(mid) for mid in instance_ids}
     if requested - indexed.keys():
         raise ValueError(f"unknown milestones: {sorted(requested - indexed.keys())}")

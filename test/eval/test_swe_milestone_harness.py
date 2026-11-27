@@ -122,3 +122,19 @@ def test_incomplete_runtime_policy_cannot_start_grading(harness, tmp_path):
             runtime_policy_mode="protected",
         )
     assert not (tmp_path / "must_not_exist").exists()
+
+
+def test_modified_quarantine_policy_is_rejected(harness):
+    checkout, commit = harness
+    added = checkout / "quarantine_configs/navidrome.yaml"
+    added.parent.mkdir()
+    added.write_text("quarantine: []\n")
+    with pytest.raises(ValueError, match="local changes"):
+        verify_checkout(checkout, commit)
+
+
+def test_any_edited_tracked_file_is_rejected(harness):
+    checkout, commit = harness
+    (checkout / ".gitignore").write_text("*\n")
+    with pytest.raises(ValueError, match="local changes"):
+        verify_checkout(checkout, commit)

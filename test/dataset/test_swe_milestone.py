@@ -45,3 +45,19 @@ def test_reject_invalid_identity(tmp_path, identity):
     )
     with pytest.raises(ValueError, match="identity"):
         load_swe_milestone_cases(tmp_path)
+
+
+def test_reject_dependency_cycle(tmp_path):
+    (tmp_path / "metadata.json").write_text(
+        json.dumps(
+            {
+                "repo_name": "owner/repo",
+                "milestones": [
+                    {"id": "m1", "parent_milestones": ["m2"]},
+                    {"id": "m2", "parent_milestones": ["m1"]},
+                ],
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="cycle"):
+        load_swe_milestone_cases(tmp_path)

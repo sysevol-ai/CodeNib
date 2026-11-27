@@ -73,9 +73,13 @@ def summarize_result(result: Mapping, *, identity: str) -> dict:
         counts[f"{group}_achieved"] == counts[f"{group}_required"]
         for group in ("fail_to_pass", "none_to_pass", "pass_to_pass")
     )
+    image = result.get("evaluation_environment", {}).get(
+        "offline_cache_effective_image_id"
+    )
     return {
         "evaluator_identity": identity,
         "milestone_id": result["milestone_id"],
+        "evaluation_image": image if isinstance(image, str) and image else None,
         "resolved": bool(result.get("resolved"))
         and not invalid
         and all_required_passed,
@@ -94,6 +98,15 @@ def validate_comparison(rows: Sequence[Mapping]) -> None:
         raise ValueError("every result needs an evaluator identity")
     if len({row["evaluator_identity"] for row in rows}) != 1:
         raise ValueError("cannot compare different evaluator versions or settings")
+    # Each milestone grades in its own image, so images must agree per milestone.
+    images: dict[str, set] = {}
+    for row in rows:
+        images.setdefault(row["milestone_id"], set()).add(row.get("evaluation_image"))
+    for milestone, seen in images.items():
+        if None in seen:
+            raise ValueError(f"{milestone}: a result does not record its image")
+        if len(seen) != 1:
+            raise ValueError(f"{milestone}: results were graded in different images")
 
 
 def main(argv: Sequence[str] | None = None) -> None:

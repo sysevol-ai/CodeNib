@@ -11,9 +11,10 @@ from codenib.eval.benchmarks.swe_milestone_runner import (
 )
 
 
-def result(missing=0):
+def result(missing=0, image="sha256:aaa", milestone="milestone_003_sub-01"):
     return {
-        "milestone_id": "milestone_003_sub-01",
+        "milestone_id": milestone,
+        "evaluation_environment": {"offline_cache_effective_image_id": image},
         "resolved": False,
         "test_summary": {
             "fail_to_pass_required": 4,
@@ -65,6 +66,30 @@ def test_inconsistent_resolved_flag_cannot_override_failed_tests():
     raw = result()
     raw["resolved"] = True
     assert not summarize_result(raw, identity="pinned")["resolved"]
+
+
+def test_same_milestone_in_different_images_cannot_share_comparison():
+    rows = [
+        summarize_result(result(image=image), identity="pinned")
+        for image in ["sha256:aaa", "sha256:bbb"]
+    ]
+    with pytest.raises(ValueError, match="different images"):
+        validate_comparison(rows)
+
+
+def test_result_without_recorded_image_cannot_join_comparison():
+    rows = [summarize_result(result(image=""), identity="pinned")]
+    assert rows[0]["evaluation_image"] is None
+    with pytest.raises(ValueError, match="does not record"):
+        validate_comparison(rows)
+
+
+def test_each_milestone_may_use_its_own_image():
+    rows = [
+        summarize_result(result(image=image, milestone=mid), identity="pinned")
+        for image, mid in [("sha256:aaa", "m1"), ("sha256:bbb", "m2")]
+    ]
+    validate_comparison(rows)
 
 
 @pytest.mark.parametrize("budget", [0, 1, 2, 3, 7, 5000])
