@@ -562,11 +562,13 @@ export default function RepoPoster({
                     style={{ fillOpacity: 0.55 + Math.min(0.45, cell.share * 2.2) }}
                   />
                   {cell.vertical
-                    ? cell.lines.slice(0, 1).map((line) => (
+                    ? cell.lines.slice(0, 2).map((line, index, shown) => (
                         <text
-                          key="vertical"
+                          key={`vertical-${index}`}
                           className="poster-node-title"
-                          transform={`translate(${Math.round(cell.w / 2 + cell.fontSize * 0.36)} ${cell.h - 12}) rotate(-90)`}
+                          transform={`translate(${Math.round(
+                            cell.w / 2 + cell.fontSize * 0.36 + (index - (shown.length - 1) / 2) * lineHeight,
+                          )} ${cell.h - 12}) rotate(-90)`}
                           style={{ fontSize: cell.fontSize }}
                         >
                           {line}
@@ -589,11 +591,11 @@ export default function RepoPoster({
                       x="12"
                       y={10 + cell.titleOffset + cell.fontSize + (cell.lines.length - 1) * lineHeight + 22}
                     >
-                      {number.format(cell.symbols)} symbols · {cell.files} file{cell.files === 1 ? "" : "s"}
+                      {number.format(cell.symbols)} symbol{cell.symbols === 1 ? "" : "s"} · {cell.files} file{cell.files === 1 ? "" : "s"}
                     </text>
                   )}
                   <text className="poster-cell-share" x={cell.w - 12} y={cell.h - 12} textAnchor="end">
-                    {!cell.vertical && cell.w >= 64 && cell.h >= 40 ? `${Math.round(cell.share * 100)}%` : ""}
+                    {!cell.vertical && !cell.noShare && cell.w >= 64 && cell.h >= 40 ? `${Math.round(cell.share * 100)}%` : ""}
                   </text>
                   {pins(cell.id, cell.w)}
                 </g>
@@ -726,7 +728,7 @@ export default function RepoPoster({
                     </text>
                   ))}
                   <text className="poster-node-meta" x="14" y={30 + node.lines.length * 18 + 6}>
-                    {number.format(node.symbols)} symbols · {node.files} file{node.files === 1 ? "" : "s"}
+                    {number.format(node.symbols)} symbol{node.symbols === 1 ? "" : "s"} · {node.files} file{node.files === 1 ? "" : "s"}
                   </text>
                   {pins(node.id, node.w)}
                 </g>
@@ -773,7 +775,7 @@ export default function RepoPoster({
                 onClick={() => onPick?.(area.id)}
               >
                 {area.title}
-                <span>{number.format(area.symbols)} symbols</span>
+                <span>{number.format(area.symbols)} symbol{area.symbols === 1 ? "" : "s"}</span>
               </button>
             ))}
           </div>
