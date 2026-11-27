@@ -42,6 +42,7 @@ export default function WikiToc({
   activeWalk,
   onWalk,
   docs,
+  promote,
 }: {
   pages: WikiPageRef[];
   activeId: string;
@@ -56,18 +57,15 @@ export default function WikiToc({
   onWalk?: (id: string) => void;
   /** The repository's own README and docs/ files, read as pages. */
   docs?: { id: string; title: string; path: string }[];
+  /** Areas the Overview's path enters, listed with the main pages. */
+  promote?: ReadonlySet<string>;
 }) {
   const [choices, setChoices] = useState<Record<string, boolean>>({});
   const [allDocs, setAllDocs] = useState(false);
   const [moreChoice, setMoreChoice] = useState<boolean | null>(null);
   const split = partitionWikiNav(pages);
-  // An area in colour on the map (those the Overview's path enters take the
-  // hues first) is never hidden under "More topics" while grey ones show.
-  const hued = (page: WikiPageRef) => {
-    const color = colors?.get(page.id);
-    return !!color && color !== NEUTRAL_COLOR;
-  };
-  const promoted = new Set(split.more.filter(hued).map((page) => page.id));
+  // An area the Overview's path enters is never hidden under "More topics".
+  const promoted = new Set(split.more.filter((page) => promote?.has(page.id)).map((page) => page.id));
   const shown = new Set([...split.primary.map((page) => page.id), ...promoted]);
   const primary = promoted.size ? pages.filter((page) => shown.has(page.id)) : split.primary;
   const more = promoted.size ? split.more.filter((page) => !promoted.has(page.id)) : split.more;

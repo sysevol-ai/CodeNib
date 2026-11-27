@@ -1078,6 +1078,7 @@ export default function WikiPageView({
   const walking = !!walkAt && (walkthroughs === undefined || !!walk);
   // Decided before the page list loads, so the reader never jumps on first paint.
   const workspace = wideEnough && !mapHidden && !walking;
+  const areaPath = useMemo(() => new Set(areaMap?.colour_first ?? []), [areaMap]);
   const wikiGraph = useMemo(
     () => buildWikiGraph(pages, areaMap),
     [pages, areaMap],
@@ -1498,6 +1499,7 @@ export default function WikiPageView({
                 activeId={walking ? "" : activeId}
                 onPick={pick}
                 colors={workspace ? wikiGraph.colors : undefined}
+                promote={areaPath}
                 walks={walkthroughs?.walks.map((item) => ({ id: item.id, label: item.tab }))}
                 docs={repoDocs}
                 activeWalk={walking ? walkAt?.id : undefined}
