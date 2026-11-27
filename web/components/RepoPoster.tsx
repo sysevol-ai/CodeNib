@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 
 import "./RepoPoster.css";
 
@@ -276,6 +277,7 @@ export default function RepoPoster({
   colors,
   pathLabel = "Traced call path",
   roles = false,
+  capture,
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -309,6 +311,9 @@ export default function RepoPoster({
   pathLabel?: string;
   /** The path's stops are named parts in words, not calls. */
   roles?: boolean;
+  /** Internal: this is the offscreen copy a saved image is drawn from; it
+   *  hands its root over once laid out. */
+  capture?: (node: HTMLElement) => void;
 }) {
   // "card": the static 1200x630 link-preview image; no motion, no controls.
   const card = variant === "card";
@@ -346,7 +351,9 @@ export default function RepoPoster({
     const color = colors?.get(areaId);
     return color ? ({ "--area": color } as CSSProperties) : undefined;
   };
-  const stageAreas = useMemo(() => journeyAreas(stages, pages), [stages, pages]);
+  // Kept while its content holds: the page re-renders (and refetches its
+  // tree every 15 s) with new arrays, which would restart the trace.
+  const stageAreas = useStableValue(journeyAreas(stages, pages), (areas) => areas.map((area) => area ?? "").join("\u0000"));
   const { hops } = useMemo(() => tracedHops(stageAreas), [stageAreas]);
   const stopTags = useMemo(() => {
     const counts = new Map<string, number>();
@@ -451,7 +458,9 @@ export default function RepoPoster({
   const [selected, setSelected] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  // The copy is drawn in its saved form; the live poster never changes.
+  const exporting = capture != null;
+  const [saving, setSaving] = useState<number | null>(null);
   const pathRefs = useRef(new Map<string, SVGPathElement>());
   const pulseRef = useRef<SVGCircleElement | null>(null);
   const rootRef = useRef<HTMLElement | null>(null);
@@ -482,8 +491,11 @@ export default function RepoPoster({
   useEffect(() => {
     if (!playing || seeking || timeline.length === 0) return;
     let handle = 0;
-    const started = performance.now();
+    // The clock starts at the first frame's own time: performance.now()
+    // can run ahead of it, and a negative time draws nothing.
+    let started: number | null = null;
     const tick = (now: number) => {
+      started ??= now;
       const frame = traceFrame(timeline, now - started);
       placePulse(frame);
       if (!frame) {
@@ -506,7 +518,7 @@ export default function RepoPoster({
   // asked for less motion.
   useEffect(() => {
     const node = rootRef.current;
-    if (!node || played.current || timeline.length === 0 || card || seeking) return;
+    if (!node || played.current || timeline.length === 0 || card || seeking || exporting) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting) && !played.current) {
@@ -521,18 +533,16 @@ export default function RepoPoster({
 
   // Save the poster as an image a reader can post. The copy carries the
   // page's address; controls that only work on the page are left out.
-  const exportImage = async () => {
+  // The image is drawn from an offscreen copy at the poster's width, at
+  // rest and in its saved form, so the page itself never changes: no
+  // flash, no hover, and a trace in progress plays on.
+  const exportImage = () => {
     const node = rootRef.current;
-    if (!node || exporting) return;
-    // A copy is of the poster at rest: no trace running or about to start.
-    played.current = true;
-    if (autoplayRef.current) window.clearTimeout(autoplayRef.current);
-    setSelected(null);
-    setPlaying(false);
-    setActiveStage(null);
-    setExporting(true);
+    if (!node || saving != null) return;
+    setSaving(Math.round(node.getBoundingClientRect().width));
+  };
+  const captureCopy = async (node: HTMLElement) => {
     try {
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const { toPng } = await import("html-to-image");
       const restore = inlineSvgStyles(node);
       let url: string;
@@ -542,7 +552,7 @@ export default function RepoPoster({
           // The poster's own margin would shift the copy inside its frame.
           style: { margin: "0" },
           // The theme's own ground: a light page exports a light poster.
-          backgroundColor: plainColor(getComputedStyle(node).backgroundColor) || "#070b14",
+          backgroundColor: plainColor(getComputedStyle(rootRef.current ?? node).backgroundColor) || "#070b14",
           filter: (child) =>
             !(child instanceof Element && child.classList.contains("poster-no-export")),
         });
@@ -556,9 +566,24 @@ export default function RepoPoster({
     } catch {
       // A failed capture leaves the page as it was; nothing to undo.
     } finally {
-      setExporting(false);
+      setSaving(null);
     }
   };
+
+  // The copy hands itself over once laid out and its fonts are ready.
+  useEffect(() => {
+    if (!capture) return;
+    let cancelled = false;
+    void (async () => {
+      await document.fonts?.ready;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (!cancelled && rootRef.current) capture(rootRef.current);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const stageNow = seeking ? seekFrame?.stage ?? null : activeStage;
   const focusArea = stageNow != null ? stageAreas[stageNow] ?? null : null;
@@ -603,7 +628,34 @@ export default function RepoPoster({
     ? [slug.split("/")[0] + "/", slug.split("/").slice(1).join("/")]
     : ["", slug];
 
+  const copy =
+    saving != null && typeof document !== "undefined"
+      ? createPortal(
+          <div className="poster-export-stage" aria-hidden="true" style={{ width: saving }}>
+            <RepoPoster
+              repoId={repoId}
+              repo={repo}
+              map={map}
+              pages={pages}
+              journey={journey}
+              lead={lead}
+              variant={variant}
+              brandHost={brandHost}
+              brandLabel={brandLabel}
+              titleAs={Title}
+              colors={colors}
+              pathLabel={pathLabel}
+              roles={roles}
+              capture={captureCopy}
+            />
+          </div>,
+          rootRef.current?.parentElement ?? document.body,
+        )
+      : null;
+
   return (
+    <>
+    {copy}
     <section
       className={`repo-poster${hero ? " is-hero" : ""}${card ? " is-card" : ""}${exporting ? " is-exporting" : ""}${colors ? " has-colours" : ""}`}
       ref={rootRef}
@@ -724,8 +776,10 @@ export default function RepoPoster({
             {atlas.rest.map((area) => (
               <li key={area.id}>
                 <button type="button" style={areaStyle(area.id)} onClick={() => onPick?.(area.id)}>
-                  <span className="poster-rest-name">{area.title}</span>
-                  {stopBadges(area.id)}
+                  <span className="poster-rest-name">
+                    {area.title}
+                    {stopBadges(area.id)}
+                  </span>
                   <span className="poster-rest-share">
                     {area.symbols > 0 ? `${Math.max(1, Math.round(area.share * 100))}%` : plural(pagesIn(area.id), "page")}
                   </span>
@@ -892,8 +946,10 @@ export default function RepoPoster({
                 style={areaStyle(area.id)}
                 onClick={() => onPick?.(area.id)}
               >
-                {area.title}
-                {stopBadges(area.id)}
+                <span className="poster-chip-name">
+                  {area.title}
+                  {stopBadges(area.id)}
+                </span>
                 {/* An area with no symbols mapped still has its pages. */}
                 <span>{area.symbols > 0 ? plural(area.symbols, "symbol") : plural(pagesIn(area.id), "page")}</span>
               </button>
@@ -973,7 +1029,13 @@ export default function RepoPoster({
                       {roles ? (
                         <span className="poster-step-role">{stage.symbol}</span>
                       ) : (
-                        <code title={stage.symbol}>{breakableCode(displaySymbol(stage.symbol, { short: true }))}</code>
+                        <code title={stage.symbol}>
+                          {/* Saved, a name stays whole: the copy's break
+                              points split "run_/with_error_handler()". */}
+                          {exporting
+                            ? displaySymbol(stage.symbol, { short: true })
+                            : breakableCode(displaySymbol(stage.symbol, { short: true }))}
+                        </code>
                       )}
                     </>
                   );
@@ -1026,8 +1088,8 @@ export default function RepoPoster({
           </span>
         ) : (
         <span className="poster-actions poster-no-export">
-          <button type="button" className="poster-link" onClick={exportImage} disabled={exporting}>
-            {exporting ? "Saving…" : "Download image"}
+          <button type="button" className="poster-link" onClick={exportImage} disabled={saving != null}>
+            {saving != null ? "Saving…" : "Download image"}
           </button>
           {onOpenGraph && (
             <button type="button" className="poster-link" onClick={onOpenGraph}>
@@ -1041,10 +1103,27 @@ export default function RepoPoster({
         )}
         <span className="poster-brand" aria-hidden>
           <b>CodeNib</b> ·{" "}
-          {brandLabel ??
-            `${brandHost ?? (typeof window !== "undefined" ? window.location.host : "demo.codenib.ai")}/${repoId}`}
+          {brandLabel ?? (
+            <>
+              {/* The address may break after its host, never leaving
+                  "CodeNib ·" alone on a line. */}
+              {brandHost ?? (typeof window !== "undefined" ? window.location.host : "demo.codenib.ai")}/
+              <wbr />
+              {repoId}
+            </>
+          )}
         </span>
       </footer>
     </section>
+    </>
   );
+}
+
+/** The same value while its key holds, so a re-render with equal content
+ *  keeps every memo and effect built on it. */
+function useStableValue<T>(value: T, keyOf: (value: T) => string): T {
+  const key = keyOf(value);
+  const ref = useRef({ key, value });
+  if (ref.current.key !== key) ref.current = { key, value };
+  return ref.current.value;
 }
