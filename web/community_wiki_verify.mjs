@@ -261,7 +261,8 @@ try {
     await page
       .getByRole("heading", { name: "From request to durable result" })
       .waitFor();
-    assert.equal(await page.locator(".arch-step").count(), 4);
+    // The architecture falls as the main path does, one step per role.
+    assert.equal(await page.locator(".arch-step, .arch .main-path-step").count(), 4);
     assert.equal(
       await page
         .getByRole("button", { name: "Publish to Community", exact: true })
@@ -277,7 +278,7 @@ try {
       await page.locator(".run-strip").getAttribute("open"),
       null,
     );
-    await page.locator(".arch-step .arch-source").first().click();
+    await page.locator(".arch-step .arch-source, .arch .main-path-source").first().click();
     await page
       .getByRole("link", { name: "Open pinned source on GitHub" })
       .waitFor();

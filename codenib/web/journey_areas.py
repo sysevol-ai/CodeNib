@@ -30,6 +30,21 @@ def _area_of(file: str, areas: Sequence[Mapping[str, object]]) -> Mapping[str, o
     return None
 
 
+def _area_by_folder(file: str, areas: Sequence[Mapping[str, object]]) -> Mapping[str, object] | None:
+    """The area listing the most files in this file's own folder, if any."""
+    folder = file.rsplit("/", 1)[0] if "/" in file else ""
+    best, most = None, 0
+    for area in areas:
+        count = sum(
+            1
+            for owned in area.get("files") or []  # type: ignore[union-attr]
+            if (str(owned).rsplit("/", 1)[0] if "/" in str(owned) else "") == folder
+        )
+        if count > most:
+            best, most = area, count
+    return best
+
+
 def place_journey_areas(
     markdown: str,
     citations: Sequence[Mapping[str, object] | None],
@@ -59,7 +74,10 @@ def place_journey_areas(
             file = str((cite or {}).get("file") or "")
             if not file:
                 continue
-            place = _area_of(file, areas) or places.get(file)
+            # A file no area lists and no page cites goes with the area
+            # listing the most files in its own folder: tokio's
+            # ``task/spawn.rs`` with the area holding ``task/join_set.rs``.
+            place = _area_of(file, areas) or places.get(file) or _area_by_folder(file, areas)
             if place:
                 break
         if not place or not place.get("id") or not place.get("title"):
@@ -68,3 +86,69 @@ def place_journey_areas(
         lines[index] = f"{head} · [{title}](?p={place['id']}){colon}{text}"
         changed = True
     return "\n".join(lines) if changed else markdown
+
+
+_LINKED_STEP = re.compile(r"^\s*\d+\.\s+\*\*`[^`]+`\*\*\s*·\s*\[[^\]]*\]\(\?p=([^)\s]+)\)")
+
+
+def journey_area_ids(markdown: str, top_of: Mapping[str, str]) -> list[str]:
+    """The top-level areas a placed main path enters, in the order it enters them.
+
+    ``top_of`` maps every page id to its top-level area's id. The map gives
+    these areas its hues first, so the path is in colour from end to end even
+    in a repository with more areas than hues.
+    """
+    seen: list[str] = []
+    for line in markdown.split("\n"):
+        match = _LINKED_STEP.match(line)
+        if not match:
+            continue
+        top = top_of.get(match.group(1))
+        if top and top not in seen:
+            seen.append(top)
+    return seen
+
+
+def place_architecture_areas(
+    slots: Sequence[Mapping[str, object]],
+    citations: Sequence[Mapping[str, object] | None],
+    places: Mapping[str, Mapping[str, object]],
+    areas: Sequence[Mapping[str, object]] = (),
+) -> list[Mapping[str, object]]:
+    """Give each role of the Overview's architecture the area its source is in.
+
+    The architecture is drawn as the main path is, a stair coloured by area,
+    so each role takes the area of the first source it cites, found as a
+    path step's is. A role citing only the README, or code no area holds,
+    stays outside.
+    """
+    out: list[Mapping[str, object]] = []
+    for slot in slots:
+        contract = slot.get("render_contract") if isinstance(slot, Mapping) else None
+        data = contract.get("data") if isinstance(contract, Mapping) else None
+        nodes = data.get("nodes") if isinstance(data, Mapping) else None
+        if not (
+            isinstance(contract, Mapping)
+            and contract.get("adapter") == "architecture"
+            and isinstance(nodes, list)
+        ):
+            out.append(slot)
+            continue
+        placed = []
+        for node in nodes:
+            place = None
+            for evidence in node.get("evidence") or [] if isinstance(node, Mapping) else []:
+                match = re.fullmatch(r"E(\d+)", str(evidence))
+                position = int(match.group(1)) - 1 if match else -1
+                cite = citations[position] if 0 <= position < len(citations) else None
+                file = str((cite or {}).get("file") or "")
+                if not file:
+                    continue
+                place = _area_of(file, areas) or places.get(file) or _area_by_folder(file, areas)
+                if place:
+                    break
+            if isinstance(node, Mapping) and place and place.get("id") and place.get("title"):
+                node = {**node, "area": {"id": str(place["id"]), "title": str(place["title"])}}
+            placed.append(node)
+        out.append({**slot, "render_contract": {**contract, "data": {**data, "nodes": placed}}})
+    return out

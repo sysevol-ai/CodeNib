@@ -144,23 +144,33 @@ function groupTrailingCitations(
   const tail = items.slice(end).filter(isCitationElement);
   if (tail.length === 0) return children;
   const body = items.slice(0, end);
-  // The sources follow the last word with no space between, so a line never
-  // breaks to leave them alone; their margin keeps the gap.
+  // The sources go with the last word: a browser may break a line beside a
+  // chip even with no space before it, so the word and its sources are held
+  // on one line, and a line never ends leaving them alone.
+  let word: ReactNode = null;
   const last = body[body.length - 1];
-  if (typeof last === "string") body[body.length - 1] = last.replace(/\s+$/, "");
-  if (tail.length === 1) {
-    // One source is short enough to show as it is, line number included.
-    return (
-      <>
-        {body}
-        <span className="cite-group" data-single="">{tail}</span>
-      </>
-    );
+  if (typeof last === "string") {
+    const trimmed = last.replace(/\s+$/, "");
+    const lead = /(\S+)$/.exec(trimmed);
+    body[body.length - 1] = lead ? trimmed.slice(0, trimmed.length - lead[1].length) : trimmed;
+    word = lead ? lead[1] : null;
+  } else if (isValidElement(last) && nodeText(last).length <= GLUE_MAX_CHARS) {
+    word = body.pop() ?? null;
   }
+  // One source is short enough to show as it is, line number included.
+  const group =
+    tail.length === 1 ? (
+      <span className="cite-group" data-single="">{tail}</span>
+    ) : (
+      <CiteGroup items={tail} fileOf={fileOf} />
+    );
   return (
     <>
       {body}
-      <CiteGroup items={tail} fileOf={fileOf} />
+      <span className="cite-tail">
+        {word}
+        {group}
+      </span>
     </>
   );
 }

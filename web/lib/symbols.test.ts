@@ -54,6 +54,11 @@ describe("cleanTemplateArguments", () => {
 });
 
 describe("displaySymbol", () => {
+  it("drops a trait recorded after a type's own arguments", () => {
+    expect(displaySymbol("Arc<Handle><Schedule>.schedule()", { short: true })).toBe("Arc<Handle>.schedule()");
+    expect(displaySymbol("LinkedList<L>.new()", { short: true })).toBe("LinkedList<L>.new()");
+  });
+
   it("drops the file prefix and cleans templates", () => {
     expect(
       displaySymbol(

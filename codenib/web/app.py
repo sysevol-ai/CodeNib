@@ -100,7 +100,11 @@ from .schemas import (
 from .share import SITE_DESCRIPTION, SITE_TITLE, _repo_for, public_origin
 from .share import router as share_router
 from .source_definition import attach_definition
-from .journey_areas import place_journey_areas
+from .journey_areas import (
+    journey_area_ids,
+    place_architecture_areas,
+    place_journey_areas,
+)
 from .symbol_search import symbol_index
 from .visitor_wikis import router as visitor_wiki_router
 from .walkthroughs import load_walkthroughs, walkthrough_path
@@ -1486,12 +1490,14 @@ async def wiki_page(
                     (page.get("evidence") or {}).get("relations") or [],
                 ),
             }
+        placing = None
         if page_id == "overview" and page.get("markdown"):
             # Each main-path step names the area its code lives in, as the map
             # assigns files to areas, so the path reads in the map's colours
             # from end to end.
             places = await _run_pinned_thread(_symbol_pages, repo_id)
             areas = await _run_pinned_thread(_outline_areas, repo_id, bundle)
+            placing = (places, areas)
             page = {
                 **page,
                 "markdown": place_journey_areas(
@@ -1536,6 +1542,14 @@ async def wiki_page(
                     "evidence_count": len(page.get("citations") or []),
                     "relation_count": 0,
                 },
+            }
+        if placing is not None and page.get("media_slots"):
+            # The architecture's roles fall in the map's colours too.
+            page = {
+                **page,
+                "media_slots": place_architecture_areas(
+                    page["media_slots"], page.get("citations") or [], *placing
+                ),
             }
         return redact_media_evidence_packs(page)
 
@@ -1894,13 +1908,63 @@ async def wiki_area_map(repo_id: str) -> dict:
         areas = await _run_pinned_thread(collect)
 
         # No prose or evidence generation is necessary for this projection.
-        return await _run_pinned_thread(
+        result = await _run_pinned_thread(
             _area_map,
             graph,
             areas,
             repo_dir=getattr(entry, "repo_dir", None),
             source_reader=getattr(bundle, "source_reader", None),
         )
+        # The areas the Overview's main path enters take the map's hues
+        # first, so no step of the path lands in a grey area.
+        first = await _run_pinned_thread(
+            _overview_path_areas, repo_id, builder, outline, areas
+        )
+        if first and isinstance(result, dict):
+            result = {**result, "colour_first": first}
+        return result
+
+
+def _overview_path_areas(repo_id: str, builder, outline: dict, areas: list[dict]) -> list[str]:
+    """The top-level areas the cached Overview's main path enters, in order."""
+    cached_page = getattr(builder, "cached_page", None)
+    try:
+        page = cached_page("overview") if callable(cached_page) else None
+    except Exception:  # noqa: BLE001 - the map keeps its outline order
+        return []
+    if not page or not page.get("markdown"):
+        return []
+    top_of: dict[str, str] = {}
+
+    def walk(node: dict, top: str) -> None:
+        top_of[str(node.get("id"))] = top
+        for child in node.get("children") or []:
+            walk(child, top)
+
+    for top in outline.get("pages") or []:
+        if top.get("id") != "overview":
+            walk(top, str(top.get("id")))
+    try:
+        places = _symbol_pages(repo_id)
+    except Exception:  # noqa: BLE001 - outline files alone still place steps
+        places = {}
+    placed = place_journey_areas(
+        str(page["markdown"]), page.get("citations") or [], places, areas
+    )
+    first = journey_area_ids(placed, top_of)
+    if first:
+        return first
+    # No traced path: the architecture's roles, in the order work passes.
+    for slot in place_architecture_areas(
+        page.get("media_slots") or [], page.get("citations") or [], places, areas
+    ):
+        data = (slot.get("render_contract") or {}).get("data") or {}
+        nodes = {node.get("id"): node for node in data.get("nodes") or []}
+        for node_id in data.get("primary_path") or []:
+            top = top_of.get(((nodes.get(node_id) or {}).get("area") or {}).get("id"))
+            if top and top not in first:
+                first.append(top)
+    return first
 
 
 _MAX_THREADS_OVERLAY_BYTES = 8 * 1024 * 1024

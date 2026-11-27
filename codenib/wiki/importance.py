@@ -222,6 +222,36 @@ def is_side_road(name: str) -> bool:
     )
 
 
+# A path's last step is what it arrives at; a check, getter or conversion
+# (``isReactive()``, ``OutputType.from_mode()``, ``MIMEType.Satisfies()``)
+# is a detail of the step before it, not a destination.
+_DETAIL_LEADS = frozenset(
+    {
+        "as",
+        "can",
+        "clone",
+        "contains",
+        "equals",
+        "from",
+        "get",
+        "has",
+        "is",
+        "matches",
+        "new",
+        "satisfies",
+        "should",
+        "to",
+    }
+)
+
+
+def is_detail_step(name: str) -> bool:
+    """Whether a callable's name leads with a check, getter or conversion."""
+
+    words = re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", _leaf_name(re.sub(r"<[^>]*>", "", name)))
+    return bool(words) and words[0].lower() in _DETAIL_LEADS
+
+
 def is_setup_callable(name: str) -> bool:
     """Whether a callable's name says it sets something up rather than works.
 

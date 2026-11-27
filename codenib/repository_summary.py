@@ -49,6 +49,9 @@ _README_NOISE = re.compile(
     r"|^this\s+(?:document|readme|file|page|repository)\s+(?:serves|is|contains)"
     r"|^and\s+many\s+more\s+people\b"
     r"|\b(?:mailing list|reported bugs|helped organize|special thanks)\b"
+    # Where to talk, not what the project is: "a community chat at Gitter".
+    r"|\b(?:community chat|chat (?:room|channel)|gitter|discord|slack|"
+    r"feel free to ask|ask us anything)\b"
     r"|^(?:license|copyright|authors?|maintainers?|credits)\s*:"
     r"|\b(?:sponsor|sponsors|donate|open collective|backers|dependency tree)\b",
     re.IGNORECASE,

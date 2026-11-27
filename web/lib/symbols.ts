@@ -96,8 +96,14 @@ function separatorEnds(symbol: string): number[] {
  * keeps the owner and the member, which is how a call reads in prose:
  * `include/fmt/base.h:fmt.detail.parse_arg_id()` reads `detail.parse_arg_id()`.
  */
+/** A Rust trait impl's method is recorded as `Type<Trait>.method`; after a
+ *  type's own arguments the trait reads as noise (`Arc<Handle><Schedule>`). */
+const TRAIT_AFTER_ARGUMENTS = />(<[A-Za-z_][\w:]*>)(?=\.|::)/g;
+
 export function displaySymbol(label: string, options: { short?: boolean } = {}): string {
-  const symbol = cleanTemplateArguments(splitSymbolLabel(label).symbol.trim());
+  const symbol = cleanTemplateArguments(
+    splitSymbolLabel(label).symbol.trim().replace(TRAIT_AFTER_ARGUMENTS, ">"),
+  );
   if (!options.short || symbol.includes("/")) return symbol;
   const ends = separatorEnds(symbol);
   return ends.length < 2 ? symbol : symbol.slice(ends[ends.length - 2]);

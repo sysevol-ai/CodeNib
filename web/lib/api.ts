@@ -337,6 +337,8 @@ export interface WikiVisualNode {
   label: string;
   detail: string;
   evidence: string[];
+  /** The map area its first cited source is in, when one holds it. */
+  area?: { id: string; title: string };
   kind?:
     | "external"
     | "frontend"
@@ -934,6 +936,8 @@ export interface WikiAreaMap {
   areas: WikiArea[];
   links: WikiAreaLink[];
   reason?: "outline_pending" | "graph_unavailable" | "no_cross_area_calls" | null;
+  /** The areas the Overview's main path enters: they take the hues first. */
+  colour_first?: string[];
 }
 
 /** A definition the index recorded, as the jump palette lists it. */
